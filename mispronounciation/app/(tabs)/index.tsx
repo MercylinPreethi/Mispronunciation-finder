@@ -1,948 +1,526 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
+  Text,
   TouchableOpacity,
-  Alert,
+  ActivityIndicator,
   ScrollView,
-  Dimensions,
-  Animated,
-  Platform,
+  Alert,
+  TextInput,
+  SafeAreaView,
+  StatusBar
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech';
-import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import AudioRecorderPlayer, { 
+  AudioEncoderAndroidType, 
+  AudioSourceAndroidType,
+  AVEncoderAudioQualityIOSType,
+  AVEncodingOption
+} from 'react-native-audio-recorder-player';
+import RNFS from 'react-native-fs';
+import axios from 'axios';
 
-const { width } = Dimensions.get('window');
+const audioRecorderPlayer = new AudioRecorderPlayer();
 
-interface WordData {
-  word: string;
-  phonetic: string;
-  definition: string;
-  difficulty: 'easy' | 'medium' | 'hard';
+interface MispronunciationError {
+  position: number;
+  predicted: string;
+  reference: string;
+  type: 'substitution' | 'deletion' | 'insertion';
 }
 
-const wordList: WordData[] = [
-  {
-    word: 'pronunciation',
-    phonetic: '/prəˌnʌnsiˈeɪʃən/',
-    definition: 'The way in which a word is pronounced',
-    difficulty: 'hard',
-  },
-  {
-    word: 'mischievous',
-    phonetic: '/ˈmɪstʃɪvəs/',
-    definition: 'Causing or showing a fondness for causing trouble in a playful way',
-    difficulty: 'medium',
-  },
-  {
-    word: 'nuclear',
-    phonetic: '/ˈnjuːkliər/',
-    definition: 'Relating to the nucleus of an atom',
-    difficulty: 'medium',
-  },
-  {
-    word: 'library',
-    phonetic: '/ˈlaɪbrəri/',
-    definition: 'A building or room containing collections of books',
-    difficulty: 'easy',
-  },
-  {
-    word: 'February',
-    phonetic: '/ˈfebruəri/',
-    definition: 'The second month of the year',
-    difficulty: 'medium',
-  },
-  {
-    word: 'comfortable',
-    phonetic: '/ˈkʌmftəbəl/',
-    definition: 'Giving a feeling of physical ease and relaxation',
-    difficulty: 'medium',
-  },
-  {
-    word: 'vegetable',
-    phonetic: '/ˈvedʒtəbəl/',
-    definition: 'A plant or part of a plant used as food',
-    difficulty: 'easy',
-  },
-  {
-    word: 'Wednesday',
-    phonetic: '/ˈwenzdeɪ/',
-    definition: 'The day of the week before Thursday',
-    difficulty: 'medium',
-  },
-];
+interface AnalysisResult {
+  accuracy: number;
+  correct_phonemes: number;
+  total_phonemes: number;
+  predicted_phonemes: string[];
+  reference_phonemes: string[];
+  mispronunciations: MispronunciationError[];
+}
 
-// Google Cloud Speech-to-Text API key
-const GOOGLE_CLOUD_API_KEY = 'AIzaSyDT8-_mm8MtKn5839PJjOxu4WbMwWm9cNI';
+interface APIResponse {
+  success: boolean;
+  analysis?: AnalysisResult;
+  feedback?: string;
+  error?: string;
+}
 
-export default function PronunciationApp() {
-  const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [isListening, setIsListening] = useState(false);
-  const [spokenText, setSpokenText] = useState('');
-  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
-  const [score, setScore] = useState(0);
-  const [totalAttempts, setTotalAttempts] = useState(0);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const [showHint, setShowHint] = useState(false);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [permissionResponse, requestPermission] = Audio.usePermissions();
+const App = () => {
+  const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [results, setResults] = useState<APIResponse | null>(null);
+  const [referenceText, setReferenceText] = useState('');
+  const [audioPath, setAudioPath] = useState('');
+  const [recordingTime, setRecordingTime] = useState('00:00');
 
-  const currentWord = wordList[currentWordIndex];
+  const recordSecsRef = useRef(0);
+  const recordTimeRef = useRef('00:00');
 
-  useEffect(() => {
-    setupAudio();
-    // Animate word slide when changing
-    Animated.spring(slideAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      tension: 100,
-      friction: 8,
-    }).start();
-  }, [currentWordIndex]);
-
-  const setupAudio = async () => {
-    try {
-      if (permissionResponse?.status !== 'granted') {
-        console.log('Requesting permission..');
-        await requestPermission();
-      }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-    } catch (error) {
-      console.error('Failed to setup audio:', error);
-    }
-  };
-
-  const transcribeAudioWithGoogle = async (audioUri: string): Promise<string> => {
-    try {
-      // Read audio file and convert to base64
-      const audioData = await FileSystem.readAsStringAsync(audioUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      const requestBody = {
-        config: {
-          encoding: 'WEBM_OPUS',
-          sampleRateHertz: 48000,
-          languageCode: 'en-US',
-          enableAutomaticPunctuation: false,
-        },
-        audio: {
-          content: audioData,
-        },
-      };
-
-      const response = await fetch(
-        `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_CLOUD_API_KEY}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Google Cloud API error response:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('Google Cloud API response:', result);
-      
-      return result.results?.[0]?.alternatives?.[0]?.transcript || '';
-    } catch (error) {
-      console.error('Google Speech API error:', error);
-      throw error;
-    }
-  };
-
-  const checkPronunciation = (spokenText: string) => {
-    const targetWord = currentWord.word.toLowerCase();
-    const spokenLower = spokenText.toLowerCase().trim();
-    const similarity = calculateSimilarity(spokenLower, targetWord);
-    
-    setTotalAttempts(prev => prev + 1);
-    setSpokenText(spokenText);
-    
-    if (similarity >= 0.8) {
-      setIsCorrect(true);
-      setScore(prev => prev + 1);
-      
-      // Automatic success feedback
-      setTimeout(() => {
-        playSuccessSound();
-      }, 500);
-      
-    } else if (similarity >= 0.6) {
-      setIsCorrect(false);
-      
-      // Automatic "close" feedback with correction
-      setTimeout(() => {
-        playCorrectPronunciation();
-      }, 1000);
-      
-    } else {
-      setIsCorrect(false);
-      
-      // Automatic correction for poor pronunciation
-      setTimeout(() => {
-        playCorrectPronunciation();
-      }, 1000);
-    }
-  };
-
-  const calculateSimilarity = (str1: string, str2: string): number => {
-    // Enhanced similarity calculation with phonetic matching
-    if (str1 === str2) return 1.0;
-    
-    // Remove common filler words and normalize
-    const cleanStr1 = str1.replace(/\b(the|a|an|um|uh)\b/g, '').trim();
-    const cleanStr2 = str2.replace(/\b(the|a|an|um|uh)\b/g, '').trim();
-    
-    // Check for common phonetic substitutions
-    const phoneticsMap: { [key: string]: string[] } = {
-      'f': ['ph', 'gh'],
-      'k': ['c', 'ch', 'ck'],
-      's': ['c', 'sc', 'z'],
-      'z': ['s'],
-      'j': ['g'],
-      'i': ['y'],
-      'er': ['ur', 'or', 'ar'],
-      'ay': ['ai', 'ey', 'a'],
-      'sh': ['ti', 'ci', 'si'],
-    };
-
-    let normalizedStr1 = cleanStr1;
-    let normalizedStr2 = cleanStr2;
-
-    // Apply phonetic normalizations
-    Object.keys(phoneticsMap).forEach(sound => {
-      phoneticsMap[sound].forEach(variant => {
-        const regex = new RegExp(variant, 'gi');
-        normalizedStr1 = normalizedStr1.replace(regex, sound);
-        normalizedStr2 = normalizedStr2.replace(regex, sound);
-      });
-    });
-
-    const longer = normalizedStr1.length > normalizedStr2.length ? normalizedStr1 : normalizedStr2;
-    const shorter = normalizedStr1.length > normalizedStr2.length ? normalizedStr2 : normalizedStr1;
-    
-    if (longer.length === 0) return 1.0;
-    
-    const editDistance = levenshteinDistance(longer, shorter);
-    const baseSimilarity = (longer.length - editDistance) / longer.length;
-    
-    // Bonus for getting the first few letters right (important for pronunciation)
-    const prefixMatch = Math.min(cleanStr1.length, cleanStr2.length);
-    let prefixBonus = 0;
-    for (let i = 0; i < prefixMatch && i < 3; i++) {
-      if (cleanStr1[i] === cleanStr2[i]) {
-        prefixBonus += 0.05;
-      }
-    }
-    
-    // Bonus for similar length
-    const lengthDiff = Math.abs(cleanStr1.length - cleanStr2.length);
-    const lengthBonus = lengthDiff <= 2 ? 0.1 : 0;
-    
-    return Math.min(1.0, baseSimilarity + prefixBonus + lengthBonus);
-  };
-
-  const levenshteinDistance = (str1: string, str2: string): number => {
-    const matrix = [];
-    
-    for (let i = 0; i <= str2.length; i++) {
-      matrix[i] = [i];
-    }
-    
-    for (let j = 0; j <= str1.length; j++) {
-      matrix[0][j] = j;
-    }
-    
-    for (let i = 1; i <= str2.length; i++) {
-      for (let j = 1; j <= str1.length; j++) {
-        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
-          );
-        }
-      }
-    }
-    
-    return matrix[str2.length][str1.length];
-  };
+  // Update with your cluster backend URL
+  const API_BASE_URL = 'http://192.168.14.34:5050';
 
   const startRecording = async () => {
+    if (!referenceText.trim()) {
+      Alert.alert('Error', 'Please enter reference text first');
+      return;
+    }
+
     try {
-      if (permissionResponse?.status !== 'granted') {
-        const permission = await requestPermission();
-        if (permission.status !== 'granted') {
-          Alert.alert('Permission needed', 'Microphone permission is required for speech recognition');
-          return;
-        }
-      }
+      setIsRecording(true);
+      setResults(null);
+      const path = `${RNFS.DocumentDirectoryPath}/recording.wav`;
+      setAudioPath(path);
 
-      setIsListening(true);
-      setSpokenText('');
-      setIsCorrect(null);
-      setIsProcessing(false);
+      const audioSet = {
+        AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
+        AudioSourceAndroid: AudioSourceAndroidType.MIC,
+        AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
+        AVNumberOfChannelsKeyIOS: 1,
+        AVFormatIDKeyIOS: AVEncodingOption.lpcm,
+      };
 
-      // Start pulse animation
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.3,
-            duration: 600,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 600,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      console.log('Starting recording..');
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      
-      setRecording(recording);
-
-      // Auto-stop after 4 seconds for better recognition
-      setTimeout(() => {
-        if (recording && isListening) {
-          stopRecording();
-        }
-      }, 4000);
-
-    } catch (err) {
-      console.error('Failed to start recording', err);
-      setIsListening(false);
-      Alert.alert('Error', 'Failed to start recording. Please try again.');
+      await audioRecorderPlayer.startRecorder(path, audioSet);
+      audioRecorderPlayer.addRecordBackListener((e) => {
+        recordSecsRef.current = e.currentPosition;
+        recordTimeRef.current = audioRecorderPlayer.mmssss(
+          Math.floor(e.currentPosition),
+        );
+        setRecordingTime(recordTimeRef.current);
+      });
+    } catch (error) {
+      console.error('Recording error:', error);
+      Alert.alert('Error', 'Failed to start recording');
+      setIsRecording(false);
     }
   };
 
   const stopRecording = async () => {
-    if (!recording) return;
+    try {
+      await audioRecorderPlayer.stopRecorder();
+      audioRecorderPlayer.removeRecordBackListener();
+      setIsRecording(false);
+      setRecordingTime('00:00');
 
-    setIsListening(false);
-    pulseAnim.stopAnimation();
-    pulseAnim.setValue(1);
-    setIsProcessing(true);
-    
-    console.log('Stopping recording..');
-    setRecording(null);
-    await recording.stopAndUnloadAsync();
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-    });
-    
-    const uri = recording.getURI();
-    console.log('Recording stopped and stored at', uri);
-
-    if (uri) {
-      await processAudioForSpeech(uri);
+      // Process the recording
+      await processRecording();
+    } catch (error) {
+      console.error('Stop recording error:', error);
+      Alert.alert('Error', 'Failed to stop recording');
+      setIsRecording(false);
     }
   };
 
-  const processAudioForSpeech = async (uri: string) => {
-    try {
-      setSpokenText('Processing your speech...');
-      
-      // Check if Google Cloud API key is configured
-      if (!GOOGLE_CLOUD_API_KEY  || GOOGLE_CLOUD_API_KEY.length < 30) {
-        Alert.alert(
-          'API Key Required',
-          'To use speech recognition, please add your Google Cloud API key in the code.',
-          [
-            { text: 'OK', onPress: () => {
-              setIsProcessing(false);
-              setSpokenText('');
-            }}
-          ]
-        );
-        return;
-      }
+  const processRecording = async () => {
+    if (!audioPath) return;
 
-      const recognizedText = await transcribeAudioWithGoogle(uri);
-      
-      console.log('Recognized text:', recognizedText);
-      
-      if (recognizedText.trim()) {
-        checkPronunciation(recognizedText.trim());
+    setIsProcessing(true);
+    try {
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('audio_file', {
+        uri: `file://${audioPath}`,
+        type: 'audio/wav',
+        name: 'recording.wav',
+      } as any);
+      formData.append('reference_text', referenceText);
+
+      // Send to backend for analysis
+      const response = await axios.post(`${API_BASE_URL}/analyze`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000, // 30 second timeout
+      });
+
+      if (response.data.success) {
+        setResults(response.data);
       } else {
-        setSpokenText('No speech detected. Please try again.');
+        throw new Error(response.data.error || 'Analysis failed');
       }
-      
     } catch (error) {
-      console.error('Speech recognition error:', error);
-      setSpokenText('Speech recognition failed. Please try again.');
-      Alert.alert(
-        'Recognition Error',
-        'Could not process your speech. Please check your internet connection and try again.',
-        [{ text: 'OK' }]
-      );
+      console.error('Processing error:', error);
+      Alert.alert('Error', 'Failed to process audio. Please check your connection.');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const playSuccessSound = async () => {
-    try {
-      await Speech.speak("Excellent! Perfect pronunciation!", {
-        language: 'en-US',
-        pitch: 1.2,
-        rate: 0.8,
-      });
-    } catch (error) {
-      console.error('Error playing success sound:', error);
-    }
+  const playReferenceAudio = () => {
+    // Optional: Play reference audio for the text
+    Alert.alert('Info', 'Reference audio playback would be implemented here');
   };
 
-  const playCorrectPronunciation = async () => {
-    setIsPlayingAudio(true);
-    try {
-      // First, give feedback about what they said vs. what's correct
-      if (spokenText && spokenText !== 'Processing your speech...' && !spokenText.includes('failed')) {
-        await Speech.speak(`You said ${spokenText}. The correct pronunciation is:`, {
-          language: 'en-US',
-          pitch: 1.0,
-          rate: 0.7,
-        });
-        
-        // Small pause
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      
-      // Then say the correct word
-      await Speech.speak(currentWord.word, {
-        language: 'en-US',
-        pitch: 1.0,
-        rate: 0.6, // Slower for learning
-      });
-      
-    } catch (error) {
-      console.error('Error playing audio:', error);
-    } finally {
-      setTimeout(() => setIsPlayingAudio(false), 3000);
-    }
+  const resetApp = () => {
+    setResults(null);
+    setReferenceText('');
+    setRecordingTime('00:00');
   };
 
-  const nextWord = () => {
-    setCurrentWordIndex(prev => (prev + 1) % wordList.length);
-    setSpokenText('');
-    setIsCorrect(null);
-    setShowHint(false);
-    slideAnim.setValue(0);
+  const getAccuracyColor = (accuracy: number): string => {
+    if (accuracy >= 0.9) return '#34C759'; // Green
+    if (accuracy >= 0.8) return '#FF9500'; // Orange
+    return '#FF3B30'; // Red
   };
 
-  const previousWord = () => {
-    setCurrentWordIndex(prev => (prev - 1 + wordList.length) % wordList.length);
-    setSpokenText('');
-    setIsCorrect(null);
-    setShowHint(false);
-    slideAnim.setValue(0);
+  const formatAccuracy = (accuracy: number): string => {
+    return `${(accuracy * 100).toFixed(1)}%`;
   };
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'easy': return '#4CAF50';
-      case 'medium': return '#FF9800';
-      case 'hard': return '#F44336';
-      default: return '#666';
-    }
-  };
-
-  const accuracy = totalAttempts > 0 ? Math.round((score / totalAttempts) * 100) : 0;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <Text style={styles.title}>🎤 Real Pronunciation Practice</Text>
-        <View style={styles.statsContainer}>
-          <Text style={styles.statsText}>Score: {score}/{totalAttempts}</Text>
-          <Text style={styles.statsText}>Accuracy: {accuracy}%</Text>
-        </View>
-      </View>
-
-      <View style={styles.wordContainer}>
-        <Animated.View
-          style={[
-            styles.wordCard,
-            {
-              transform: [
-                {
-                  translateX: slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [width, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.wordHeader}>
-            <Text style={styles.wordText}>{currentWord.word}</Text>
-            <View
-              style={[
-                styles.difficultyBadge,
-                { backgroundColor: getDifficultyColor(currentWord.difficulty) },
-              ]}
-            >
-              <Text style={styles.difficultyText}>{currentWord.difficulty}</Text>
-            </View>
-          </View>
-          
-          <Text style={styles.phoneticText}>{currentWord.phonetic}</Text>
-          <Text style={styles.definitionText}>{currentWord.definition}</Text>
-          
-          {showHint && (
-            <View style={styles.hintContainer}>
-              <Text style={styles.hintText}>
-                💡 Tip: Listen carefully to the pronunciation, then speak clearly into the microphone. The AI will analyze your pronunciation and give real-time feedback!
-              </Text>
-            </View>
-          )}
-        </Animated.View>
-      </View>
-
-      <View style={styles.controlsContainer}>
-        <TouchableOpacity
-          style={styles.hintButton}
-          onPress={() => setShowHint(!showHint)}
-        >
-          <Ionicons name="bulb-outline" size={24} color="#666" />
-          <Text style={styles.hintButtonText}>Hint</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.audioButton}
-          onPress={playCorrectPronunciation}
-          disabled={isPlayingAudio}
-        >
-          <Ionicons
-            name={isPlayingAudio ? "volume-high" : "volume-high-outline"}
-            size={24}
-            color={isPlayingAudio ? "#4CAF50" : "#666"}
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <Text style={styles.title}>Pronunciation Coach</Text>
+        
+        <View style={styles.inputContainer}>
+          <Text style={styles.label}>Reference Text to Practice:</Text>
+          <TextInput
+            style={styles.textInput}
+            value={referenceText}
+            onChangeText={setReferenceText}
+            placeholder="Enter text to practice pronunciation"
+            multiline
+            numberOfLines={3}
           />
-          <Text style={styles.audioButtonText}>
-            {isPlayingAudio ? "Playing..." : "Hear It"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity 
+            style={styles.referenceButton} 
+            onPress={playReferenceAudio}
+          >
+            <Text style={styles.buttonText}>Hear Reference</Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.recordingContainer}>
-        <Animated.View
-          style={[
-            styles.recordButton,
-            (isListening || isProcessing) && styles.recording,
-            {
-              transform: [{ scale: pulseAnim }],
-            },
-          ]}
-        >
+        <View style={styles.recordingContainer}>
+          <Text style={styles.recordingTime}>{recordingTime}</Text>
+          
           <TouchableOpacity
-            style={styles.recordButtonInner}
-            onPress={isListening ? stopRecording : startRecording}
-            activeOpacity={0.8}
+            style={[styles.recordButton, isRecording && styles.recordingButton]}
+            onPress={isRecording ? stopRecording : startRecording}
             disabled={isProcessing}
           >
-            <Ionicons
-              name={isListening ? "stop" : isProcessing ? "sync" : "mic"}
-              size={40}
-              color="white"
-            />
+            <Text style={styles.recordButtonText}>
+              {isRecording ? 'Stop Recording' : 'Start Recording'}
+            </Text>
           </TouchableOpacity>
-        </Animated.View>
-        
-        <Text style={styles.recordButtonText}>
-          {isListening ? "Listening... Tap to Stop" : isProcessing ? "Processing..." : "Tap to Speak"}
-        </Text>
-        <Text style={styles.infoText}>
-          {isListening ? "Speak clearly: " + currentWord.word : 
-           isProcessing ? "Analyzing your pronunciation..." :
-           "AI speech recognition powered by Google Cloud"}
-        </Text>
-      </View>
 
-      {spokenText && !isProcessing && (
-        <View style={styles.resultContainer}>
-          <Text style={styles.resultLabel}>You said:</Text>
-          <Text style={styles.spokenText}>"{spokenText}"</Text>
-          <Text style={styles.targetLabel}>Target word:</Text>
-          <Text style={styles.targetText}>"{currentWord.word}"</Text>
-          {isCorrect !== null && (
-            <View style={[styles.feedbackContainer, isCorrect ? styles.correct : styles.incorrect]}>
-              <Ionicons
-                name={isCorrect ? "checkmark-circle" : "close-circle"}
-                size={24}
-                color={isCorrect ? "#4CAF50" : "#F44336"}
-              />
-              <Text style={styles.feedbackText}>
-                {isCorrect ? "Perfect! 🎉" : "Let's practice the correct pronunciation 💪"}
-              </Text>
-            </View>
-          )}
-          
-          {isCorrect !== null && spokenText && !spokenText.includes('failed') && (
-            <View style={styles.similarityContainer}>
-              <Text style={styles.similarityText}>
-                Similarity: {Math.round(calculateSimilarity(spokenText.toLowerCase().trim(), currentWord.word.toLowerCase()) * 100)}%
-              </Text>
-              {isCorrect && (
-                <Text style={styles.encouragementText}>
-                  Great job! Ready for the next word? 🚀
-                </Text>
-              )}
+          {isProcessing && (
+            <View style={styles.processingContainer}>
+              <ActivityIndicator size="large" color="#007AFF" />
+              <Text style={styles.processingText}>Analyzing pronunciation...</Text>
             </View>
           )}
         </View>
-      )}
 
-      <View style={styles.navigationContainer}>
-        <TouchableOpacity style={styles.navButton} onPress={previousWord}>
-          <Ionicons name="chevron-back" size={24} color="#666" />
-          <Text style={styles.navButtonText}>Previous</Text>
-        </TouchableOpacity>
-        
-        <Text style={styles.wordCounter}>
-          {currentWordIndex + 1} / {wordList.length}
-        </Text>
-        
-        <TouchableOpacity style={styles.navButton} onPress={nextWord}>
-          <Text style={styles.navButtonText}>Next</Text>
-          <Ionicons name="chevron-forward" size={24} color="#666" />
-        </TouchableOpacity>
-      </View>
+        {results && results.success && results.analysis && (
+          <View style={styles.resultsContainer}>
+            <Text style={styles.resultsTitle}>Analysis Results</Text>
+            
+            <View style={styles.scoreContainer}>
+              <Text style={[
+                styles.scoreText, 
+                { color: getAccuracyColor(results.analysis.accuracy) }
+              ]}>
+                Accuracy: {formatAccuracy(results.analysis.accuracy)}
+              </Text>
+              <Text style={styles.scoreSubtext}>
+                {results.analysis.correct_phonemes}/{results.analysis.total_phonemes} phonemes correct
+              </Text>
+            </View>
 
-      <View style={styles.apiNotice}>
-        <Text style={styles.apiNoticeText}>
-          🔊 Powered by Google Cloud Speech-to-Text API
-        </Text>
-      </View>
-    </ScrollView>
+            {results.analysis.predicted_phonemes && results.analysis.reference_phonemes && (
+              <View style={styles.phonemeContainer}>
+                <Text style={styles.sectionTitle}>Phoneme Comparison:</Text>
+                <Text style={styles.phonemeText}>
+                  Your speech: {results.analysis.predicted_phonemes.join(' ')}
+                </Text>
+                <Text style={styles.phonemeText}>
+                  Reference: {results.analysis.reference_phonemes.join(' ')}
+                </Text>
+              </View>
+            )}
+
+            {results.analysis.mispronunciations && results.analysis.mispronunciations.length > 0 && (
+              <View style={styles.mispronunciationsContainer}>
+                <Text style={styles.sectionTitle}>
+                  Pronunciation Issues ({results.analysis.mispronunciations.length}):
+                </Text>
+                {results.analysis.mispronunciations.slice(0, 5).map((error, index) => (
+                  <View key={index} style={styles.errorItem}>
+                    <Text style={styles.errorText}>
+                      • Position {error.position + 1}: {error.type}
+                    </Text>
+                    <Text style={styles.errorDetail}>
+                      {error.type === 'substitution' && 
+                        `Said "${error.predicted}" instead of "${error.reference}"`
+                      }
+                      {error.type === 'deletion' && 
+                        `Missing phoneme "${error.reference}"`
+                      }
+                      {error.type === 'insertion' && 
+                        `Added extra phoneme "${error.predicted}"`
+                      }
+                    </Text>
+                  </View>
+                ))}
+                {results.analysis.mispronunciations.length > 5 && (
+                  <Text style={styles.moreErrorsText}>
+                    ... and {results.analysis.mispronunciations.length - 5} more issues
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {results.analysis.mispronunciations && results.analysis.mispronunciations.length === 0 && (
+              <View style={styles.perfectContainer}>
+                <Text style={styles.perfectText}>🎉 Perfect! No pronunciation issues detected.</Text>
+              </View>
+            )}
+
+            {results.feedback && (
+              <View style={styles.feedbackContainer}>
+                <Text style={styles.sectionTitle}>Detailed Feedback:</Text>
+                <Text style={styles.feedbackText}>{results.feedback}</Text>
+              </View>
+            )}
+
+            <TouchableOpacity style={styles.resetButton} onPress={resetApp}>
+              <Text style={styles.resetButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {results && !results.success && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorTitle}>Analysis Failed</Text>
+            <Text style={styles.errorMessage}>
+              {results.error || 'Unknown error occurred'}
+            </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={resetApp}>
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
-}
-
-
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  contentContainer: {
+  scrollContainer: {
     padding: 20,
-    paddingTop: 60,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 30,
+    paddingBottom: 40,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  statsText: {
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
-  },
-  wordContainer: {
-    marginBottom: 30,
-  },
-  apiNotice: {
-    backgroundColor: '#FFF3E0',
-    padding: 15,
-    borderRadius: 10,
-    marginTop: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF9800',
-  },
-  apiNoticeText: {
-    fontSize: 12,
-    color: '#E65100',
     textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  wordCard: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 25,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  wordHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  wordText: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    marginBottom: 30,
     color: '#333',
-    flex: 1,
   },
-  difficultyBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-  },
-  difficultyText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  phoneticText: {
-    fontSize: 18,
-    color: '#666',
-    fontStyle: 'italic',
-    marginBottom: 15,
-  },
-  definitionText: {
-    fontSize: 16,
-    color: '#444',
-    lineHeight: 24,
-  },
-  hintContainer: {
-    marginTop: 15,
-    padding: 15,
-    backgroundColor: '#E3F2FD',
-    borderRadius: 10,
-  },
-  hintText: {
-    fontSize: 14,
-    color: '#1976D2',
-    fontStyle: 'italic',
-    lineHeight: 20,
-  },
-  controlsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+  inputContainer: {
     marginBottom: 30,
   },
-  hintButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  hintButtonText: {
-    marginLeft: 8,
+  label: {
     fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
+    fontWeight: '600',
+    marginBottom: 10,
+    color: '#333',
   },
-  audioButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  audioButtonText: {
-    marginLeft: 8,
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 15,
     fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
+    minHeight: 100,
+    textAlignVertical: 'top',
+    backgroundColor: 'white',
+  },
+  referenceButton: {
+    backgroundColor: '#34C759',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
   },
   recordingContainer: {
     alignItems: 'center',
     marginBottom: 30,
   },
+  recordingTime: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    color: '#333',
+  },
   recordButton: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#4CAF50',
-    justifyContent: 'center',
+    backgroundColor: '#FF3B30',
+    paddingVertical: 20,
+    paddingHorizontal: 40,
+    borderRadius: 50,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
   },
-  recording: {
-    backgroundColor: '#F44336',
-  },
-  recordButtonInner: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
+  recordingButton: {
+    backgroundColor: '#5856D6',
   },
   recordButtonText: {
-    marginTop: 15,
+    color: 'white',
     fontSize: 18,
-    color: '#333',
     fontWeight: 'bold',
-    textAlign: 'center',
   },
-  infoText: {
-    marginTop: 5,
-    fontSize: 14,
+  processingContainer: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  processingText: {
+    marginTop: 10,
+    fontSize: 16,
     color: '#666',
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
-  resultContainer: {
+  resultsContainer: {
     backgroundColor: 'white',
-    borderRadius: 15,
+    borderRadius: 12,
     padding: 20,
-    marginBottom: 30,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 5,
+    shadowRadius: 4,
     elevation: 3,
   },
-  resultLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  spokenText: {
-    fontSize: 18,
+  resultsTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
     color: '#333',
-    fontWeight: '500',
-    marginBottom: 15,
   },
-  targetLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  targetText: {
-    fontSize: 18,
-    color: '#4CAF50',
-    fontWeight: '500',
-    marginBottom: 15,
-  },
-  feedbackContainer: {
-    flexDirection: 'row',
+  scoreContainer: {
     alignItems: 'center',
-    padding: 15,
-    borderRadius: 10,
+    marginBottom: 20,
   },
-  correct: {
-    backgroundColor: '#E8F5E8',
-  },
-  incorrect: {
-    backgroundColor: '#FFEBEE',
-  },
-  feedbackText: {
-    marginLeft: 8,
-    fontSize: 16,
+  scoreText: {
+    fontSize: 24,
     fontWeight: 'bold',
   },
-  similarityContainer: {
-    marginTop: 15,
+  scoreSubtext: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 5,
+  },
+  phonemeContainer: {
+    marginBottom: 20,
+    backgroundColor: '#f8f8f8',
+    padding: 15,
+    borderRadius: 8,
+  },
+  phonemeText: {
+    fontSize: 14,
+    fontFamily: 'monospace',
+    color: '#333',
+    marginBottom: 5,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 10,
+    color: '#333',
+  },
+  mispronunciationsContainer: {
+    marginBottom: 20,
+  },
+  errorItem: {
+    backgroundColor: '#FFF2F2',
     padding: 12,
-    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#FF3B30',
+    fontWeight: '500',
+  },
+  errorDetail: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  moreErrorsText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  perfectContainer: {
+    backgroundColor: '#F0FFF4',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  perfectText: {
+    fontSize: 18,
+    color: '#34C759',
+    fontWeight: '600',
+  },
+  feedbackContainer: {
+    marginBottom: 20,
+  },
+  feedbackText: {
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#333',
+  },
+  resetButton: {
+    backgroundColor: '#007AFF',
+    padding: 15,
     borderRadius: 8,
     alignItems: 'center',
   },
-  similarityText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+  resetButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
-  encouragementText: {
-    fontSize: 14,
-    color: '#4CAF50',
-    fontWeight: '500',
-    marginTop: 5,
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  errorContainer: {
+    backgroundColor: '#FFE5E5',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FF3B30',
+    marginBottom: 10,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: '#666',
     textAlign: 'center',
+    marginBottom: 20,
   },
-  navigationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    borderRadius: 15,
+  retryButton: {
+    backgroundColor: '#FF3B30',
     padding: 15,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  navButton: {
-    flexDirection: 'row',
+    borderRadius: 8,
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
   },
-  navButtonText: {
+  retryButtonText: {
+    color: 'white',
     fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
-  },
-  wordCounter: {
-    fontSize: 16,
-    color: '#333',
     fontWeight: 'bold',
   },
 });
+
+export default App;
