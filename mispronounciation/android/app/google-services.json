@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "329898480943",
+    "project_id": "mispronunciation-e1fb0",
+    "storage_bucket": "mispronunciation-e1fb0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:329898480943:android:84388a674d779a271afdda",
+        "android_client_info": {
+          "package_name": "com.preeti0716.mispronounciation"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyATKCD4oJsveTPwtzaUcRz28nqXtWJsQRo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
