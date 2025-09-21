@@ -77,7 +77,7 @@ interface PracticeAttempt {
   source: 'recording' | 'upload';
   fileName?: string;
   mispronuncedWords: string[];
-  correctlyPronuncedWords: string[];
+  correctlyPronuncedWords: string[]; // Added this property
 }
 
 interface ChatMessage {
@@ -523,25 +523,7 @@ export default function PronunciationCoachChat() {
   };
 
   const createNewSession = async (referenceText: string) => {
-    // Check if a session with this reference text already exists
-    const existingSession = sessions.find(session => 
-      session.referenceText.toLowerCase().trim() === referenceText.toLowerCase().trim()
-    );
-
-    if (existingSession) {
-      // Switch to existing session
-      setCurrentSessionId(existingSession.id);
-      
-      // Add message indicating we switched to existing session
-      addMessage({
-        type: 'text',
-        content: `Switched to existing session for: "${referenceText}"\n\nYou have ${existingSession.attempts.length} previous attempts. You can continue practicing with the audio options above!`,
-        isUser: false
-      });
-      return;
-    }
-
-    // Create new session with reference text as basis for ID
+    // Always create a new session for new reference text
     const sessionId = generateSessionId(referenceText);
     const newSession: SentenceSession = {
       id: sessionId,
@@ -551,17 +533,21 @@ export default function PronunciationCoachChat() {
       messages: []
     };
     
+    // Add to sessions list first (this will trigger the sidebar update)
+    setSessions(prevSessions => [newSession, ...prevSessions]);
     setCurrentSessionId(newSession.id);
     
     // Save to Firebase
     await saveSessionToFirebase(newSession);
     
-    // Add initial bot message
-    addMessage({
-      type: 'text',
-      content: `Perfect! I've created a new practice session for:\n\n"${referenceText}"\n\nNow you can:\n🎤 Record your pronunciation\n📁 Upload an audio file\n\nChoose either option above to start practicing!`,
-      isUser: false
-    });
+    // Add initial bot message to the new session
+    setTimeout(() => {
+      addMessage({
+        type: 'text',
+        content: `Perfect! I've created a new practice session for:\n\n"${referenceText}"\n\nNow you can:\n🎤 Record your pronunciation\n📁 Upload an audio file\n\nChoose either option above to start practicing!`,
+        isUser: false
+      });
+    }, 100);
   };
 
   const addMessage = async (messageData: Partial<ChatMessage>) => {
@@ -573,21 +559,17 @@ export default function PronunciationCoachChat() {
 
     const currentSession = getCurrentSession();
     if (currentSession && isFirebaseConnected) {
-      // Check if this is a command to create a new session
-      if (newMessage.isUser && newMessage.content.toLowerCase() === 'new') {
-        // Don't save this command message, just process it
-        setTimeout(() => {
-          addMessage({
-            type: 'text',
-            content: "Please type the new sentence you'd like to practice:",
-            isUser: false
-          });
-        }, 500);
-        return;
-      }
-      
       // Save message to Firebase
       await saveMessageToFirebase(currentSession.id, newMessage);
+      
+      // Auto scroll to bottom
+      setTimeout(() => {
+        chatScrollRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    } else if (!currentSession && !newMessage.isUser) {
+      // Allow bot messages even without a session (for initial welcome messages)
+      // These will be temporary and not saved to Firebase
+      console.log('Bot message without session:', newMessage.content);
       
       // Auto scroll to bottom
       setTimeout(() => {
@@ -603,53 +585,56 @@ export default function PronunciationCoachChat() {
     const currentSession = getCurrentSession();
     setInputText('');
     
-    // Handle special commands
-    if (currentSession && text.toLowerCase() === 'new') {
+    // Add user message first
+    if (currentSession) {
       addMessage({
         type: 'text',
-        content: 'new',
+        content: text,
         isUser: true
       });
-      
-      setTimeout(() => {
-        addMessage({
-          type: 'text',
-          content: "Please type the new sentence you'd like to practice:",
-          isUser: false
-        });
-      }, 500);
-      return;
     }
     
-    // Add user message
-    addMessage({
-      type: 'text',
-      content: text,
-      isUser: true
-    });
-    
-    // Check if this is a new sentence or continuation
-    if (!currentSession) {
-      // Create new session with the reference text
-      createNewSession(text);
-    } else {
-      // Check if user wants to start a new session after typing 'new'
-      const lastMessages = currentSession.messages.slice(-2);
-      const lastBotMessage = lastMessages.find(m => !m.isUser);
-      
-      if (lastBotMessage && lastBotMessage.content.includes("Please type the new sentence")) {
-        // User is providing a new reference text
-        createNewSession(text);
-      } else {
-        // Offer to create a new session or continue with current one
+    // Handle special commands
+    if (text.toLowerCase() === 'new') {
+      if (currentSession) {
         setTimeout(() => {
           addMessage({
             type: 'text',
-            content: `I see you want to practice: "${text}"\n\nWould you like to:\n• Start a new practice session with this text\n• Continue practicing: "${currentSession.referenceText}"\n\nType 'new' to start fresh, or use the audio options above to continue with current session.`,
+            content: "Please type the new sentence you'd like to practice:",
             isUser: false
           });
         }, 500);
       }
+      return;
+    }
+    
+    // Check if user wants to start a new session after typing 'new'
+    if (currentSession) {
+      const lastMessages = currentSession.messages.slice(-2);
+      const lastBotMessage = lastMessages.find(m => !m.isUser);
+      
+      if (lastBotMessage && lastBotMessage.content.includes("Please type the new sentence")) {
+        // User is providing a new reference text after 'new' command
+        createNewSession(text);
+        return;
+      }
+      
+      // For any other text in existing session, offer to create new session
+      setTimeout(() => {
+        addMessage({
+          type: 'text',
+          content: `I see you want to practice: "${text}"\n\nThis will create a new practice session. Your current session for "${currentSession.referenceText}" will be saved in Practice History.\n\nWould you like to continue with the new session?`,
+          isUser: false
+        });
+        
+        // Auto-create the new session after showing the message
+        setTimeout(() => {
+          createNewSession(text);
+        }, 2000);
+      }, 500);
+    } else {
+      // No current session - create new session with the reference text
+      createNewSession(text);
     }
   };
 
@@ -1070,10 +1055,23 @@ export default function PronunciationCoachChat() {
           <Text style={styles.sidebarIcon}>☰</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {currentSession ? 'Pronunciation Practice' : 'Start New Practice'}
+          {currentSession ? `Practice: ${currentSession.referenceText.slice(0, 30)}${currentSession.referenceText.length > 30 ? '...' : ''}` : 'Start New Practice'}
         </Text>
         {isFirebaseConnected && (
-          <Text style={styles.connectionIndicator}>🟢</Text>
+          <View style={styles.headerActions}>
+            {currentSession && (
+              <TouchableOpacity 
+                style={styles.newSessionButton}
+                onPress={() => {
+                  setCurrentSessionId(null);
+                  setInputText('');
+                }}
+              >
+                <Text style={styles.newSessionButtonText}>+ New</Text>
+              </TouchableOpacity>
+            )}
+            <Text style={styles.connectionIndicator}>🟢</Text>
+          </View>
         )}
       </View>
 
@@ -1432,9 +1430,26 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
+    marginRight: 10,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  newSessionButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  newSessionButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
   },
   sidebar: {
     position: 'absolute',
