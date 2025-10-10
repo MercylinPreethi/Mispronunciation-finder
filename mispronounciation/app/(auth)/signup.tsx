@@ -1,6 +1,6 @@
 // app/(auth)/signup.tsx
 import 'react-native-get-random-values';
-import { View, Text, ScrollView, Alert, StyleSheet, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import { View, Text, ScrollView, Alert, StyleSheet, TouchableOpacity, Animated, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,7 +12,7 @@ import FormField from '@/components/FormField';
 import CustomButton from '@/components/CustomButton';
 import { auth, database } from '@/lib/firebase';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const sanitizeUserId = (id: string | string[]): string => {
   if (Array.isArray(id)) id = id.join('');
@@ -30,30 +30,35 @@ export default function Signup() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [currentStep, setCurrentStep] = useState(0);
+  
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.9)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 1000,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        friction: 8,
-        tension: 40,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
         duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 7,
         useNativeDriver: true,
       }),
     ]).start();
   }, []);
+
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: currentStep,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [currentStep]);
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
@@ -78,7 +83,6 @@ export default function Signup() {
       
       await updateProfile(user, { displayName: form.username });
       
-      // Save profile to database
       const userProfileRef = ref(database, `users/${user.uid}/profile`);
       await set(userProfileRef, {
         username: form.username,
@@ -113,395 +117,384 @@ export default function Signup() {
     }
   };
 
+  const progressWidth = progressAnim.interpolate({
+    inputRange: [0, 2],
+    outputRange: ['33%', '100%'],
+  });
+
+  const steps = [
+    { icon: 'person', label: 'Profile' },
+    { icon: 'email', label: 'Contact' },
+    { icon: 'lock', label: 'Security' },
+  ];
+
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient 
-        colors={['#f093fb', '#f5576c', '#4facfe']} 
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.gradient}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
       >
         <ScrollView 
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Decorative Background Elements */}
-          <View style={styles.decorativeCircle1} />
-          <View style={styles.decorativeCircle2} />
-          <View style={styles.decorativeCircle3} />
-          <View style={styles.decorativeCircle4} />
-          
+          {/* Header */}
           <Animated.View 
             style={[
-              styles.cardWrapper,
+              styles.header,
               {
                 opacity: fadeAnim,
-                transform: [{ scale: scaleAnim }, { translateY: slideAnim }]
+                transform: [{ translateY: slideAnim }]
               }
             ]}
           >
-            <View style={styles.glassCard}>
-              {/* Logo Section with Animation */}
-              <View style={styles.logoContainer}>
-                <LinearGradient
-                  colors={['#f093fb', '#f5576c']}
-                  style={styles.logoGradient}
-                >
-                  <Icon name="person-add" size={48} color="#FFFFFF" />
-                </LinearGradient>
-                <View style={styles.logoPulse} />
-              </View>
+            <LinearGradient
+              colors={['#3B82F6', '#2563EB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.headerGradient}
+            >
+              <Icon name="person-add" size={48} color="#FFFFFF" />
+              <Text style={styles.headerTitle}>Create Account</Text>
+              <Text style={styles.headerSubtitle}>Join thousands of learners improving their pronunciation</Text>
+            </LinearGradient>
+          </Animated.View>
 
-              {/* Welcome Section */}
-              <View style={styles.headerSection}>
-                <Text style={styles.title}>Create Account</Text>
-                <View style={styles.emojiContainer}>
-                  <Text style={styles.emoji}>✨</Text>
-                </View>
-              </View>
-              <Text style={styles.subtitle}>
-                Start your journey to perfect pronunciation today!
-              </Text>
-
-              {/* Form Section */}
-              <View style={styles.formContainer}>
-                <FormField
-                  title="Full Name"
-                  value={form.username}
-                  handleChangeText={(e: string) => setForm({ ...form, username: e })}
-                  otherStyles={styles.field}
-                  placeholder="John Doe"
-                  icon={<Icon name="person" size={22} color="#f093fb" />}
-                  error={errors.username}
-                />
-                <FormField
-                  title="Email Address"
-                  value={form.email}
-                  handleChangeText={(e: string) => setForm({ ...form, email: e })}
-                  otherStyles={styles.field}
-                  keyboardType="email-address"
-                  placeholder="you@example.com"
-                  icon={<Icon name="email" size={22} color="#f093fb" />}
-                  error={errors.email}
-                />
-                <FormField
-                  title="Password"
-                  value={form.password}
-                  handleChangeText={(e: string) => setForm({ ...form, password: e })}
-                  otherStyles={styles.field}
-                  isPasswordField={true}
-                  placeholder="Minimum 6 characters"
-                  icon={<Icon name="lock" size={22} color="#f093fb" />}
-                  error={errors.password}
-                />
-                <FormField
-                  title="Confirm Password"
-                  value={form.reEnterPassword}
-                  handleChangeText={(e: string) => setForm({ ...form, reEnterPassword: e })}
-                  otherStyles={styles.field}
-                  isPasswordField={true}
-                  placeholder="Re-enter your password"
-                  icon={<Icon name="lock-outline" size={22} color="#f093fb" />}
-                  error={errors.reEnterPassword}
-                />
-
-                <CustomButton
-                  title={isSubmitting ? "Creating Account..." : "Create Account"}
-                  handlePress={submit}
-                  containerStyle={styles.submitButton}
-                  isLoading={isSubmitting}
-                  gradientColors={['#f093fb', '#f5576c']}
-                />
-
-                {/* Terms & Privacy */}
-                <View style={styles.termsContainer}>
-                  <Text style={styles.termsText}>
-                    By signing up, you agree to our{' '}
-                    <Text style={styles.termsLink}>Terms of Service</Text>
-                    {' '}and{' '}
-                    <Text style={styles.termsLink}>Privacy Policy</Text>
+          {/* Progress Steps */}
+          <Animated.View style={[styles.stepsContainer, { opacity: fadeAnim }]}>
+            <View style={styles.progressBar}>
+              <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+            </View>
+            <View style={styles.steps}>
+              {steps.map((step, index) => (
+                <View key={index} style={styles.step}>
+                  <View style={[
+                    styles.stepIcon,
+                    currentStep >= index && styles.stepIconActive,
+                    currentStep > index && styles.stepIconComplete
+                  ]}>
+                    <Icon 
+                      name={currentStep > index ? 'check' : step.icon} 
+                      size={20} 
+                      color={currentStep >= index ? '#FFFFFF' : '#9CA3AF'} 
+                    />
+                  </View>
+                  <Text style={[
+                    styles.stepLabel,
+                    currentStep >= index && styles.stepLabelActive
+                  ]}>
+                    {step.label}
                   </Text>
                 </View>
-
-                {/* Divider */}
-                <View style={styles.dividerContainer}>
-                  <View style={styles.divider} />
-                  <View style={styles.dividerTextContainer}>
-                    <Text style={styles.dividerText}>or sign up with</Text>
-                  </View>
-                  <View style={styles.divider} />
-                </View>
-
-                {/* Social Sign Up Buttons */}
-                <View style={styles.socialButtonsContainer}>
-                  <TouchableOpacity 
-                    style={styles.socialButton}
-                    onPress={() => Alert.alert('Coming Soon', 'Google sign-up will be available soon!')}
-                  >
-                    <View style={[styles.socialIconContainer, { backgroundColor: '#F3F4F6' }]}>
-                      <Icon name="g-translate" size={28} color="#f093fb" />
-                    </View>
-                    <Text style={styles.socialButtonText}>Google</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.socialButton}
-                    onPress={() => Alert.alert('Coming Soon', 'Apple sign-up will be available soon!')}
-                  >
-                    <View style={[styles.socialIconContainer, { backgroundColor: '#F3F4F6' }]}>
-                      <Icon name="apple" size={28} color="#f093fb" />
-                    </View>
-                    <Text style={styles.socialButtonText}>Apple</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Sign In Prompt */}
-                <View style={styles.prompt}>
-                  <Text style={styles.promptText}>Already have an account? </Text>
-                  <Link href="/(auth)/signin" style={styles.promptLink}>
-                    Sign In
-                  </Link>
-                </View>
-              </View>
+              ))}
             </View>
           </Animated.View>
 
-          {/* Bottom Decoration */}
-          <View style={styles.bottomDecoration}>
-            <Text style={styles.decorationText}>🚀 Join Thousands of Learners</Text>
-          </View>
+          {/* Form */}
+          <Animated.View 
+            style={[
+              styles.formContainer,
+              { opacity: fadeAnim }
+            ]}
+          >
+            <View style={styles.formCard}>
+              <FormField
+                title="Full Name"
+                value={form.username}
+                handleChangeText={(e: string) => {
+                  setForm({ ...form, username: e });
+                  if (e && currentStep === 0) setCurrentStep(1);
+                }}
+                otherStyles={styles.field}
+                placeholder="John Doe"
+                icon={<Icon name="person-outline" size={20} color="#3B82F6" />}
+                error={errors.username}
+              />
+
+              <FormField
+                title="Email"
+                value={form.email}
+                handleChangeText={(e: string) => {
+                  setForm({ ...form, email: e });
+                  if (e && form.username && currentStep === 1) setCurrentStep(2);
+                }}
+                otherStyles={styles.field}
+                keyboardType="email-address"
+                placeholder="you@example.com"
+                icon={<Icon name="alternate-email" size={20} color="#3B82F6" />}
+                error={errors.email}
+              />
+
+              <FormField
+                title="Password"
+                value={form.password}
+                handleChangeText={(e: string) => setForm({ ...form, password: e })}
+                otherStyles={styles.field}
+                isPasswordField={true}
+                placeholder="Minimum 6 characters"
+                icon={<Icon name="lock-outline" size={20} color="#3B82F6" />}
+                error={errors.password}
+              />
+
+              <FormField
+                title="Confirm Password"
+                value={form.reEnterPassword}
+                handleChangeText={(e: string) => setForm({ ...form, reEnterPassword: e })}
+                otherStyles={styles.field}
+                isPasswordField={true}
+                placeholder="Re-enter your password"
+                icon={<Icon name="verified-user" size={20} color="#3B82F6" />}
+                error={errors.reEnterPassword}
+              />
+
+              {/* Terms */}
+              <View style={styles.termsContainer}>
+                <Icon name="info-outline" size={16} color="#6B7280" />
+                <Text style={styles.termsText}>
+                  By signing up, you agree to our{' '}
+                  <Text style={styles.termsLink}>Terms</Text> and{' '}
+                  <Text style={styles.termsLink}>Privacy Policy</Text>
+                </Text>
+              </View>
+
+              <CustomButton
+                title="Create Account"
+                handlePress={submit}
+                containerStyle={styles.submitButton}
+                isLoading={isSubmitting}
+                size="large"
+              />
+
+              {/* Divider */}
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              {/* Social Buttons */}
+              <View style={styles.socialContainer}>
+                <TouchableOpacity 
+                  style={styles.socialButton}
+                  onPress={() => Alert.alert('Coming Soon', 'Google sign-up will be available soon!')}
+                >
+                  <View style={styles.socialIconBg}>
+                    <Icon name="g-translate" size={24} color="#EA4335" />
+                  </View>
+                  <Text style={styles.socialText}>Google</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.socialButton}
+                  onPress={() => Alert.alert('Coming Soon', 'Apple sign-up will be available soon!')}
+                >
+                  <View style={styles.socialIconBg}>
+                    <Icon name="apple" size={24} color="#000000" />
+                  </View>
+                  <Text style={styles.socialText}>Apple</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Sign In Link */}
+              <View style={styles.signinPrompt}>
+                <Text style={styles.promptText}>Already have an account? </Text>
+                <Link href="/(auth)/signin" asChild>
+                  <TouchableOpacity>
+                    <Text style={styles.signinLink}>Sign In</Text>
+                  </TouchableOpacity>
+                </Link>
+              </View>
+            </View>
+          </Animated.View>
         </ScrollView>
-      </LinearGradient>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  gradient: { flex: 1 },
-  scrollContent: { 
-    flexGrow: 1, 
-    justifyContent: 'center', 
-    paddingVertical: 40,
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 32,
+  },
+  header: {
+    overflow: 'hidden',
+  },
+  headerGradient: {
+    paddingTop: 32,
+    paddingBottom: 40,
     paddingHorizontal: 24,
-  },
-  decorativeCircle1: {
-    position: 'absolute',
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    top: -100,
-    left: -80,
-    opacity: 0.6,
-  },
-  decorativeCircle2: {
-    position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    bottom: -70,
-    right: -70,
-    opacity: 0.5,
-  },
-  decorativeCircle3: {
-    position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    top: '40%',
-    right: -40,
-    opacity: 0.4,
-  },
-  decorativeCircle4: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    top: '20%',
-    left: -30,
-    opacity: 0.3,
-  },
-  cardWrapper: {
-    zIndex: 10,
-  },
-  glassCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-    borderRadius: 32,
-    padding: 32,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 15 },
-    shadowOpacity: 0.35,
-    shadowRadius: 25,
-    elevation: 20,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
-  },
-  logoContainer: {
     alignItems: 'center',
-    marginBottom: 28,
-    position: 'relative',
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
-  logoGradient: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#f093fb',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 16,
+    marginBottom: 8,
   },
-  logoPulse: {
-    position: 'absolute',
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 3,
-    borderColor: 'rgba(240, 147, 251, 0.3)',
-    transform: [{ scale: 1.3 }],
-  },
-  headerSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  title: { 
-    fontSize: 34, 
-    fontWeight: '900', 
-    color: '#1a1a1a', 
-    letterSpacing: 0.3,
-  },
-  emojiContainer: {
-    marginLeft: 8,
-  },
-  emoji: {
-    fontSize: 32,
-  },
-  subtitle: { 
-    fontSize: 16, 
-    color: '#6B7280', 
-    textAlign: 'center', 
-    marginBottom: 32,
-    lineHeight: 24,
-    paddingHorizontal: 8,
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#EFF6FF',
+    textAlign: 'center',
     fontWeight: '500',
+    paddingHorizontal: 20,
   },
-  formContainer: {
-    width: '100%',
+  stepsContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 28,
   },
-  field: { 
-    marginBottom: 18,
-  },
-  submitButton: { 
+  progressBar: {
+    height: 6,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 3,
+    overflow: 'hidden',
     marginBottom: 20,
-    marginTop: 8,
   },
-  termsContainer: {
-    marginBottom: 24,
-    paddingHorizontal: 8,
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#3B82F6',
+    borderRadius: 3,
   },
-  termsText: {
+  steps: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  step: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  stepIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  stepIconActive: {
+    backgroundColor: '#3B82F6',
+  },
+  stepIconComplete: {
+    backgroundColor: '#10B981',
+  },
+  stepLabel: {
     fontSize: 12,
     color: '#9CA3AF',
-    textAlign: 'center',
+    fontWeight: '600',
+  },
+  stepLabelActive: {
+    color: '#3B82F6',
+  },
+  formContainer: {
+    flex: 1,
+    paddingHorizontal: 24,
+  },
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  field: {
+    marginBottom: 20,
+  },
+  termsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 24,
+    paddingHorizontal: 4,
+    gap: 8,
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#6B7280',
     lineHeight: 18,
     fontWeight: '500',
   },
   termsLink: {
-    color: '#f093fb',
+    color: '#3B82F6',
     fontWeight: '700',
   },
-  dividerContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  submitButton: {
     marginBottom: 24,
   },
-  divider: { 
-    flex: 1, 
-    height: 1.5, 
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
     backgroundColor: '#E5E7EB',
   },
-  dividerTextContainer: {
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  dividerText: { 
-    fontSize: 13, 
-    color: '#9CA3AF', 
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 13,
+    color: '#9CA3AF',
     fontWeight: '600',
-    letterSpacing: 0.3,
   },
-  socialButtonsContainer: {
+  socialContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 16,
+    gap: 12,
     marginBottom: 24,
   },
   socialButton: {
     flex: 1,
-    flexDirection: 'column',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 2,
-    borderColor: '#F3F4F6',
-    shadowColor: '#f093fb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  socialIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    backgroundColor: '#F9FAFB',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
   },
-  socialButtonText: {
-    fontSize: 14,
+  socialIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  socialText: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#374151',
-    letterSpacing: 0.3,
   },
-  prompt: { 
-    flexDirection: 'row', 
+  signinPrompt: {
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 4,
+    paddingTop: 8,
   },
-  promptText: { 
-    fontSize: 15, 
+  promptText: {
+    fontSize: 15,
     color: '#6B7280',
     fontWeight: '500',
   },
-  promptLink: { 
-    fontSize: 15, 
-    color: '#f093fb', 
+  signinLink: {
+    fontSize: 15,
+    color: '#3B82F6',
     fontWeight: '800',
-  },
-  bottomDecoration: {
-    marginTop: 32,
-    alignItems: 'center',
-  },
-  decorationText: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '700',
-    textShadowColor: 'rgba(0, 0, 0, 0.2)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-    letterSpacing: 0.5,
   },
 });

@@ -1,4 +1,4 @@
-import { View, Text, TextInput, StyleSheet, Animated } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { FC, JSX, useState, useRef } from 'react';
 
 interface FormFieldProps {
@@ -25,103 +25,171 @@ const FormField: FC<FormFieldProps> = ({
   error,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
-  const focusAnim = useRef(new Animated.Value(0)).current;
+  const [showPassword, setShowPassword] = useState(false);
+  const labelAnim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
   const handleFocus = () => {
     setIsFocused(true);
-    Animated.timing(focusAnim, {
+    Animated.spring(labelAnim, {
       toValue: 1,
-      duration: 200,
       useNativeDriver: false,
+      tension: 100,
+      friction: 7,
     }).start();
   };
 
   const handleBlur = () => {
     setIsFocused(false);
-    Animated.timing(focusAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
+    if (!value) {
+      Animated.spring(labelAnim, {
+        toValue: 0,
+        useNativeDriver: false,
+        tension: 100,
+        friction: 7,
+      }).start();
+    }
   };
 
-  const borderColor = focusAnim.interpolate({
+  const labelTop = labelAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#E5E7EB', '#667eea'],
+    outputRange: [20, 0],
   });
 
-  const shadowOpacity = focusAnim.interpolate({
+  const labelFontSize = labelAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.05, 0.15],
+    outputRange: [16, 12],
   });
 
   return (
     <View style={[styles.container, otherStyles]}>
-      <Text style={styles.label}>{title}</Text>
-      <Animated.View 
-        style={[
-          styles.inputContainer,
-          {
-            borderColor,
-            shadowOpacity,
-          }
-        ]}
-      >
-        {icon && <View style={styles.icon}>{icon}</View>}
-        <TextInput
-          style={styles.input}
-          value={value}
-          onChangeText={handleChangeText}
-          placeholder={placeholder}
-          secureTextEntry={isPasswordField}
-          placeholderTextColor="#9CA3AF"
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-        />
-      </Animated.View>
-      {error && <Text style={styles.error}>{error}</Text>}
+      <View style={[
+        styles.inputWrapper,
+        isFocused && styles.inputWrapperFocused,
+        error && styles.inputWrapperError
+      ]}>
+        <Animated.Text 
+          style={[
+            styles.label,
+            {
+              top: labelTop,
+              fontSize: labelFontSize,
+            },
+            isFocused && styles.labelFocused,
+            error && styles.labelError,
+          ]}
+        >
+          {title}
+        </Animated.Text>
+        
+        <View style={styles.inputRow}>
+          {icon && <View style={styles.iconWrapper}>{icon}</View>}
+          <TextInput
+            style={styles.input}
+            value={value}
+            onChangeText={handleChangeText}
+            placeholder={isFocused ? '' : placeholder}
+            secureTextEntry={isPasswordField && !showPassword}
+            placeholderTextColor="#9CA3AF"
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+          />
+          {isPasswordField && (
+            <TouchableOpacity 
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.eyeButton}
+            >
+              <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '🔒'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { marginBottom: 16 },
-  label: { 
-    fontSize: 14, 
-    fontWeight: '700', 
-    color: '#1F2937', 
-    marginBottom: 10,
-    letterSpacing: 0.3,
+  container: { 
+    marginBottom: 24,
   },
-  inputContainer: {
+  inputWrapper: {
+    position: 'relative',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    paddingTop: 22,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    minHeight: 65,
+    transition: 'all 0.3s ease',
+  },
+  inputWrapperFocused: {
+    borderColor: '#3B82F6',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  inputWrapperError: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
+  },
+  label: {
+    position: 'absolute',
+    left: 16,
+    color: '#6B7280',
+    fontWeight: '600',
+    backgroundColor: 'transparent',
+  },
+  labelFocused: {
+    color: '#3B82F6',
+  },
+  labelError: {
+    color: '#EF4444',
+  },
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 3,
   },
-  icon: { 
-    marginLeft: 16,
-    marginRight: 4,
+  iconWrapper: {
+    marginRight: 10,
   },
-  input: { 
-    flex: 1, 
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    fontSize: 15, 
-    color: '#1F2937',
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
     fontWeight: '500',
+    paddingVertical: 4,
   },
-  error: { 
-    fontSize: 12, 
-    color: '#EF4444', 
-    marginTop: 6,
-    marginLeft: 4,
+  eyeButton: {
+    padding: 4,
+  },
+  eyeIcon: {
+    fontSize: 20,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  errorIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#EF4444',
     fontWeight: '600',
+    flex: 1,
   },
 });
 
