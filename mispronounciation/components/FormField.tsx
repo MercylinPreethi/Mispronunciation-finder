@@ -27,7 +27,7 @@ const FormField: FC<FormFieldProps> = ({
   return (
     <View style={[styles.container, otherStyles]}>
       <Text style={styles.label}>{title}</Text>
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, error && styles.inputError]}>
         {icon && <View style={styles.icon}>{icon}</View>}
         <TextInput
           style={styles.input}
@@ -35,28 +35,61 @@ const FormField: FC<FormFieldProps> = ({
           onChangeText={handleChangeText}
           placeholder={placeholder}
           secureTextEntry={isPasswordField}
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor="#999"
+          keyboardType={keyboardType as any}
         />
       </View>
-      {error && <Text style={styles.error}>{error}</Text>}
+      {error && <Text style={styles.error}>⚠️ {error}</Text>}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { marginBottom: 16 },
-  label: { fontSize: 14, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
+  container: { 
+    marginBottom: 16,
+  },
+  label: { 
+    fontSize: 15, 
+    fontWeight: '600', 
+    color: '#333', 
+    marginBottom: 8,
+    letterSpacing: 0.3,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#E8E8E8',
+    borderRadius: 14,
+    backgroundColor: '#FAFAFA',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  icon: { marginLeft: 12 },
-  input: { flex: 1, padding: 12, fontSize: 14, color: '#1F2937' },
-  error: { fontSize: 12, color: '#EF4444', marginTop: 4 },
+  inputError: {
+    borderColor: '#ff6b6b',
+    backgroundColor: '#fff5f5',
+  },
+  icon: { 
+    marginLeft: 16,
+    marginRight: 4,
+  },
+  input: { 
+    flex: 1, 
+    padding: 16, 
+    fontSize: 15, 
+    color: '#1a1a1a',
+    fontWeight: '500',
+  },
+  error: { 
+    fontSize: 13, 
+    color: '#ff6b6b', 
+    marginTop: 6,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
 });
 
 export default FormField;
