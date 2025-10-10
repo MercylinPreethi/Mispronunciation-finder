@@ -30,8 +30,6 @@ import { ref, set, get, onValue, off } from 'firebase/database';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { auth, database } from '@/lib/firebase'; 
 import { router } from 'expo-router';
-import Svg, { Polyline } from 'react-native-svg';
-
 
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const { width, height } = Dimensions.get('window');
@@ -41,6 +39,15 @@ interface MispronunciationError {
   predicted: string;
   reference: string;
   type: 'substitution' | 'deletion' | 'insertion';
+}
+
+interface PhonemeStatusInfo {
+  status: string;
+  label: string;
+  icon: string;
+  color: string;
+  source: 'initial' | 'practice' | 'none';
+  accuracy: number;
 }
 
 interface WordAudioData {
@@ -62,6 +69,25 @@ interface AudioData {
   failed_count: number;
 }
 
+interface WordPhonemeData {
+  word: string;
+  reference_phonemes: string[];
+  predicted_phonemes: string[];
+  aligned_reference: string[];
+  aligned_predicted: string[];
+  status: 'correct' | 'partial' | 'mispronounced';
+  phoneme_errors: PhonemeError[];
+  per: number;
+  accuracy?: number;
+}
+
+interface PhonemeError {
+  position: number;
+  type: 'substitution' | 'deletion' | 'insertion';
+  predicted: string | null;
+  expected: string | null;
+}
+
 interface AnalysisResult {
   accuracy: number;
   correct_phonemes: number;
@@ -70,6 +96,15 @@ interface AnalysisResult {
   reference_phonemes: string[];
   mispronunciations: MispronunciationError[];
   audio_data?: AudioData;
+
+  word_phonemes?: {
+    reference_text: string;
+    words: WordPhonemeData[];
+  };
+
+  word_level_analysis?: {
+    word_phoneme_mapping: WordPhonemeData[];
+  };
 }
 
 interface PracticeAttempt {
@@ -131,28 +166,7 @@ interface FirebaseReferenceText {
   createdAt: string;
   attempts: { [key: string]: FirebaseAttempt };
   messages: { [key: string]: FirebaseMessage };
-  word_practices?: { [key: string]: FirebaseWordPractice };  // Add this line
 }
-
-interface FirebaseWordPractice {
-  word: string;
-  attempts: {
-    [key: string]: {
-      timestamp: string;
-      audioPath: string;
-      audioUrl?: string;
-      accuracy: number;
-      status: 'correct' | 'partial' | 'mispronounced';
-      feedback: string;
-      scores?: AnalysisResult;  // Make sure this line is added
-    }
-  };
-  bestScore: number;
-  needsMorePractice: boolean;
-  mastered: boolean;
-  lastPracticed: string;
-}
-
 
 const generateSessionId = (referenceText: string): string => {
   const timestamp = Date.now();
@@ -160,26 +174,17 @@ const generateSessionId = (referenceText: string): string => {
   return `${textHash}_${timestamp}`;
 };
 
-// Audio playback utility for base64 audio
 const playBase64Audio = async (base64Audio: string, word: string, setPlayingWord: (word: string | null) => void) => {
   try {
-    console.log(`Playing pronunciation audio for word: "${word}"`);
-    
-    // Create temporary file from base64
     const tempPath = `${RNFS.DocumentDirectoryPath}/temp_pronunciation_${word}_${Date.now()}.wav`;
-    
-    // Write base64 audio to temporary file
     await RNFS.writeFile(tempPath, base64Audio, 'base64');
     
-    // Verify file was created
     const fileExists = await RNFS.exists(tempPath);
     if (!fileExists) {
       throw new Error('Failed to create temporary audio file');
     }
     
     setPlayingWord(word);
-    
-    // Play the audio
     await audioRecorderPlayer.startPlayer(tempPath);
     
     audioRecorderPlayer.addPlayBackListener((e) => {
@@ -188,53 +193,24 @@ const playBase64Audio = async (base64Audio: string, word: string, setPlayingWord
         audioRecorderPlayer.removePlayBackListener();
         setPlayingWord(null);
         
-        // Clean up temporary file
         RNFS.unlink(tempPath).catch(err => 
           console.warn('Could not delete temporary audio file:', err)
         );
       }
     });
     
-    console.log(`Successfully started playing pronunciation for: "${word}"`);
-    
   } catch (error) {
     console.error(`Error playing pronunciation audio for "${word}":`, error);
     setPlayingWord(null);
-    
-    // Fallback: Use text-to-speech API endpoint
-    try {
-      console.log(`Fallback: Requesting TTS for word "${word}"`);
-      const response = await axios.get(`http://192.168.14.34:5050/get_word_audio/${word}`, {
-        responseType: 'blob',
-        timeout: 10000
-      });
-      
-      if (response.data) {
-        console.log(`TTS fallback successful for word: "${word}"`);
-        // Note: Handling blob response in React Native requires additional setup
-        // For now, we'll show a message to the user
-        Alert.alert(
-          'Audio Playback', 
-          `Pronunciation audio for "${word}" is available but requires additional setup for blob playback.`
-        );
-      }
-    } catch (fallbackError) {
-      console.error('TTS fallback failed:', fallbackError);
-      Alert.alert(
-        'Audio Error', 
-        `Could not play pronunciation audio for "${word}". Please check your connection.`
-      );
-    }
   }
 };
 
-// Component to render individual words with color coding and click handlers
 const PronunciationWord = ({ 
   word, 
   status, 
   audioData, 
   playingWord, 
-  setPlayingWord 
+  setPlayingWord
 }: {
   word: string;
   status: 'correct' | 'partial' | 'mispronounced';
@@ -244,19 +220,19 @@ const PronunciationWord = ({
 }) => {
   const getWordColor = (status: string) => {
     switch (status) {
-      case 'correct': return '#10B981'; // Green
-      case 'partial': return '#F59E0B'; // Yellow/Orange
-      case 'mispronounced': return '#EF4444'; // Red
-      default: return '#6B7280'; // Gray
+      case 'correct': return '#10B981';
+      case 'partial': return '#F59E0B';
+      case 'mispronounced': return '#EF4444';
+      default: return '#6B7280';
     }
   };
 
   const getWordBackgroundColor = (status: string) => {
     switch (status) {
-      case 'correct': return '#D1FAE5'; // Light green
-      case 'partial': return '#FEF3C7'; // Light yellow
-      case 'mispronounced': return '#FEE2E2'; // Light red
-      default: return '#F3F4F6'; // Light gray
+      case 'correct': return '#D1FAE5';
+      case 'partial': return '#FEF3C7';
+      case 'mispronounced': return '#FEE2E2';
+      default: return '#F3F4F6';
     }
   };
 
@@ -265,7 +241,6 @@ const PronunciationWord = ({
       Haptics.selectionAsync();
       
       if (playingWord === word) {
-        // Stop current playback
         await audioRecorderPlayer.stopPlayer();
         audioRecorderPlayer.removePlayBackListener();
         setPlayingWord(null);
@@ -273,17 +248,13 @@ const PronunciationWord = ({
       }
       
       if (playingWord) {
-        // Stop any other playing audio
         await audioRecorderPlayer.stopPlayer();
         audioRecorderPlayer.removePlayBackListener();
       }
 
       if (audioData && audioData.audio_base64) {
-        console.log(`Playing generated audio for word: "${word}"`);
         await playBase64Audio(audioData.audio_base64, word, setPlayingWord);
       } else {
-        // Fallback to API call for word audio
-        console.log(`No cached audio found for "${word}", requesting from API...`);
         try {
           const response = await axios.get(`http://192.168.14.34:5050/get_word_audio/${word}`, {
             responseType: 'arraybuffer',
@@ -291,15 +262,19 @@ const PronunciationWord = ({
           });
           
           if (response.data) {
-            // Convert array buffer to base64
-            const base64Audio = Buffer.from(response.data).toString('base64');
+            const uint8Array = new Uint8Array(response.data);
+            let binary = '';
+            for (let i = 0; i < uint8Array.byteLength; i++) {
+              binary += String.fromCharCode(uint8Array[i]);
+            }
+            const base64Audio = btoa(binary);
             await playBase64Audio(base64Audio, word, setPlayingWord);
           }
         } catch (apiError) {
           console.error('API word audio request failed:', apiError);
           Alert.alert(
             'Audio Not Available',
-            `Pronunciation audio for "${word}" is not available. Please check your connection to the pronunciation server.`
+            `Pronunciation audio for "${word}" is not available.`
           );
         }
       }
@@ -322,7 +297,7 @@ const PronunciationWord = ({
         }
       ]}
       onPress={handleWordPress}
-      accessibilityLabel={`${word}, ${status} pronunciation, tap to hear correct pronunciation`}
+      accessibilityLabel={`${word}, ${status} pronunciation. Tap to hear.`}
       accessibilityRole="button"
     >
       <Text style={[
@@ -339,6 +314,510 @@ const PronunciationWord = ({
   );
 };
 
+const SimplifiedWordTable = ({ 
+  attempt, 
+  playingWord, 
+  setPlayingWord,
+  onWordRecord,
+  isRecording,
+  recordingWord,
+  isProcessing
+}: { 
+  attempt: PracticeAttempt;
+  playingWord: string | null;
+  setPlayingWord: (word: string | null) => void;
+  onWordRecord: (word: string) => void;
+  isRecording: boolean;
+  recordingWord: string | null;
+  isProcessing: boolean;
+}) => {
+  const audioData = attempt.scores.audio_data;
+  
+  const wordPhonemeData =
+    attempt.scores?.word_level_analysis?.word_phoneme_mapping ||
+    attempt.scores?.word_phonemes?.words ||
+    [];
+  
+  const words = wordPhonemeData.length > 0 
+    ? wordPhonemeData.map(w => w.word)
+    : (attempt.scores.audio_data ? 
+        Object.keys(attempt.scores.audio_data.word_audio || {}).join(' ').toLowerCase().split(/\s+/) 
+        : []);
+  
+  const wordStatusMap: { [key: string]: 'correct' | 'partial' | 'mispronounced' } = {};
+  
+  attempt.correctlyPronuncedWords.forEach(word => {
+    wordStatusMap[word.toLowerCase()] = 'correct';
+  });
+  
+  attempt.mispronuncedWords.forEach(word => {
+    wordStatusMap[word.toLowerCase()] = 'mispronounced';
+  });
+  
+  words.forEach(word => {
+    if (!wordStatusMap[word]) {
+      wordStatusMap[word] = 'partial';
+    }
+  });
+
+  // Calculate accuracy for each word - prioritize updated data
+  const getWordAccuracy = (wordData: any): number => {
+    // First check if we have direct accuracy from updates
+    if (wordData.accuracy !== undefined) {
+      return wordData.accuracy;
+    }
+    
+    // If we have PER data, convert to accuracy
+    if (wordData.per !== undefined) {
+      return 1 - wordData.per; // PER is error rate, so accuracy = 1 - PER
+    }
+    
+    // Calculate accuracy based on phoneme errors
+    if (wordData.phoneme_errors && wordData.reference_phonemes) {
+      const totalPhonemes = wordData.reference_phonemes.length;
+      const errorCount = wordData.phoneme_errors.length;
+      const correctCount = totalPhonemes - errorCount;
+      return totalPhonemes > 0 ? correctCount / totalPhonemes : 1;
+    }
+    
+    // Fallback based on status
+    switch (wordData.status) {
+      case 'correct': return 0.9; // 90% for correct
+      case 'partial': return 0.6; // 60% for partial
+      case 'mispronounced': return 0.3; // 30% for mispronounced
+      default: return 0.5;
+    }
+  };
+
+  // Get all words that need practice (mispronounced + partial)
+  const displayWordData = wordPhonemeData.length > 0
+    ? wordPhonemeData.filter(wordData => 
+        wordStatusMap[wordData.word] === 'mispronounced' || 
+        wordStatusMap[wordData.word] === 'partial'
+      )
+    : words.map(word => ({
+        word,
+        reference_phonemes: [],
+        predicted_phonemes: [],
+        status: wordStatusMap[word] || 'partial',
+      })).filter(wordData => 
+        wordData.status === 'mispronounced' || 
+        wordData.status === 'partial'
+      );
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'correct': return '#10B981';
+      case 'partial': return '#F59E0B';
+      case 'mispronounced': return '#EF4444';
+      default: return '#6B7280';
+    }
+  };
+
+  const getStatusBackground = (status: string) => {
+    switch (status) {
+      case 'correct': return '#D1FAE5';
+      case 'partial': return '#FEF3C7';
+      case 'mispronounced': return '#FEE2E2';
+      default: return '#F3F4F6';
+    }
+  };
+
+  const getAccuracyColor = (accuracy: number): string => {
+    if (accuracy >= 0.8) return '#10B981'; // Good
+    if (accuracy >= 0.6) return '#F59E0B'; // Fair
+    return '#EF4444'; // Poor
+  };
+
+  const formatAccuracy = (accuracy: number): string => {
+    return `${(accuracy * 100).toFixed(0)}%`;
+  };
+
+  const handleWordAudioPlay = async (word: string, audioData?: WordAudioData) => {
+    try {
+      Haptics.selectionAsync();
+      
+      if (playingWord === word) {
+        await audioRecorderPlayer.stopPlayer();
+        audioRecorderPlayer.removePlayBackListener();
+        setPlayingWord(null);
+        return;
+      }
+      
+      if (playingWord) {
+        await audioRecorderPlayer.stopPlayer();
+        audioRecorderPlayer.removePlayBackListener();
+      }
+
+      if (audioData && audioData.audio_base64) {
+        await playBase64Audio(audioData.audio_base64, word, setPlayingWord);
+      } else {
+        try {
+          const response = await axios.get(`http://192.168.14.34:5050/get_word_audio/${word}`, {
+            responseType: 'arraybuffer',
+            timeout: 10000
+          });
+          
+          if (response.data) {
+            const uint8Array = new Uint8Array(response.data);
+            let binary = '';
+            for (let i = 0; i < uint8Array.byteLength; i++) {
+              binary += String.fromCharCode(uint8Array[i]);
+            }
+            const base64Audio = btoa(binary);
+            await playBase64Audio(base64Audio, word, setPlayingWord);
+          }
+        } catch (apiError) {
+          console.error('API word audio request failed:', apiError);
+          Alert.alert('Audio Not Available', `Pronunciation audio for "${word}" is not available.`);
+        }
+      }
+    } catch (error) {
+      console.error('Error playing word audio:', error);
+      setPlayingWord(null);
+    }
+  };
+
+  return (
+    <View style={styles.simplifiedTableContainer}>
+      {/* Word Status Overview - Full Width */}
+      <View style={styles.wordBoxesContainer}>
+        <Text style={styles.wordBoxesTitle}>Word Pronunciation Status:</Text>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.wordBoxesScrollContent}
+        >
+          <View style={styles.wordBoxes}>
+            {words.map((word, index) => {
+              const wordData = wordPhonemeData.find(w => w.word === word) || { word, status: wordStatusMap[word] };
+              const accuracy = getWordAccuracy(wordData);
+              return (
+                <View 
+                  key={index} 
+                  style={[
+                    styles.wordBox,
+                    { 
+                      backgroundColor: getStatusBackground(wordStatusMap[word]),
+                      borderColor: getStatusColor(wordStatusMap[word])
+                    }
+                  ]}
+                >
+                  <Text style={[
+                    styles.wordBoxText,
+                    { color: getStatusColor(wordStatusMap[word]) }
+                  ]}>
+                    {word}
+                  </Text>
+                  <Text style={[
+                    styles.wordBoxAccuracy,
+                    { color: getAccuracyColor(accuracy) }
+                  ]}>
+                    {formatAccuracy(accuracy)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+        <View style={styles.legendContainer}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendColorBox, { backgroundColor: '#D1FAE5', borderColor: '#10B981' }]} />
+            <Text style={styles.legendText}>Correct</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendColorBox, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]} />
+            <Text style={styles.legendText}>Partial</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendColorBox, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]} />
+            <Text style={styles.legendText}>Mispronounced</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Words Needing Practice Table - Full Screen Width */}
+      <View style={styles.tableSection}>
+        <Text style={styles.tableSectionTitle}>
+          Words Needing Practice
+        </Text>
+        
+        {displayWordData.length > 0 ? (
+          <View style={styles.tableContainer}>
+            {/* Table Header */}
+            <View style={styles.tableHeader}>
+              <Text style={styles.tableHeaderText}>Word</Text>
+              <Text style={styles.tableHeaderText}>Accuracy</Text>
+              <Text style={styles.tableHeaderText}>Speaker</Text>
+              <Text style={styles.tableHeaderText}>Record</Text>
+              <Text style={styles.tableHeaderText}>Status</Text>
+            </View>
+
+            {/* Table Rows */}
+            <View style={styles.tableRowsContainer}>
+              {displayWordData.map((wordData, index) => {
+                const wordAudioData = audioData?.word_audio?.[wordData.word];
+                const isRecordingThisWord = isRecording && recordingWord === wordData.word;
+                const accuracy = getWordAccuracy(wordData);
+                const accuracyPercent = formatAccuracy(accuracy);
+                const statusColor = getStatusColor(wordData.status);
+                
+                return (
+                  <View key={index} style={styles.tableRow}>
+                    {/* Word Column */}
+                    <View style={styles.tableCell}>
+                      <Text style={[styles.wordText, { color: statusColor }]}>
+                        {wordData.word}
+                      </Text>
+                    </View>
+                    
+                    {/* Accuracy Column */}
+                    <View style={styles.tableCell}>
+                      <View style={[
+                        styles.accuracyBadge,
+                        { backgroundColor: getAccuracyColor(accuracy) + '20' } // Add transparency
+                      ]}>
+                        <Text style={[
+                          styles.accuracyText,
+                          { color: getAccuracyColor(accuracy) }
+                        ]}>
+                          {accuracyPercent}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    {/* Speaker Column */}
+                    <View style={styles.tableCell}>
+                      <TouchableOpacity
+                        style={styles.iconButton}
+                        onPress={() => handleWordAudioPlay(wordData.word, wordAudioData)}
+                        accessibilityLabel={`Play pronunciation for ${wordData.word}`}
+                        disabled={isRecording || isProcessing}
+                      >
+                        <Text style={styles.iconText}>
+                          {playingWord === wordData.word ? '⏸️' : '🔊'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {/* Record Column */}
+                    <View style={styles.tableCell}>
+                      <TouchableOpacity
+                        style={[
+                          styles.iconButton,
+                          isRecordingThisWord && styles.recordingButton
+                        ]}
+                        onPress={() => onWordRecord(wordData.word)}
+                        disabled={isProcessing || (isRecording && !isRecordingThisWord)}
+                        accessibilityLabel={`Record pronunciation for ${wordData.word}`}
+                      >
+                        <Text style={styles.iconText}>
+                          {isRecordingThisWord ? '⏹️' : '🎤'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {/* Status Column */}
+                    <View style={styles.tableCell}>
+                      <View style={[
+                        styles.statusBadge,
+                        { backgroundColor: getStatusBackground(wordData.status) }
+                      ]}>
+                        <Text style={[styles.statusText, { color: statusColor }]}>
+                          {wordData.status === 'mispronounced' ? 'Needs Practice' : 
+                           wordData.status === 'partial' ? 'Needs Work' :
+                           wordData.status.charAt(0).toUpperCase() + wordData.status.slice(1)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.allCorrectContainer}>
+            <Text style={styles.allCorrectIcon}>🎉</Text>
+            <Text style={styles.allCorrectTitle}>Excellent Pronunciation!</Text>
+            <Text style={styles.allCorrectText}>
+              All words were pronounced correctly. Keep up the great work!
+            </Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const LatestAttemptDisplay = ({ 
+  attempt, 
+  playingWord, 
+  setPlayingWord,
+  onWordRecord,
+  isRecording,
+  recordingWord,
+  isProcessing
+}: { 
+  attempt: PracticeAttempt;
+  playingWord: string | null;
+  setPlayingWord: (word: string | null) => void;
+  onWordRecord: (word: string) => void;
+  isRecording: boolean;
+  recordingWord: string | null;
+  isProcessing: boolean;
+}) => {
+  const getAccuracyColor = (accuracy: number): string => {
+    if (accuracy >= 0.9) return '#10B981';
+    if (accuracy >= 0.8) return '#F59E0B';
+    return '#EF4444';
+  };
+
+  const formatAccuracy = (accuracy: number): string => {
+    return `${(accuracy * 100).toFixed(1)}%`;
+  };
+
+  return (
+    <View style={styles.latestAttemptContainer}>
+      {/* Accuracy Score Section - Moved to top */}
+      <View style={styles.accuracyScoreSection}>
+        <Text style={styles.accuracyScoreTitle}>Overall Pronunciation Score</Text>
+        <View style={styles.scoreDisplay}>
+          <Text style={[
+            styles.scoreDisplayText,
+            { color: getAccuracyColor(attempt.scores.accuracy) }
+          ]}>
+            {formatAccuracy(attempt.scores.accuracy)}
+          </Text>
+        </View>
+        <Text style={styles.accuracySubtitle}>
+          {attempt.scores.correct_phonemes}/{attempt.scores.total_phonemes} phonemes correct
+        </Text>
+      </View>
+
+      {/* Word Practice Section */}
+      <SimplifiedWordTable 
+        attempt={attempt}
+        playingWord={playingWord}
+        setPlayingWord={setPlayingWord}
+        onWordRecord={onWordRecord}
+        isRecording={isRecording}
+        recordingWord={recordingWord}
+        isProcessing={isProcessing}
+      />
+
+      {/* Timestamp and Feedback */}
+      <View style={styles.latestAttemptInfo}>
+        <Text style={styles.latestAttemptMeta}>
+          {attempt.timestamp.toLocaleString([], { 
+            month: 'short', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })}
+        </Text>
+      </View>
+
+      {attempt.feedback && (
+        <View style={styles.feedbackSection}>
+          <Text style={styles.feedbackTitle}>Feedback:</Text>
+          <Text style={styles.feedbackText}>{attempt.feedback}</Text>
+        </View>
+      )}
+    </View>
+  );
+};
+
+const EnhancedPronunciationAnalysis = ({ 
+  attempt, 
+  showWordLimit = true,
+  playingWord,
+  setPlayingWord,
+  referenceText
+}: { 
+  attempt: PracticeAttempt; 
+  showWordLimit?: boolean;
+  playingWord: string | null;
+  setPlayingWord: (word: string | null) => void;
+  referenceText: string;
+}) => {
+  const audioData = attempt.scores.audio_data;
+  const words = referenceText.toLowerCase().split(/\s+/);
+  
+  const wordStatusMap: { [key: string]: 'correct' | 'partial' | 'mispronounced' } = {};
+  
+  attempt.correctlyPronuncedWords.forEach(word => {
+    wordStatusMap[word.toLowerCase()] = 'correct';
+  });
+  
+  attempt.mispronuncedWords.forEach(word => {
+    wordStatusMap[word.toLowerCase()] = 'mispronounced';
+  });
+  
+  words.forEach((word: string) => {
+    if (!wordStatusMap[word]) {
+      wordStatusMap[word] = 'partial';
+    }
+  });
+
+  const displayWords = showWordLimit ? words.slice(0, 8) : words;
+  const hasMoreWords = words.length > 8;
+
+  return (
+    <View style={styles.pronunciationAnalysis}>
+      <Text style={styles.pronunciationSectionTitle}>
+        Tap words to hear pronunciation
+      </Text>
+      <View style={styles.wordsContainer}>
+        {displayWords.map((word: string, wordIndex: number) => {
+          const status = wordStatusMap[word] || 'partial';
+          const wordAudioData = audioData?.word_audio?.[word];
+          
+          return (
+            <PronunciationWord
+              key={wordIndex}
+              word={word}
+              status={status}
+              audioData={wordAudioData}
+              playingWord={playingWord}
+              setPlayingWord={setPlayingWord}
+            />
+          );
+        })}
+        {showWordLimit && hasMoreWords && (
+          <Text style={styles.moreWordsText}>+{words.length - 8} more words</Text>
+        )}
+      </View>
+      
+      {audioData?.sentence_audio && (
+        <TouchableOpacity
+          style={styles.sentenceAudioButton}
+          onPress={async () => {
+            try {
+              Haptics.selectionAsync();
+              if (audioData.sentence_audio?.audio_base64) {
+                await playBase64Audio(
+                  audioData.sentence_audio.audio_base64, 
+                  'complete sentence', 
+                  setPlayingWord
+                );
+              }
+            } catch (error) {
+              console.error('Error playing sentence audio:', error);
+              Alert.alert('Audio Error', 'Could not play sentence pronunciation.');
+            }
+          }}
+          accessibilityLabel="Play correct pronunciation of complete sentence"
+          accessibilityRole="button"
+        >
+          <Text style={styles.sentenceAudioText}>
+            🔊 Play Complete Sentence Pronunciation
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
 export default function PronunciationCoachChat() {
   const [sessions, setSessions] = useState<SentenceSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -352,7 +831,9 @@ export default function PronunciationCoachChat() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
-  const [playingWord, setPlayingWord] = useState<string | null>(null); // New state for word audio
+  const [playingWord, setPlayingWord] = useState<string | null>(null);
+  const [recordingWord, setRecordingWord] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const sidebarAnim = useRef(new Animated.Value(-width * 0.8)).current;
   const recordSecsRef = useRef(0);
   const recordTimeRef = useRef('00:00');
@@ -360,56 +841,18 @@ export default function PronunciationCoachChat() {
   const API_BASE_URL = 'http://192.168.14.34:5050';
   const [userId, setUserId] = useState<string>('');
   const insets = useSafeAreaInsets();
-  const [showAllAttempts, setShowAllAttempts] = useState(false);
-  const [practiceWords, setPracticeWords] = useState<{[key: string]: PracticeWordData}>({});
-  const [currentPracticeWord, setCurrentPracticeWord] = useState<string | null>(null);
-  const [isPracticingWord, setIsPracticingWord] = useState(false);
-  const [practiceRecordingTime, setPracticeRecordingTime] = useState('00:00');
-  const [isProcessingWordPractice, setIsProcessingWordPractice] = useState(false);
 
-  
-  interface PracticeWordData {
-    word: string;
-    attempts: {
-      id: string;
-      timestamp: Date;
-      audioPath: string;
-      audioUrl?: string;
-      accuracy: number;
-      status: 'correct' | 'partial' | 'mispronounced';
-      feedback: string;
-      scores?: AnalysisResult; // Add this line
-    }[];
-    bestScore: number;
-    needsMorePractice: boolean;
-    mastered: boolean;
-  }
+  // Refs for recording
+  const recordingWordRef = useRef<string | null>(null);
+  const recordingPathRef = useRef<string | null>(null);
 
-  interface FirebaseWordPractice {
-    word: string;
-    attempts: {
-      [key: string]: {
-        timestamp: string;
-        audioPath: string;
-        audioUrl?: string;
-        accuracy: number;
-        status: 'correct' | 'partial' | 'mispronounced';
-        feedback: string;
-        scores?: AnalysisResult; // Add this line
-      }
-    };
-    bestScore: number;
-    needsMorePractice: boolean;
-    mastered: boolean;
-    lastPracticed: string;
-  }
+  // Add state to track word-specific updates with accuracy
+  const [wordUpdates, setWordUpdates] = useState<{[key: string]: {status: 'correct' | 'mispronounced', accuracy: number}}>({});
 
-  // Authentication check
   useEffect(() => {
     setIsAuthenticating(true);
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user && !user.isAnonymous) {
-        // Only proceed with actual authenticated users
         console.log('User authenticated:', user.uid);
         setCurrentUser(user);
         setUserId(user.uid);
@@ -436,6 +879,18 @@ export default function PronunciationCoachChat() {
     };
   }, []);
 
+  // Debug effect to track word updates
+  useEffect(() => {
+    console.log('wordUpdates changed:', wordUpdates);
+    if (currentSessionId) {
+      const session = getCurrentSession();
+      if (session && session.attempts.length > 0) {
+        const latestAttempt = session.attempts[0];
+        console.log('Latest attempt word data:', latestAttempt.scores.word_level_analysis?.word_phoneme_mapping);
+      }
+    }
+  }, [wordUpdates, currentSessionId]);
+
   const loadUserSessions = async (userIdParam: string) => {
     try {
       const referencesRef = ref(database, `users/${userIdParam}/references`);
@@ -446,7 +901,6 @@ export default function PronunciationCoachChat() {
         const loadedSessions: SentenceSession[] = Object.keys(data).map(key => {
           const refData = data[key];
           
-          // Load attempts
           const attempts = refData.attempts ? Object.keys(refData.attempts).map(attemptKey => {
             const attemptData = refData.attempts[attemptKey];
             return {
@@ -463,7 +917,6 @@ export default function PronunciationCoachChat() {
             };
           }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()) : [];
           
-          // Load messages
           const messages = refData.messages ? Object.keys(refData.messages).map(msgKey => {
             const messageData = refData.messages[msgKey];
             return {
@@ -489,34 +942,6 @@ export default function PronunciationCoachChat() {
             };
           }).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()) : [];
           
-          // Load word practices for this session
-          if (refData.word_practices) {
-            const loadedWordPractices: {[key: string]: PracticeWordData} = {};
-            
-            Object.keys(refData.word_practices).forEach(word => {
-              const wordData = refData.word_practices![word];
-              loadedWordPractices[word] = {
-                word: wordData.word,
-                attempts: Object.keys(wordData.attempts || {}).map(attemptKey => ({
-                  id: attemptKey,
-                  timestamp: new Date(wordData.attempts[attemptKey].timestamp),
-                  audioPath: wordData.attempts[attemptKey].audioPath,
-                  audioUrl: wordData.attempts[attemptKey].audioUrl,
-                  accuracy: wordData.attempts[attemptKey].accuracy,
-                  status: wordData.attempts[attemptKey].status,
-                  feedback: wordData.attempts[attemptKey].feedback,
-                  scores: wordData.attempts[attemptKey].scores // Add this line
-                })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()),
-                bestScore: wordData.bestScore,
-                needsMorePractice: wordData.needsMorePractice,
-                mastered: wordData.mastered
-              };
-            });
-            
-            // Merge loaded word practices into state
-            setPracticeWords(prev => ({ ...prev, ...loadedWordPractices }));
-          }
-          
           return {
             id: key,
             referenceText: refData.text,
@@ -527,7 +952,7 @@ export default function PronunciationCoachChat() {
         }).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         
         setSessions(loadedSessions);
-        console.log(`Loaded ${loadedSessions.length} sessions for user ${userIdParam}`);
+        console.log(`✅ Loaded ${loadedSessions.length} sessions for user ${userIdParam}`);
       } else {
         console.log('No sessions found for user');
         setSessions([]);
@@ -537,61 +962,6 @@ export default function PronunciationCoachChat() {
       Alert.alert('Load Error', 'Failed to load your practice sessions. Please try again.');
     }
   };
-
-  const saveWordPracticeToFirebase = async (
-    sessionId: string, 
-    wordData: PracticeWordData
-  ) => {
-    if (!isFirebaseConnected || !userId) {
-      console.warn('Cannot save word practice: Firebase not connected');
-      return;
-    }
-    
-    try {
-      const wordPracticeRef = ref(
-        database, 
-        `users/${userId}/references/${sessionId}/word_practices/${wordData.word}`
-      );
-      
-      const firebaseWordPractice: FirebaseWordPractice = {
-        word: wordData.word,
-        attempts: {},
-        bestScore: wordData.bestScore,
-        needsMorePractice: wordData.needsMorePractice,
-        mastered: wordData.mastered,
-        lastPracticed: new Date().toISOString()
-      };
-      
-      wordData.attempts.forEach(attempt => {
-        firebaseWordPractice.attempts[attempt.id] = {
-          timestamp: attempt.timestamp.toISOString(),
-          audioPath: attempt.audioPath,
-          audioUrl: attempt.audioUrl,
-          accuracy: attempt.accuracy,
-          status: attempt.status,
-          feedback: attempt.feedback,
-          scores: attempt.scores // Add this line
-        };
-      });
-      
-      await set(wordPracticeRef, firebaseWordPractice);
-      console.log(`Word practice saved to Firebase for: ${wordData.word}`);
-    } catch (error) {
-      console.error('Error saving word practice to Firebase:', error);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      console.log('User signed out successfully');
-      router.replace('/(auth)/signin');
-    } catch (error) {
-      console.error('Sign out error:', error);
-      Alert.alert('Sign Out Error', 'Failed to sign out. Please try again.');
-    }
-  };
-
 
   const setupSessionsListener = (userIdParam: string) => {
     const referencesRef = ref(database, `users/${userIdParam}/references`);
@@ -654,102 +1024,6 @@ export default function PronunciationCoachChat() {
     });
   };
 
-  const loadFirebaseSessions = async (userIdParam: string) => {
-    try {
-      const referencesRef = ref(database, `users/${userIdParam}/references`);
-      const snapshot = await get(referencesRef);
-      
-      if (snapshot.exists()) {
-        const data = snapshot.val() as { [key: string]: FirebaseReferenceText };
-        const loadedSessions: SentenceSession[] = Object.keys(data).map(key => {
-          const refData = data[key];
-          
-          // Load attempts
-          const attempts = refData.attempts ? Object.keys(refData.attempts).map(attemptKey => {
-            const attemptData = refData.attempts[attemptKey];
-            return {
-              id: attemptKey,
-              timestamp: new Date(attemptData.timestamp),
-              audioPath: attemptData.audioPath,
-              audioUrl: attemptData.audioUrl,
-              scores: attemptData.scores,
-              feedback: attemptData.feedback,
-              source: attemptData.source,
-              fileName: attemptData.fileName,
-              mispronuncedWords: attemptData.mispronuncedWords || [],
-              correctlyPronuncedWords: attemptData.correctlyPronuncedWords || []
-            };
-          }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()) : [];
-          
-          // Load messages
-          const messages = refData.messages ? Object.keys(refData.messages).map(msgKey => {
-            const messageData = refData.messages[msgKey];
-            return {
-              id: msgKey,
-              type: messageData.type,
-              content: messageData.content,
-              audioPath: messageData.audioPath,
-              fileName: messageData.fileName,
-              timestamp: new Date(messageData.timestamp),
-              isUser: messageData.isUser,
-              result: messageData.result ? {
-                id: msgKey + '_result',
-                timestamp: new Date(messageData.result.timestamp),
-                audioPath: messageData.result.audioPath,
-                audioUrl: messageData.result.audioUrl,
-                scores: messageData.result.scores,
-                feedback: messageData.result.feedback,
-                source: messageData.result.source,
-                fileName: messageData.result.fileName,
-                mispronuncedWords: messageData.result.mispronuncedWords || [],
-                correctlyPronuncedWords: messageData.result.correctlyPronuncedWords || []
-              } : undefined
-            };
-          }).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()) : [];
-          
-          // Load word practices for this session
-          if (refData.word_practices) {
-            const loadedWordPractices: {[key: string]: PracticeWordData} = {};
-            
-            Object.keys(refData.word_practices).forEach(word => {
-              const wordData = refData.word_practices![word];
-              loadedWordPractices[word] = {
-                word: wordData.word,
-                attempts: Object.keys(wordData.attempts || {}).map(attemptKey => ({
-                  id: attemptKey,
-                  timestamp: new Date(wordData.attempts[attemptKey].timestamp),
-                  audioPath: wordData.attempts[attemptKey].audioPath,
-                  audioUrl: wordData.attempts[attemptKey].audioUrl,
-                  accuracy: wordData.attempts[attemptKey].accuracy,
-                  status: wordData.attempts[attemptKey].status,
-                  feedback: wordData.attempts[attemptKey].feedback,
-                  scores: wordData.attempts[attemptKey].scores // Add this line
-                })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()),
-                bestScore: wordData.bestScore,
-                needsMorePractice: wordData.needsMorePractice,
-                mastered: wordData.mastered
-              };
-            });
-            
-            // Merge loaded word practices into state
-            setPracticeWords(prev => ({ ...prev, ...loadedWordPractices }));
-          }
-          return {
-            id: key,
-            referenceText: refData.text,
-            createdAt: new Date(refData.createdAt),
-            attempts,
-            messages
-          };
-        }).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        
-        setSessions(loadedSessions);
-      }
-    } catch (error) {
-      console.error('Error loading sessions from Firebase:', error);
-    }
-  };
-
   const CLOUDINARY_UPLOAD_PRESET = 'dc8kh6npf';
   const CLOUDINARY_CLOUD_NAME = 'dc8kh6npf';
 
@@ -806,6 +1080,284 @@ export default function PronunciationCoachChat() {
     }
   };
 
+  // Word recording functions
+  const startWordRecording = async (word: string) => {
+    try {
+      const currentSession = getCurrentSession();
+      if (!currentSession) {
+        Alert.alert('Error', 'No active practice session');
+        return;
+      }
+
+      setIsRecording(true);
+      setRecordingWord(word);
+      recordingWordRef.current = word;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      const path = `${RNFS.DocumentDirectoryPath}/word_recording_${word}_${Date.now()}.wav`;
+      
+      const audioSet = {
+        AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
+        AudioSourceAndroid: AudioSourceAndroidType.MIC,
+        AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
+        AVNumberOfChannelsKeyIOS: 1,
+        AVFormatIDKeyIOS: AVEncodingOption.lpcm,
+      };
+      
+      await audioRecorderPlayer.startRecorder(path, audioSet);
+      recordingPathRef.current = path;
+      
+      audioRecorderPlayer.addRecordBackListener((e) => {
+        recordSecsRef.current = e.currentPosition;
+        recordTimeRef.current = audioRecorderPlayer.mmssss(Math.floor(e.currentPosition));
+        setRecordingTime(recordTimeRef.current);
+      });
+      
+    } catch (error) {
+      console.error('Word recording error:', error);
+      Alert.alert('Error', 'Failed to start recording');
+      setIsRecording(false);
+      setRecordingWord(null);
+    }
+  };
+
+  const stopWordRecording = async () => {
+    try {
+      const result = await audioRecorderPlayer.stopRecorder();
+      audioRecorderPlayer.removeRecordBackListener();
+      setIsRecording(false);
+      setRecordingTime('00:00');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      const word = recordingWordRef.current;
+      const recordingPath = recordingPathRef.current;
+      
+      if (!word || !recordingPath) {
+        throw new Error('Recording data missing');
+      }
+      
+      // Verify recording file
+      const exists = await RNFS.exists(recordingPath);
+      if (!exists) {
+        throw new Error('Recording file was not created');
+      }
+      
+      const stats = await RNFS.stat(recordingPath);
+      if (stats.size === 0) {
+        throw new Error('Recording file is empty');
+      }
+      
+      console.log(`Word recording verified for "${word}": ${(stats.size / 1024).toFixed(1)} KB`);
+      
+      // Process the word recording
+      await processWordAudio(recordingPath, word);
+      
+      // Clear recording references
+      recordingWordRef.current = null;
+      recordingPathRef.current = null;
+      setRecordingWord(null);
+      
+    } catch (error) {
+      console.error('Stop word recording error:', error);
+      Alert.alert('Error', 'Failed to process recording. Please try again.');
+      setIsRecording(false);
+      setRecordingWord(null);
+    }
+  };
+
+  const handleWordRecord = (word: string) => {
+    if (isRecording && recordingWord === word) {
+      stopWordRecording();
+    } else if (!isRecording) {
+      startWordRecording(word);
+    } else {
+      Alert.alert(
+        'Recording in Progress',
+        `Please finish recording for "${recordingWord}" first.`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const processWordAudio = async (audioPath: string, word: string) => {
+    const currentSession = getCurrentSession();
+    if (!currentSession) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      let finalAudioPath = audioPath;
+      let audioUrl = audioPath;
+      let uploadSuccess = false;
+      
+      // Upload to Cloudinary
+      try {
+        const attemptId = `word_${word}_${Date.now()}`;
+        audioUrl = await uploadToCloudinary(audioPath, attemptId);
+        uploadSuccess = true;
+        console.log(`Word "${word}" audio uploaded successfully`);
+      } catch (cloudinaryError) {
+        console.warn('Cloudinary upload failed for word recording:', cloudinaryError);
+        // Continue with local file
+        const permanentPath = `${RNFS.DocumentDirectoryPath}/word_recordings/recording_${word}_${Date.now()}.wav`;
+        await RNFS.mkdir(`${RNFS.DocumentDirectoryPath}/word_recordings`);
+        await RNFS.copyFile(audioPath, permanentPath);
+        finalAudioPath = permanentPath;
+        audioUrl = permanentPath;
+      }
+      
+      // Prepare form data for word analysis
+      const formData = new FormData();
+      let mimeType = 'audio/wav';
+      
+      formData.append('audio_file', {
+        uri: Platform.OS === 'ios' ? finalAudioPath : `file://${finalAudioPath}`,
+        type: mimeType,
+        name: `word_${word}_recording.wav`,
+      } as any);
+      
+      formData.append('reference_text', word);
+      formData.append('use_llm_judge', 'true');
+      formData.append('generate_audio', 'false');
+      formData.append('filter_extraneous', 'true');
+      
+      console.log(`Sending word "${word}" recording for analysis...`);
+      
+      const response = await axios.post(`${API_BASE_URL}/analyze_with_llm_judge`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000,
+      });
+      
+      if (response.data.success) {
+        console.log(`Word "${word}" analysis successful!`);
+        const analysisResult = response.data.analysis;
+        
+        // Store both status and accuracy for the word
+        const newStatus = analysisResult.accuracy >= 0.8 ? 'correct' : 'mispronounced';
+        const accuracy = analysisResult.accuracy;
+        
+        console.log(`Word "${word}" - Accuracy: ${accuracy}, Status: ${newStatus}`);
+        
+        setWordUpdates(prev => ({
+          ...prev,
+          [word]: {
+            status: newStatus,
+            accuracy: accuracy
+          }
+        }));
+        
+        // Force refresh of the component
+        setRefreshKey(prev => prev + 1);
+        
+        // Show success message
+        const accuracyPercent = (accuracy * 100).toFixed(1);
+        Alert.alert(
+          'Word Analysis Complete',
+          `"${word}" pronunciation: ${accuracyPercent}% accuracy\nStatus: ${newStatus}`,
+          [{ text: 'OK' }]
+        );
+        
+      } else {
+        throw new Error(response.data.error || 'Word analysis failed');
+      }
+      
+    } catch (error: any) {
+      console.error(`Word "${word}" processing error:`, error);
+      
+      let errorMessage = 'Failed to analyze word pronunciation.';
+      if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+        errorMessage = 'Unable to connect to server. Please check your connection.';
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
+      Alert.alert('Analysis Error', errorMessage);
+      
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Modified getCurrentSession to include word updates with accuracy
+  const getCurrentSession = (): SentenceSession | null => {
+    const session = sessions.find(session => session.id === currentSessionId);
+    if (!session) return null;
+
+    if (Object.keys(wordUpdates).length === 0) {
+      return session;
+    }
+
+    // Create a modified session with updated word statuses and accuracy
+    const latestAttempt = session.attempts[0];
+    if (!latestAttempt) return session;
+
+    // Create a deep copy of the scores to modify
+    const modifiedScores = JSON.parse(JSON.stringify(latestAttempt.scores));
+
+    // Update word_level_analysis if it exists
+    if (modifiedScores.word_level_analysis?.word_phoneme_mapping) {
+      modifiedScores.word_level_analysis.word_phoneme_mapping = modifiedScores.word_level_analysis.word_phoneme_mapping.map((wordData: any) => {
+        const update = wordUpdates[wordData.word];
+        if (update) {
+          return {
+            ...wordData,
+            status: update.status,
+            per: 1 - update.accuracy, // Convert accuracy to PER (Phone Error Rate)
+            // Add accuracy field for easy access
+            accuracy: update.accuracy
+          };
+        }
+        return wordData;
+      });
+    }
+
+    // Update word_phonemes if it exists
+    if (modifiedScores.word_phonemes?.words) {
+      modifiedScores.word_phonemes.words = modifiedScores.word_phonemes.words.map((wordData: any) => {
+        const update = wordUpdates[wordData.word];
+        if (update) {
+          return {
+            ...wordData,
+            status: update.status,
+            per: 1 - update.accuracy,
+            accuracy: update.accuracy
+          };
+        }
+        return wordData;
+      });
+    }
+
+    const modifiedAttempt: PracticeAttempt = {
+      ...latestAttempt,
+      id: `modified_${latestAttempt.id}`,
+      timestamp: new Date(),
+      mispronuncedWords: [...latestAttempt.mispronuncedWords],
+      correctlyPronuncedWords: [...latestAttempt.correctlyPronuncedWords],
+      scores: modifiedScores
+    };
+
+    // Apply word updates to the word arrays
+    Object.entries(wordUpdates).forEach(([word, update]) => {
+      const wordLower = word.toLowerCase();
+      
+      // Remove from both arrays first
+      modifiedAttempt.mispronuncedWords = modifiedAttempt.mispronuncedWords.filter(w => w.toLowerCase() !== wordLower);
+      modifiedAttempt.correctlyPronuncedWords = modifiedAttempt.correctlyPronuncedWords.filter(w => w.toLowerCase() !== wordLower);
+      
+      // Add to appropriate array
+      if (update.status === 'correct') {
+        modifiedAttempt.correctlyPronuncedWords.push(word);
+      } else {
+        modifiedAttempt.mispronuncedWords.push(word);
+      }
+    });
+
+    return {
+      ...session,
+      attempts: [modifiedAttempt, ...session.attempts.slice(1)]
+    };
+  };
+
   const processAudio = async (audioPath: string, source: 'recording' | 'upload', fileName?: string) => {
     const currentSession = getCurrentSession();
     if (!currentSession || !audioPath) return;
@@ -818,7 +1370,6 @@ export default function PronunciationCoachChat() {
     });
     
     try {
-      // First, ensure we have a valid audio file
       let finalAudioPath = audioPath;
       let audioExists = false;
       
@@ -833,7 +1384,6 @@ export default function PronunciationCoachChat() {
         throw new Error('Could not access audio file. Please try again.');
       }
 
-      // Upload to Cloudinary FIRST (before API call) to ensure we have a permanent URL
       let audioUrl = audioPath;
       let uploadSuccess = false;
       
@@ -844,7 +1394,6 @@ export default function PronunciationCoachChat() {
         uploadSuccess = true;
         console.log('Cloudinary upload successful:', audioUrl);
         
-        // Show upload success message
         addMessage({
           type: 'text',
           content: '✅ Audio uploaded successfully. Processing pronunciation...',
@@ -855,7 +1404,6 @@ export default function PronunciationCoachChat() {
         console.warn('Cloudinary upload failed:', cloudinaryError);
         console.log('Continuing with local file path...');
         
-        // For recorded files, we need to copy to a permanent location
         if (source === 'recording') {
           try {
             const permanentPath = `${RNFS.DocumentDirectoryPath}/recordings/recording_${Date.now()}.wav`;
@@ -866,7 +1414,6 @@ export default function PronunciationCoachChat() {
             console.log('Audio copied to permanent location:', permanentPath);
           } catch (copyError) {
             console.error('Failed to copy recording to permanent location:', copyError);
-            // Continue with original path
           }
         }
         
@@ -877,7 +1424,6 @@ export default function PronunciationCoachChat() {
         });
       }
       
-      // Prepare form data for API call
       const formData = new FormData();
       let mimeType = 'audio/wav';
       let audioFileName = source === 'recording' ? 'recording.wav' : (fileName || 'audio.wav');
@@ -900,14 +1446,14 @@ export default function PronunciationCoachChat() {
         name: audioFileName,
       } as any);
       formData.append('reference_text', currentSession.referenceText);
-      formData.append('use_llm_judge', 'true'); // Enable LLM judge for better feedback
-      formData.append('generate_audio', 'true'); // Enable audio generation
+      formData.append('use_llm_judge', 'true');
+      formData.append('generate_audio', 'true');
       formData.append('filter_extraneous', 'true');
       
       console.log('Sending audio to pronunciation analysis API...');
       const response = await axios.post(`${API_BASE_URL}/analyze_with_llm_judge`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000, // Increased timeout for LLM processing
+        timeout: 120000,
       });
       
       if (response.data.success) {
@@ -915,7 +1461,6 @@ export default function PronunciationCoachChat() {
         const analysisResult = response.data.analysis;
         const wordLevelAnalysis = response.data.word_level_analysis;
         
-        // IMPORTANT: Extract word-level results correctly
         let mispronuncedWords: string[] = [];
         let correctlyPronuncedWords: string[] = [];
         let partialWords: string[] = [];
@@ -923,9 +1468,9 @@ export default function PronunciationCoachChat() {
         if (wordLevelAnalysis && wordLevelAnalysis.words) {
           wordLevelAnalysis.words.forEach((wordData: any) => {
             const word = wordData.word;
-            const status = wordData.status; // This is the key field!
+            const status = wordData.status;
             
-            console.log(`Word: ${word}, Status: ${status}`); // Debug log
+            console.log(`Word: ${word}, Status: ${status}`);
             
             if (status === 'correct') {
               correctlyPronuncedWords.push(word);
@@ -945,7 +1490,6 @@ export default function PronunciationCoachChat() {
           audioData: analysisResult.audio_data
         });
         
-        // Create attempt object with proper word lists
         const attemptId = Date.now().toString();
         const newAttempt: PracticeAttempt = {
           id: attemptId,
@@ -961,13 +1505,11 @@ export default function PronunciationCoachChat() {
           fileName: audioFileName,
           mispronuncedWords: mispronuncedWords,
           correctlyPronuncedWords: correctlyPronuncedWords
-          // Note: partial words are tracked in scores.word_summary but not in separate list
         };
         
         console.log('Saving attempt to Firebase...');
         await saveAttemptToFirebase(currentSession.id, newAttempt);
         
-        // Add success message
         const accuracyPercent = (analysisResult.accuracy * 100).toFixed(1);
         const audioInfo = analysisResult.audio_data?.generated_count 
           ? `\n🎵 ${analysisResult.audio_data.generated_count} word pronunciations available`
@@ -987,32 +1529,32 @@ export default function PronunciationCoachChat() {
         throw new Error(response.data.error || 'Analysis failed');
       }
         
-      } catch (error: any) {
-        console.error('Processing error:', error);
-        console.error('Error details:', error.response?.data);
-        
-        let errorMessage = 'Failed to process audio.';
-        
-        if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
-          errorMessage = `Unable to connect to server at ${API_BASE_URL}. Please check:\n• Server is running\n• IP address is correct\n• Network connection is active`;
-        } else if (error.response?.data?.error) {
-          errorMessage = error.response.data.error;
-        } else if (error.message.includes('timeout')) {
-          errorMessage = 'Request timeout. Server might be processing slowly.';
-        } else if (error.message.includes('Recording file not found')) {
-          errorMessage = error.message;
-        }
-        
-        addMessage({
-          type: 'text',
-          content: `❌ ${errorMessage}`,
-          isUser: false
-        });
-        
-      } finally {
-        setIsProcessing(false);
+    } catch (error: any) {
+      console.error('Processing error:', error);
+      console.error('Error details:', error.response?.data);
+      
+      let errorMessage = 'Failed to process audio.';
+      
+      if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+        errorMessage = `Unable to connect to server at ${API_BASE_URL}. Please check:\n• Server is running\n• IP address is correct\n• Network connection is active`;
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message.includes('timeout')) {
+        errorMessage = 'Request timeout. Server might be processing slowly.';
+      } else if (error.message.includes('Recording file not found')) {
+        errorMessage = error.message;
       }
-    };
+      
+      addMessage({
+        type: 'text',
+        content: `❌ ${errorMessage}`,
+        isUser: false
+      });
+      
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const saveSessionToFirebase = async (session: SentenceSession) => {
     if (!isFirebaseConnected || !userId) {
@@ -1088,7 +1630,6 @@ export default function PronunciationCoachChat() {
       await set(attemptRef, attemptData);
     } catch (error) {
       console.error('Error saving attempt to Firebase:', error);
-
     }
   };
 
@@ -1100,20 +1641,19 @@ export default function PronunciationCoachChat() {
     try {
       const messageRef = ref(database, `users/${userId}/references/${sessionId}/messages/${message.id}`);
       
-      // Build message data with proper null checks
       const messageData: FirebaseMessage = {
         type: message.type,
         content: message.content,
         audioPath: message.audioPath,
         fileName: message.fileName,
-        timestamp: message.timestamp.toISOString(), // This is fine - message.timestamp is a Date
+        timestamp: message.timestamp.toISOString(),
         isUser: message.isUser,
         result: message.result ? {
           timestamp: message.result.timestamp instanceof Date 
             ? message.result.timestamp.toISOString() 
             : (typeof message.result.timestamp === 'string' 
                 ? message.result.timestamp 
-                : new Date().toISOString()), // Fallback to current time
+                : new Date().toISOString()),
           audioPath: message.result.audioPath,
           audioUrl: message.result.audioUrl,
           scores: message.result.scores,
@@ -1129,10 +1669,6 @@ export default function PronunciationCoachChat() {
     } catch (error) {
       console.error('Error saving message to Firebase:', error);
     }
-  };
-
-  const getCurrentSession = (): SentenceSession | null => {
-    return sessions.find(session => session.id === currentSessionId) || null;
   };
 
   const createNewSession = async (referenceText: string) => {
@@ -1218,18 +1754,14 @@ export default function PronunciationCoachChat() {
     const currentSession = getCurrentSession();
     setInputText('');
     
-    // Check if a session with this exact text already exists
     const existingSession = sessions.find(
       session => session.referenceText.toLowerCase() === text.toLowerCase()
     );
     
     if (existingSession) {
-      // Session already exists, navigate to it
       Haptics.selectionAsync();
       setCurrentSessionId(existingSession.id);
-      setShowAllAttempts(false);
       
-      // Show a message that we're switching to existing session
       setTimeout(() => {
         Alert.alert(
           'Existing Session Found',
@@ -1240,7 +1772,6 @@ export default function PronunciationCoachChat() {
       return;
     }
     
-    // If we have a current session, show the user we're creating a new one
     if (currentSession) {
       addMessage({
         type: 'text',
@@ -1277,7 +1808,6 @@ export default function PronunciationCoachChat() {
         }, 2000);
       }, 500);
     } else {
-      // No current session, create new one
       createNewSession(text);
     }
   };
@@ -1323,7 +1853,6 @@ export default function PronunciationCoachChat() {
       
       console.log('Recording stopped. File path:', result);
       
-      // Verify the recording exists and has content
       try {
         const exists = await RNFS.exists(result);
         if (!exists) {
@@ -1343,7 +1872,6 @@ export default function PronunciationCoachChat() {
         return;
       }
       
-      // Add message about the recording
       addMessage({
         type: 'audio',
         content: 'Voice recording',
@@ -1351,7 +1879,6 @@ export default function PronunciationCoachChat() {
         isUser: true
       });
       
-      // Process the audio
       processAudio(result, 'recording');
       
     } catch (error) {
@@ -1396,7 +1923,6 @@ export default function PronunciationCoachChat() {
       Haptics.selectionAsync();
       console.log('Attempting to play audio:', audioPath);
       
-      // Stop current playback if any
       if (isPlaying && playingMessageId === messageId) {
         await audioRecorderPlayer.stopPlayer();
         audioRecorderPlayer.removePlayBackListener();
@@ -1410,17 +1936,14 @@ export default function PronunciationCoachChat() {
         audioRecorderPlayer.removePlayBackListener();
       }
       
-      // Determine if this is a URL or local path
       let playbackPath = audioPath;
       const isUrl = audioPath.startsWith('http://') || audioPath.startsWith('https://');
       const isLocalPath = audioPath.startsWith('file://') || audioPath.startsWith('/');
       
       if (!isUrl && !isLocalPath) {
-        // Try to construct proper file:// URL for local files
         playbackPath = Platform.OS === 'ios' ? audioPath : `file://${audioPath}`;
       }
       
-      // Check if local file exists (for local paths only)
       if (!isUrl) {
         const actualPath = playbackPath.replace('file://', '');
         const exists = await RNFS.exists(actualPath);
@@ -1469,846 +1992,39 @@ export default function PronunciationCoachChat() {
   const selectSession = (session: SentenceSession) => {
     Haptics.selectionAsync();
     setCurrentSessionId(session.id);
-    setShowAllAttempts(false);
     toggleSidebar();
+    // Clear word updates when switching sessions
+    setWordUpdates({});
   };
 
-  // Word practice functions
-  const startWordPractice = (word: string) => {
-    setCurrentPracticeWord(word);
-    setIsPracticingWord(false);
-    
-    // Initialize practice data if not exists
-    if (!practiceWords[word]) {
-      setPracticeWords(prev => ({
-        ...prev,
-        [word]: {
-          word,
-          attempts: [],
-          bestScore: 0,
-          needsMorePractice: true,
-          mastered: false
-        }
-      }));
-    }
-  };
-
-  const stopWordPractice = async () => {
-    // Clean up any active recording
-    if (isPracticingWord) {
-      try {
-        await audioRecorderPlayer.stopRecorder();
-        audioRecorderPlayer.removeRecordBackListener();
-      } catch (e) {
-        console.log('No active recording to stop');
-      }
-    }
-  
-  setCurrentPracticeWord(null);
-  setIsPracticingWord(false);
-  setPracticeRecordingTime('00:00');
-};
-
-  // Add this with your other useRef declarations at the top
-const isPracticingWordRef = useRef(false);
-
-// Update startWordRecording:
-const startWordRecording = async () => {
-  if (!currentPracticeWord) return;
-  
-  // Check both state and ref
-  if (isPracticingWord || isPracticingWordRef.current) {
-    console.log('Already recording, ignoring start request');
-    return;
-  }
-  
-  try {
-    // Ensure any previous recording is fully stopped
+  const handleSignOut = async () => {
     try {
-      await audioRecorderPlayer.stopRecorder();
-      audioRecorderPlayer.removeRecordBackListener();
-    } catch (e) {
-      console.log('No previous recording to stop');
+      await signOut(auth);
+      console.log('User signed out successfully');
+      router.replace('/(auth)/signin');
+    } catch (error) {
+      console.error('Sign out error:', error);
+      Alert.alert('Sign Out Error', 'Failed to sign out. Please try again.');
     }
-    
-    // Set both state and ref
-    setIsPracticingWord(true);
-    isPracticingWordRef.current = true;
-    
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    const path = `${RNFS.DocumentDirectoryPath}/word_practice_${currentPracticeWord}_${Date.now()}.wav`;
-    
-    const audioSet = {
-      AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
-      AudioSourceAndroid: AudioSourceAndroidType.MIC,
-      AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
-      AVNumberOfChannelsKeyIOS: 1,
-      AVFormatIDKeyIOS: AVEncodingOption.lpcm,
-    };
-    
-    console.log('Starting word practice recording for:', currentPracticeWord);
-    await audioRecorderPlayer.startRecorder(path, audioSet);
-    
-    audioRecorderPlayer.addRecordBackListener((e) => {
-      const time = audioRecorderPlayer.mmssss(Math.floor(e.currentPosition));
-      setPracticeRecordingTime(time);
-    });
-    
-  } catch (error) {
-    console.error('Word practice recording error:', error);
-    Alert.alert('Error', 'Failed to start word practice recording');
-    setIsPracticingWord(false);
-    isPracticingWordRef.current = false;
-    setPracticeRecordingTime('00:00');
-  }
-};
-
-// Update stopWordRecording to use the ref:
-const stopWordRecording = async () => {
-  if (!currentPracticeWord) {
-    console.log('No practice word set');
-    return;
-  }
-  
-  // Check ref instead of just state
-  if (!isPracticingWordRef.current) {
-    console.log('Not recording according to ref, attempting force stop anyway');
-  }
-  
-  try {
-    console.log('Attempting to stop recorder...');
-    
-    const wordToProcess = currentPracticeWord;
-    
-    // Force stop
-    const result = await audioRecorderPlayer.stopRecorder();
-    console.log('Recorder stopped, file path:', result);
-    
-    audioRecorderPlayer.removeRecordBackListener();
-    
-    // Update both state and ref
-    setIsPracticingWord(false);
-    isPracticingWordRef.current = false;
-    setPracticeRecordingTime('00:00');
-    
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
-    // Verify recording
-    const exists = await RNFS.exists(result);
-    if (!exists) {
-      throw new Error('Recording file was not created');
-    }
-    
-    const stats = await RNFS.stat(result);
-    if (stats.size === 0) {
-      throw new Error('Recording file is empty');
-    }
-    
-    console.log(`Recording verified: ${(stats.size / 1024).toFixed(1)} KB`);
-    
-    await processWordPracticeAudio(result, wordToProcess);
-    
-  } catch (error: any) {
-    console.error('Stop recording error:', error);
-    
-    // Force reset
-    setIsPracticingWord(false);
-    isPracticingWordRef.current = false;
-    setPracticeRecordingTime('00:00');
-    
-    Alert.alert('Recording Error', 'Failed to stop recording. Please try again.');
-  }
-};
-
-  const processWordPracticeAudio = async (audioPath: string, word: string) => {
-    if (!currentSession) {
-      Alert.alert('Error', 'No active session');
-      return;
-    }
-    
-    try {
-      console.log(`Processing word practice audio for: "${word}"`);
-      
-      // Step 1: Upload to Cloudinary
-      let audioUrl = audioPath;
-      const attemptId = Date.now().toString();
-      
-      try {
-        console.log('Uploading word practice audio to Cloudinary...');
-        audioUrl = await uploadToCloudinary(audioPath, `word_${word}_${attemptId}`);
-        console.log('Word practice audio uploaded successfully:', audioUrl);
-      } catch (uploadError) {
-        console.warn('Cloudinary upload failed for word practice:', uploadError);
-        const permanentPath = `${RNFS.DocumentDirectoryPath}/word_practices/word_${word}_${attemptId}.wav`;
-        try {
-          await RNFS.mkdir(`${RNFS.DocumentDirectoryPath}/word_practices`);
-          await RNFS.copyFile(audioPath, permanentPath);
-          audioUrl = permanentPath;
-        } catch (copyError) {
-          console.error('Failed to copy word practice audio:', copyError);
-        }
-      }
-      
-      // Step 2: Send to dedicated word practice endpoint
-      const formData = new FormData();
-      formData.append('audio_file', {
-        uri: Platform.OS === 'ios' ? audioPath : `file://${audioPath}`,
-        type: 'audio/wav',
-        name: `word_practice_${word}.wav`,
-      } as any);
-      formData.append('word', word); // Send word instead of reference_text
-      
-      console.log('Sending word practice to backend API...');
-      const response = await axios.post(`${API_BASE_URL}/analyze_word_practice`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 60000,
-      });
-      
-      if (response.data.success) {
-        const { status, accuracy, feedback, analysis } = response.data;
-        
-        console.log('Word practice analysis:', { word, accuracy, status, feedback });
-        
-        // Create attempt record with full analysis
-        const newAttempt = {
-          id: attemptId,
-          timestamp: new Date(),
-          audioPath: audioPath,
-          audioUrl: audioUrl,
-          accuracy: accuracy,
-          status: status as 'correct' | 'partial' | 'mispronounced',
-          feedback: feedback,
-          scores: analysis, // Full analysis data
-        };
-        
-        // Update practice words data
-        setPracticeWords(prev => {
-          const currentData = prev[word] || {
-            word,
-            attempts: [],
-            bestScore: 0,
-            needsMorePractice: true,
-            mastered: false
-          };
-          
-          const newAttempts = [...currentData.attempts, newAttempt];
-          const bestScore = Math.max(currentData.bestScore, accuracy);
-          const mastered = bestScore >= 85 && newAttempts.slice(-3).every(a => a.accuracy >= 80);
-          const needsMorePractice = !mastered;
-          
-          const updatedWordData = {
-            ...currentData,
-            attempts: newAttempts,
-            bestScore: bestScore,
-            mastered: mastered,
-            needsMorePractice: needsMorePractice
-          };
-          
-          // Save to Firebase
-          saveWordPracticeToFirebase(currentSession.id, updatedWordData);
-          
-          return {
-            ...prev,
-            [word]: updatedWordData
-          };
-        });
-        
-        // Show detailed result with full feedback
-        const resultTitle = status === 'correct' ? 'Excellent! 🎉' : 
-                          status === 'partial' ? 'Good Progress! 👍' : 
-                          'Keep Practicing! 💪';
-        
-        Alert.alert(
-          resultTitle,
-          `${word}\n\nScore: ${accuracy.toFixed(1)}%\nStatus: ${status}\n\n${feedback}`,
-          [
-            { text: 'Practice Again', onPress: () => {} },
-            { text: 'Done', onPress: () => stopWordPractice() }
-          ]
-        );
-        
-        console.log('Word practice complete:', { word, accuracy, status });
-        
-      } else {
-        throw new Error(response.data.error || 'Word practice analysis failed');
-      }
-      
-    } catch (error: any) {
-      console.error('Word practice processing error:', error);
-      console.error('Error details:', error.response?.data);
-      
-      let errorMessage = 'Could not analyze your pronunciation. Please try again.';
-      
-      if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
-        errorMessage = `Unable to connect to server at ${API_BASE_URL}. Please check your connection.`;
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.message.includes('timeout')) {
-        errorMessage = 'Request timeout. Server might be processing slowly.';
-      }
-      
-      Alert.alert('Analysis Error', errorMessage);
-    }
-  };
-
-  // Component for word practice session
-  const WordPracticeSession = ({ word }: { word: string }) => {
-    const practiceData = practiceWords[word];
-    const [showAllWordAttempts, setShowAllWordAttempts] = useState(false);
-    const [expandedFeedback, setExpandedFeedback] = useState<{[key: string]: boolean}>({});
-    const [isPlayingPronunciation, setIsPlayingPronunciation] = useState(false);
-    
-    const toggleFeedback = (attemptId: string) => {
-      setExpandedFeedback(prev => ({
-        ...prev,
-        [attemptId]: !prev[attemptId]
-      }));
-    };
-    
-    const playWordPronunciation = async () => {
-      try {
-        Haptics.selectionAsync();
-        
-        // Stop if already playing
-        if (isPlayingPronunciation) {
-          await audioRecorderPlayer.stopPlayer();
-          audioRecorderPlayer.removePlayBackListener();
-          setIsPlayingPronunciation(false);
-          return;
-        }
-        
-        console.log(`Requesting pronunciation audio for: "${word}"`);
-        
-        const response = await axios.get(`${API_BASE_URL}/get_word_audio/${word}`, {
-          responseType: 'arraybuffer',
-          timeout: 10000
-        });
-        
-        if (response.data) {
-          // Convert ArrayBuffer to base64 using React Native compatible method
-          const uint8Array = new Uint8Array(response.data);
-          let binary = '';
-          for (let i = 0; i < uint8Array.byteLength; i++) {
-            binary += String.fromCharCode(uint8Array[i]);
-          }
-          const base64Audio = btoa(binary);
-          
-          // Create temporary file
-          const tempPath = `${RNFS.DocumentDirectoryPath}/temp_word_pronunciation_${word}_${Date.now()}.wav`;
-          await RNFS.writeFile(tempPath, base64Audio, 'base64');
-          
-          // Verify file
-          const fileExists = await RNFS.exists(tempPath);
-          if (!fileExists) {
-            throw new Error('Failed to create temporary audio file');
-          }
-          
-          setIsPlayingPronunciation(true);
-          
-          // Play audio
-          await audioRecorderPlayer.startPlayer(tempPath);
-          
-          audioRecorderPlayer.addPlayBackListener((e) => {
-            if (e.currentPosition >= e.duration) {
-              audioRecorderPlayer.stopPlayer();
-              audioRecorderPlayer.removePlayBackListener();
-              setIsPlayingPronunciation(false);
-              
-              // Clean up temporary file
-              RNFS.unlink(tempPath).catch(err => 
-                console.warn('Could not delete temporary audio file:', err)
-              );
-            }
-          });
-          
-          console.log(`Playing pronunciation for: "${word}"`);
-        }
-      } catch (error) {
-        console.error('Error playing word pronunciation:', error);
-        setIsPlayingPronunciation(false);
-        Alert.alert('Audio Error', `Could not play pronunciation for "${word}". Please check your connection.`);
-      }
-    };
-    
-    const renderWordAttemptRow = ({ item: attempt, index }: { item: any, index: number }) => {
-      const attemptNumber = practiceData.attempts.length - index;
-      const audioUrl = attempt.audioUrl || attempt.audioPath;
-      const isCloudStored = audioUrl && (audioUrl.startsWith('http://') || audioUrl.startsWith('https://'));
-      const isExpanded = expandedFeedback[attempt.id] || false;
-      const feedbackText = attempt.feedback || 'No feedback available';
-      
-      // Calculate display accuracy - prioritize the accuracy field from backend
-      // Fallback to calculating from PER if accuracy field doesn't exist
-      const displayAccuracy = attempt.accuracy !== undefined 
-        ? attempt.accuracy 
-        : (attempt.scores?.accuracy !== undefined 
-            ? attempt.scores.accuracy * 100 
-            : (100 - (attempt.scores?.per || 0)));
-      
-      // Show detailed error breakdown if available
-      let detailedFeedback = feedbackText;
-      if (attempt.scores?.error_breakdown) {
-        const { substitutions, deletions, insertions } = attempt.scores.error_breakdown;
-        detailedFeedback += `\n\nError Details:`;
-        if (substitutions > 0) detailedFeedback += `\n• ${substitutions} sound(s) substituted`;
-        if (deletions > 0) detailedFeedback += `\n• ${deletions} sound(s) deleted`;
-        if (insertions > 0) detailedFeedback += `\n• ${insertions} sound(s) inserted`;
-      }
-      
-      const shouldTruncate = detailedFeedback.length > 100;
-      const displayFeedback = (isExpanded || !shouldTruncate) 
-        ? detailedFeedback 
-        : `${detailedFeedback.substring(0, 100)}...`;
-      
-      return (
-        <View key={attempt.id} style={styles.wordAttemptRow}>
-          <View style={styles.wordAttemptCol1}>
-            <Text style={styles.wordAttemptText}>{attemptNumber}</Text>
-          </View>
-          <View style={styles.wordAttemptCol2}>
-            <TouchableOpacity
-              style={styles.wordAttemptAudioButton}
-              onPress={() => playAudio(audioUrl, attempt.id)}
-              accessibilityLabel="Play word practice attempt"
-              accessibilityRole="button"
-            >
-              <Text style={styles.audioPlayIcon}>
-                {isPlaying && playingMessageId === attempt.id ? '⏸️' : '▶️'}
-              </Text>
-              <View style={styles.wordAttemptAudioInfo}>
-                <Text style={styles.wordAttemptAudioText} numberOfLines={1}>
-                  Practice {attemptNumber}
-                </Text>
-                <Text style={styles.wordAttemptAudioStatus}>
-                  {isCloudStored ? '☁️ Cloud' : '💾 Local'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.wordAttemptCol3}>
-            <Text style={[
-              styles.wordAttemptScore,
-              { color: getAccuracyColor(displayAccuracy / 100) }
-            ]}>
-              {displayAccuracy.toFixed(1)}%
-            </Text>
-            <Text style={styles.wordAttemptStatus}>
-              {attempt.status === 'correct' ? '✅' : attempt.status === 'partial' ? '⚠️' : '❌'}
-              {' '}{attempt.status}
-            </Text>
-          </View>
-          <View style={styles.wordAttemptCol4}>
-            <Text style={styles.wordAttemptFeedback}>
-              {displayFeedback}
-            </Text>
-            {shouldTruncate && (
-              <TouchableOpacity
-                style={styles.feedbackShowMoreButton}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  toggleFeedback(attempt.id);
-                }}
-                accessibilityLabel={isExpanded ? "Show less feedback" : "Show more feedback"}
-                accessibilityRole="button"
-              >
-                <Text style={styles.feedbackShowMoreText}>
-                  {isExpanded ? 'Show Less' : 'Show More'}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.wordAttemptCol5}>
-            <Text style={styles.wordAttemptTime}>
-              {attempt.timestamp.toLocaleDateString()}
-            </Text>
-            <Text style={styles.wordAttemptTime}>
-              {attempt.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </Text>
-          </View>
-        </View>
-      );
-    };
-        
-    return (
-      <View style={styles.practiceSessionContainer}>
-        <View style={styles.practiceHeader}>
-          <Text style={styles.practiceWordTitle}>Practice: "{word}"</Text>
-          <TouchableOpacity
-            style={styles.closePracticeButton}
-            onPress={stopWordPractice}
-            accessibilityLabel="Close practice session"
-            accessibilityRole="button"
-          >
-            <Text style={styles.closePracticeText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-        
-        {/* Practice audio button - FIXED */}
-        <View style={styles.practiceAudioSection}>
-          <TouchableOpacity
-            style={[
-              styles.practiceListenButton,
-              isPlayingPronunciation && styles.practiceListenButtonActive
-            ]}
-            onPress={playWordPronunciation}
-            accessibilityLabel={`Listen to correct pronunciation of ${word}`}
-            accessibilityRole="button"
-          >
-            <Text style={styles.practiceListenText}>
-              {isPlayingPronunciation ? '⏸️ Playing...' : '🔊 Listen to Correct Pronunciation'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        
-        {/* Record practice button */}
-        <View style={styles.practiceRecordSection}>
-          <TouchableOpacity
-            style={[
-              styles.practiceRecordButton,
-              isPracticingWord && styles.practiceRecordButtonActive
-            ]}
-            onPress={isPracticingWord ? stopWordRecording : startWordRecording}
-            accessibilityLabel={isPracticingWord ? 'Stop recording practice' : 'Start recording practice'}
-            accessibilityRole="button"
-          >
-            <Text style={styles.practiceRecordIcon}>
-              {isPracticingWord ? '⏹️' : '🎤'}
-            </Text>
-            <Text style={styles.practiceRecordText}>
-              {isPracticingWord ? `Recording... ${practiceRecordingTime}` : 'Record Your Pronunciation'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        
-        {/* Practice statistics */}
-        {practiceData && practiceData.attempts.length > 0 && (
-          <View style={styles.practiceStatsSection}>
-            <Text style={styles.practiceStatsTitle}>Practice Progress:</Text>
-            <View style={styles.practiceStatsRow}>
-              <Text style={styles.practiceStatText}>Attempts: {practiceData.attempts.length}</Text>
-              <Text style={styles.practiceStatText}>Best Score: {practiceData.bestScore.toFixed(1)}%</Text>
-              <Text style={[
-                styles.practiceStatText,
-                { color: practiceData.mastered ? '#10B981' : '#F59E0B' }
-              ]}>
-                {practiceData.mastered ? '✅ Mastered!' : '📚 Keep Practicing'}
-              </Text>
-            </View>
-            
-            {/* Tabular view of attempts */}
-            <View style={styles.wordAttemptsTableContainer}>
-              <Text style={styles.wordAttemptsTableTitle}>Practice History ({practiceData.attempts.length})</Text>
-              <ScrollView 
-                horizontal={true}
-                showsHorizontalScrollIndicator={true}
-                contentContainerStyle={styles.wordAttemptsScrollContent}
-              >
-                <View style={styles.wordAttemptsTable}>
-                  {/* Table Header */}
-                  <View style={styles.wordAttemptHeader}>
-                    <View style={styles.wordAttemptCol1}>
-                      <Text style={styles.wordAttemptHeaderText}>#</Text>
-                    </View>
-                    <View style={styles.wordAttemptCol2}>
-                      <Text style={styles.wordAttemptHeaderText}>Audio</Text>
-                    </View>
-                    <View style={styles.wordAttemptCol3}>
-                      <Text style={styles.wordAttemptHeaderText}>Score</Text>
-                    </View>
-                    <View style={styles.wordAttemptCol4}>
-                      <Text style={styles.wordAttemptHeaderText}>Feedback</Text>
-                    </View>
-                    <View style={styles.wordAttemptCol5}>
-                      <Text style={styles.wordAttemptHeaderText}>Date/Time</Text>
-                    </View>
-                  </View>
-                  
-                  {/* Table Rows */}
-                  <FlatList
-                    data={showAllWordAttempts ? practiceData.attempts : practiceData.attempts.slice(0, 3)}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderWordAttemptRow}
-                    scrollEnabled={false}
-                    nestedScrollEnabled={true}
-                  />
-                  
-                  {/* Show More/Less Button */}
-                  {practiceData.attempts.length > 3 && (
-                    <View style={styles.wordAttemptShowMoreContainer}>
-                      {showAllWordAttempts ? (
-                        <TouchableOpacity
-                          style={styles.showLessButton}
-                          onPress={() => {
-                            Haptics.selectionAsync();
-                            setShowAllWordAttempts(false);
-                          }}
-                          accessibilityLabel="Show fewer attempts"
-                          accessibilityRole="button"
-                        >
-                          <Text style={styles.showLessText}>Show Fewer Attempts</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.showMoreButton}
-                          onPress={() => {
-                            Haptics.selectionAsync();
-                            setShowAllWordAttempts(true);
-                          }}
-                          accessibilityLabel="Show all attempts"
-                          accessibilityRole="button"
-                        >
-                          <Text style={styles.showMoreText}>Show All {practiceData.attempts.length} Attempts</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  )}
-                </View>
-              </ScrollView>
-            </View>
-          </View>
-        )}
-      </View>
-    );
-  };
-      
-
-  // Enhanced pronunciation analysis component with clickable words
-  const EnhancedPronunciationAnalysis = ({ 
-    attempt, 
-    showWordLimit = true 
-  }: { 
-    attempt: PracticeAttempt; 
-    showWordLimit?: boolean;
-  }) => {
-    const audioData = attempt.scores.audio_data;
-    const referenceText = getCurrentSession()?.referenceText || '';
-    const words = referenceText.toLowerCase().split(/\s+/);
-    
-    // Create word status mapping
-    const wordStatusMap: { [key: string]: 'correct' | 'partial' | 'mispronounced' } = {};
-    
-    attempt.correctlyPronuncedWords.forEach(word => {
-      wordStatusMap[word.toLowerCase()] = 'correct';
-    });
-    
-    attempt.mispronuncedWords.forEach(word => {
-      wordStatusMap[word.toLowerCase()] = 'mispronounced';
-    });
-    
-    // Words not in either list are assumed to be partial
-    words.forEach(word => {
-      if (!wordStatusMap[word]) {
-        wordStatusMap[word] = 'partial';
-      }
-    });
-
-    const displayWords = showWordLimit ? words.slice(0, 8) : words;
-    const hasMoreWords = words.length > 8;
-
-    return (
-      <View style={styles.pronunciationAnalysis}>
-        <Text style={styles.pronunciationSectionTitle}>
-          Pronunciation Analysis (Tap words to hear correct pronunciation):
-        </Text>
-        <View style={styles.wordsContainer}>
-          {displayWords.map((word, wordIndex) => {
-            const status = wordStatusMap[word] || 'partial';
-            const wordAudioData = audioData?.word_audio?.[word];
-            
-            return (
-              <PronunciationWord
-                key={wordIndex}
-                word={word}
-                status={status}
-                audioData={wordAudioData}
-                playingWord={playingWord}
-                setPlayingWord={setPlayingWord}
-              />
-            );
-          })}
-          {showWordLimit && hasMoreWords && (
-            <Text style={styles.moreWordsText}>+{words.length - 8} more words</Text>
-          )}
-        </View>
-        
-        {audioData?.sentence_audio && (
-          <TouchableOpacity
-            style={styles.sentenceAudioButton}
-            onPress={async () => {
-              try {
-                Haptics.selectionAsync();
-                if (audioData.sentence_audio?.audio_base64) {
-                  await playBase64Audio(
-                    audioData.sentence_audio.audio_base64, 
-                    'complete sentence', 
-                    setPlayingWord
-                  );
-                }
-              } catch (error) {
-                console.error('Error playing sentence audio:', error);
-                Alert.alert('Audio Error', 'Could not play sentence pronunciation.');
-              }
-            }}
-            accessibilityLabel="Play correct pronunciation of complete sentence"
-            accessibilityRole="button"
-          >
-            <Text style={styles.sentenceAudioText}>
-              🔊 Play Complete Sentence Pronunciation
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
-
-  const SimpleProgressChart = ({ data } : any) => {
-    if (!data || !data.datasets[0] || data.datasets[0].data.length === 0) {
-      return null;
-    }
-
-    const maxValue = Math.max(...data.datasets[0].data);
-    const minValue = Math.min(...data.datasets[0].data);
-    const range = maxValue - minValue || 1;
-    
-    const chartHeight = 120;
-    const dataPoints = data.datasets[0].data;
-    const numPoints = dataPoints.length;
-
-    return (
-      <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Progress Chart</Text>
-        <View style={styles.simpleChart}>
-          <View style={styles.chartYAxis}>
-            <Text style={styles.chartAxisLabel}>{maxValue.toFixed(1)}%</Text>
-            <Text style={styles.chartAxisLabel}>{((maxValue + minValue) / 2).toFixed(1)}%</Text>
-            <Text style={styles.chartAxisLabel}>{minValue.toFixed(1)}%</Text>
-          </View>
-          <View style={styles.chartArea}>
-            <View style={styles.chartLine}>
-              {/* Data points - render FIRST so they appear behind the line */}
-              {dataPoints.map((value : any, index : any) => {
-                const xPercent = (index / (numPoints - 1)) * 100;
-                // Distance from bottom (inverted from minValue-maxValue range)
-                const yFromBottom = ((value - minValue) / range) * chartHeight;
-
-                return (
-                  <React.Fragment key={index}>
-                    {/* Dot */}
-                    <View
-                      style={{
-                        position: 'absolute',
-                        bottom: yFromBottom - 6,
-                        left: `${xPercent}%`,
-                        marginLeft: -6,
-                        width: 12,
-                        height: 12,
-                        borderRadius: 6,
-                        backgroundColor: getAccuracyColor(value / 100),
-                        borderWidth: 3,
-                        borderColor: '#FFFFFF',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.2,
-                        shadowRadius: 4,
-                        elevation: 4,
-                        zIndex: 2,
-                      }}
-                    />
-                    {/* Value label */}
-                    <View
-                      style={{
-                        position: 'absolute',
-                        bottom: yFromBottom + 15,
-                        left: `${xPercent}%`,
-                        marginLeft: -15,
-                        backgroundColor: '#6B7280',
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 4,
-                        zIndex: 3,
-                      }}
-                    >
-                      <Text style={styles.chartValueText}>{value.toFixed(0)}%</Text>
-                    </View>
-                  </React.Fragment>
-                );
-              })}
-
-              {/* SVG Line - render AFTER dots */}
-              <View
-                style={{
-                  position: 'absolute',
-                  width: '100%',
-                  height: chartHeight,
-                  bottom: 0, // Anchor to bottom
-                }}
-              >
-                <Svg
-                  width="100%"
-                  height={chartHeight}
-                  viewBox={`0 0 100 ${chartHeight}`}
-                  preserveAspectRatio="none"
-                >
-                  <Polyline
-                    points={dataPoints.map((value: any, index: any) => {
-                      const x = (index / (numPoints - 1)) * 100;
-                      // SVG Y from bottom (same as dots): 0 = bottom, chartHeight = top
-                      const y = chartHeight - ((value - minValue) / range) * chartHeight;
-                      return `${x},${y}`;
-                    }).join(' ')}
-                    fill="none"
-                    stroke="#7C3AED"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-              </View>
-            </View>
-
-            <View style={styles.chartXAxis}>
-              {data.labels.map((label : any, index : any) => (
-                <Text key={index} style={styles.chartXLabel}>#{label}</Text>
-              ))}
-            </View>
-          </View>
-        </View>
-      </View>
-    );
   };
 
   const formatAccuracy = (accuracy: number): string => {
     return `${(accuracy * 100).toFixed(1)}%`;
   };
 
-  const getProgressChartData = () => {
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.attempts.length === 0) {
-      return null;
-    }
-    const attempts = [...currentSession.attempts].reverse();
-    const labels = attempts.map((_, index) => `${index + 1}`);
-    const data = attempts.map(attempt => attempt.scores.accuracy * 100);
-    return {
-      labels,
-      datasets: [{ data }]
-    };
-  };
-
   const getAccuracyColor = (accuracy: number): string => {
-    if (accuracy >= 0.9) return '#6EE7B7';
-    if (accuracy >= 0.8) return '#FBBF24';
-    return '#FCA5A5';
+    if (accuracy >= 0.9) return '#10B981';
+    if (accuracy >= 0.8) return '#F59E0B';
+    return '#EF4444';
   };
 
   const renderMessage = ({ item: message }: { item: ChatMessage }) => {
     const isUser = message.isUser;
-    return (
-      <View key={message.id} style={[
-        styles.messageContainer,
-        isUser ? styles.userMessage : styles.botMessage
-      ]}>
+      return (
+        <View key={message.id} style={[
+          styles.messageContainer,
+          isUser ? styles.userMessage : styles.botMessage
+        ]}>
         {message.type === 'text' && (
           <Text style={[
             styles.messageText,
@@ -2355,154 +2071,28 @@ const stopWordRecording = async () => {
               </View>
             )}
             
-            {/* Enhanced Pronunciation Analysis with clickable words */}
-            <EnhancedPronunciationAnalysis attempt={message.result} />
+            <EnhancedPronunciationAnalysis 
+              attempt={message.result}
+              playingWord={playingWord}
+              setPlayingWord={setPlayingWord}
+              referenceText={currentSession?.referenceText || ''}
+            />
           </View>
         )}
-        <Text style={styles.messageTime}>
-          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </Text>
-      </View>
-    );
-  };
-
-  const renderHistoryItem = ({ item: attempt, index }: { item: PracticeAttempt, index: number }) => {
-    const attemptNumber = currentSession!.attempts.length - index;
-    const audioUrl = attempt.audioUrl || attempt.audioPath;
-    const isCloudStored = audioUrl && (audioUrl.startsWith('http://') || audioUrl.startsWith('https://'));
-    
-    // Get mispronounced words for practice
-    const mispronuncedWords = attempt.mispronuncedWords || [];
-    
-    return (
-      <View key={attempt.id} style={styles.tableRow}>
-        <View style={styles.colSerialNumber}>
-          <Text style={styles.tableCellText}>{attemptNumber}</Text>
-        </View>
-        <View style={styles.colAudioFile}>
-          <TouchableOpacity
-            style={styles.audioButtonContainer}
-            onPress={() => playAudio(audioUrl, attempt.id)}
-            accessibilityLabel={isPlaying && playingMessageId === attempt.id ? 'Pause audio' : 'Play audio'}
-            accessibilityRole="button"
-          >
-            <Text style={styles.audioPlayIcon}>
-              {isPlaying && playingMessageId === attempt.id ? '⏸️' : '▶️'}
-            </Text>
-            <View style={styles.audioFileInfo}>
-              <Text style={styles.audioFileName}>
-                {attempt.fileName || `Recording ${attemptNumber}`}
-              </Text>
-              <Text style={styles.audioFileStatus}>
-                {isCloudStored ? '☁️ Cloud' : '💾 Local'} • {attempt.source === 'recording' ? 'Recorded' : 'Uploaded'}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.colScore}>
-          <View style={styles.scoreContainer}>
-            <Text style={[
-              styles.scoreValue,
-              { color: getAccuracyColor(attempt.scores.accuracy) }
-            ]}>
-              {formatAccuracy(attempt.scores.accuracy)}
-            </Text>
-            <Text style={styles.phonemeInfo}>
-              {attempt.scores.correct_phonemes}/{attempt.scores.total_phonemes}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.colPronunciation}>
-          <EnhancedPronunciationAnalysis attempt={attempt} showWordLimit={true} />
-        </View>
-        <View style={styles.colPractice}>
-          {mispronuncedWords.length > 0 ? (
-            <View style={styles.practiceColumn}>
-              <Text style={styles.practiceTitle}>Words to Practice:</Text>
-              <ScrollView style={styles.practiceWordsScrollView} nestedScrollEnabled>
-                {mispronuncedWords.map((word, wordIndex) => {
-                  const wordPracticeData = practiceWords[word];
-                  const isMastered = wordPracticeData?.mastered || false;
-                  
-                  return (
-                    <TouchableOpacity
-                      key={wordIndex}
-                      style={[
-                        styles.practiceWordButton,
-                        isMastered && styles.masteredWordButton
-                      ]}
-                      onPress={() => startWordPractice(word)}
-                      accessibilityLabel={`Practice pronunciation of ${word}`}
-                      accessibilityRole="button"
-                    >
-                      <Text style={[
-                        styles.practiceWordText,
-                        isMastered && styles.masteredWordText
-                      ]}>
-                        {word} {isMastered ? '✅' : '📚'}
-                      </Text>
-                      {wordPracticeData && (
-                        <Text style={styles.practiceWordStats}>
-                          {wordPracticeData.attempts.length} tries, best: {wordPracticeData.bestScore.toFixed(0)}%
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-              <Text style={styles.practiceHint}>Tap words to practice individually</Text>
-            </View>
-          ) : (
-            <View style={styles.noPracticeNeeded}>
-              <Text style={styles.noPracticeText}>🎉 All words pronounced correctly!</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.colFeedback}>
-          <View style={styles.feedbackContainer}>
-            <Text style={styles.feedbackPreview} numberOfLines={3}>
-              {attempt.feedback || 'No feedback'}
-            </Text>
-            <TouchableOpacity
-              style={styles.showMoreButton}
-              onPress={() => {
-                Haptics.selectionAsync();
-                Alert.alert(
-                  'Detailed Feedback',
-                  attempt.feedback || 'No feedback available',
-                  [{ text: 'OK' }]
-                );
-              }}
-              accessibilityLabel="View detailed feedback"
-              accessibilityRole="button"
-            >
-              <Text style={styles.showMoreText}>Show more</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.colDateTime}>
-          <Text style={styles.timestampText}>
-            {attempt.timestamp.toLocaleDateString()}
-          </Text>
-          <Text style={styles.timestampText}>
-            {attempt.timestamp.toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-          </Text>
-        </View>
-      </View>
-    );
-  };
+      <Text style={styles.messageTime}>
+        {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      </Text>
+    </View>
+  );
+};
 
   const currentSession = getCurrentSession();
-  const chartData = getProgressChartData();
 
   if (isAuthenticating) {
     return (
       <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#A5B4FC" />
+          <ActivityIndicator size="large" color="#475569" />
           <Text style={styles.loadingText}>Authenticating...</Text>
         </View>
       </SafeAreaView>
@@ -2510,7 +2100,7 @@ const stopWordRecording = async () => {
   }
 
   if (!currentUser) {
-    return null; // Will redirect to sign in
+    return null;
   }
 
   return (
@@ -2537,6 +2127,7 @@ const stopWordRecording = async () => {
                 Haptics.selectionAsync();
                 setCurrentSessionId(null);
                 setInputText('');
+                setWordUpdates({}); // Clear word updates when starting new session
               }}
               accessibilityLabel="Start new practice session"
               accessibilityRole="button"
@@ -2549,14 +2140,13 @@ const stopWordRecording = async () => {
             onPress={handleSignOut}
             accessibilityLabel="Sign out"
             accessibilityRole="button"
-          >
+            >
             <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
           <Text style={styles.connectionIndicator}>🟢</Text>
         </View>
       </View>
 
-      {/* User info banner */}
       <View style={styles.userInfoBanner}>
         <Text style={styles.userInfoText}>
           👤 {currentUser.displayName || currentUser.email}
@@ -2587,7 +2177,10 @@ const stopWordRecording = async () => {
                 styles.sessionItem,
                 currentSession?.id === session.id && styles.activeSessionItem
               ]}
-              onPress={() => selectSession(session)}
+              onPress={() => {
+                selectSession(session);
+                setWordUpdates({}); // Clear word updates when switching sessions
+              }}
               accessibilityLabel={`Select session: ${session.referenceText}`}
               accessibilityRole="button"
             >
@@ -2682,85 +2275,20 @@ const stopWordRecording = async () => {
               keyExtractor={(item) => item.id}
               renderItem={renderMessage}
               contentContainerStyle={styles.chatContent}
+              style={styles.chatList}
               ListFooterComponent={() => (
                 <>
-                  {chartData && currentSession.attempts.length > 1 && (
-                    <SimpleProgressChart data={chartData} />
-                  )}
                   {currentSession.attempts.length > 0 && (
-                    <View style={styles.historyContainer}>
-                      <Text style={styles.historyTitle}>Practice History ({currentSession.attempts.length})</Text>
-                      <ScrollView
-                        horizontal={true}
-                        showsHorizontalScrollIndicator={true}
-                        contentContainerStyle={styles.historyTableContainer}
-                      >
-                        <FlatList
-                          data={showAllAttempts ? currentSession.attempts : currentSession.attempts.slice(0, 3)}
-                          keyExtractor={(item) => item.id}
-                          renderItem={renderHistoryItem}
-                          contentContainerStyle={styles.historyTable}
-                          showsVerticalScrollIndicator={true}
-                          nestedScrollEnabled={true}
-                          ListHeaderComponent={
-                            <View style={styles.tableHeader}>
-                              <View style={styles.colSerialNumber}>
-                                <Text style={styles.tableHeaderText}>Attempt #</Text>
-                              </View>
-                              <View style={styles.colAudioFile}>
-                                <Text style={styles.tableHeaderText}>Audio File</Text>
-                              </View>
-                              <View style={styles.colScore}>
-                                <Text style={styles.tableHeaderText}>Score</Text>
-                              </View>
-                              <View style={styles.colPronunciation}>
-                                <Text style={styles.tableHeaderText}>Pronunciation Analysis</Text>
-                              </View>
-                              <View style={styles.colPractice}>
-                                <Text style={styles.tableHeaderText}>Word Practice</Text>
-                              </View>
-                              <View style={styles.colFeedback}>
-                                <Text style={styles.tableHeaderText}>Feedback</Text>
-                              </View>
-                              <View style={styles.colDateTime}>
-                                <Text style={styles.tableHeaderText}>Date/Time</Text>
-                              </View>
-                            </View>
-                          }
-                          ListFooterComponent={() =>
-                            currentSession.attempts.length > 3 ? (
-                              <View style={styles.showMoreContainer}>
-                                {showAllAttempts ? (
-                                  <TouchableOpacity
-                                    style={styles.showLessButton}
-                                    onPress={() => {
-                                      Haptics.selectionAsync();
-                                      setShowAllAttempts(false);
-                                    }}
-                                    accessibilityLabel="Show fewer attempts"
-                                    accessibilityRole="button"
-                                  >
-                                    <Text style={styles.showLessText}>Show Fewer Attempts</Text>
-                                  </TouchableOpacity>
-                                ) : (
-                                  <TouchableOpacity
-                                    style={styles.showMoreButton}
-                                    onPress={() => {
-                                      Haptics.selectionAsync();
-                                      setShowAllAttempts(true);
-                                    }}
-                                    accessibilityLabel="Show all attempts"
-                                    accessibilityRole="button"
-                                  >
-                                    <Text style={styles.showMoreText}>Show All {currentSession.attempts.length} Attempts</Text>
-                                  </TouchableOpacity>
-                                )}
-                              </View>
-                            ) : null
-                          }
-                        />
-                      </ScrollView>
-                    </View>
+                    <LatestAttemptDisplay 
+                      key={refreshKey} // Force re-render when refreshKey changes
+                      attempt={currentSession.attempts[0]}
+                      playingWord={playingWord}
+                      setPlayingWord={setPlayingWord}
+                      onWordRecord={handleWordRecord}
+                      isRecording={isRecording}
+                      recordingWord={recordingWord}
+                      isProcessing={isProcessing}
+                    />
                   )}
                 </>
               )}
@@ -2781,17 +2309,6 @@ const stopWordRecording = async () => {
         )}
       </View>
       
-      {/* Word Practice Session Overlay */}
-      {currentPracticeWord && (
-        <View style={styles.practiceOverlay}>
-          <View style={styles.practiceOverlayBackground} />
-          <View style={styles.practiceModal}>
-            <WordPracticeSession word={currentPracticeWord} />
-          </View>
-        </View>
-      )}
-      
-      {/* Only show input section when there's NO active session */}
       {!currentSession && (
         <View style={[styles.inputSection, { paddingBottom: insets.bottom + 10 }]}>
           <View style={styles.inputContainer}>
@@ -2837,37 +2354,21 @@ const stopWordRecording = async () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FF',
+    backgroundColor: '#F8FAFC',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
-    backgroundColor: '#F8F9FF',
+    backgroundColor: '#F8FAFC',
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#6B7280',
+    color: '#475569',
     textAlign: 'center',
     fontWeight: '600',
-    fontFamily: 'RobotoMono-Medium',
-  },
-  connectionStatus: {
-    backgroundColor: 'rgba(244, 63, 94, 0.1)',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F43F5E',
-    alignItems: 'center',
-  },
-  connectionStatusText: {
-    fontSize: 12,
-    color: '#F43F5E',
-    textAlign: 'center',
-    fontWeight: '500',
-    fontFamily: 'RobotoMono-Medium',
   },
   connectionIndicator: {
     fontSize: 14,
@@ -2877,75 +2378,304 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.6,
   },
-  firebaseWarning: {
+  simplifiedTableContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginVertical: 8,
+    marginHorizontal: 0,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  wordBoxesContainer: {
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  wordBoxesScrollContent: {
+    paddingRight: 16,
+  },
+  wordBoxesTitle: {
     fontSize: 14,
-    color: '#F43F5E',
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 10,
+  },
+  wordBoxes: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    gap: 6,
+    marginBottom: 12,
+    minHeight: 40,
+  },
+  wordBox: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    minWidth: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wordBoxText: {
+    fontSize: 13,
+    fontWeight: '600',
     textAlign: 'center',
-    marginTop: 16,
-    paddingHorizontal: 20,
+  },
+  wordBoxAccuracy: {
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  legendColorBox: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+    borderWidth: 1,
+  },
+  legendText: {
+    fontSize: 11,
+    color: '#64748B',
     fontWeight: '500',
-    lineHeight: 20,
-    fontFamily: 'RobotoMono-Medium',
+  },
+  tableSection: {
+    padding: 12,
+    flex: 1,
+  },
+  tableSectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  tableContainer: {
+    flex: 1,
+    width: '100%',
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#475569',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+  },
+  tableHeaderText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  tableRowsContainer: {
+    maxHeight: height * 0.4,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    alignItems: 'center',
+    minHeight: 52,
+  },
+  tableCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  wordText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  accuracyBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+    minWidth: 40,
+  },
+  accuracyText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  iconButton: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+    minWidth: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingButton: {
+    backgroundColor: '#EF4444',
+    transform: [{ scale: 1.05 }],
+  },
+  iconText: {
+    fontSize: 14,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    minWidth: 0,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  allCorrectContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#BBF7D0',
+    borderStyle: 'dashed',
+    marginVertical: 10,
+  },
+  allCorrectIcon: {
+    fontSize: 36,
+    marginBottom: 12,
+  },
+  allCorrectTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#065F46',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  allCorrectText: {
+    fontSize: 13,
+    color: '#047857',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  latestAttemptContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginVertical: 12,
+    marginHorizontal: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+    width: '100%',
+  },
+  accuracyScoreSection: {
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#F1F5F9',
+  },
+  accuracyScoreTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  scoreDisplay: {
+    backgroundColor: '#475569',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    shadowColor: '#475569',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 8,
+    minWidth: 100,
+  },
+  scoreDisplayText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  accuracySubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  latestAttemptInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  latestAttemptMeta: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  feedbackSection: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#475569',
+  },
+  feedbackTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 6,
+  },
+  feedbackText: {
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 18,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 0,
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-    zIndex: 100,
-  },
-  sidebarToggle: {
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(102, 126, 234, 0.12)',
-    marginRight: 12,
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
     elevation: 2,
-  },
-  sidebarIcon: {
-    fontSize: 24,
-    color: '#667eea',
-    fontWeight: 'bold',
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: width < 360 ? 16 : 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginRight: 12,
-    fontFamily: 'RobotoMono-Bold',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  newSessionButton: {
-    backgroundColor: '#667eea',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 25,
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  newSessionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.5,
   },
   sidebar: {
     position: 'absolute',
@@ -2957,9 +2687,64 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 4, height: 0 },
+    shadowOffset: { width: 2, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  sidebarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#475569',
+  },
+  firebaseWarning: {
+    fontSize: 14,
+    color: '#DC2626',
+    textAlign: 'center',
+    marginTop: 16,
+    paddingHorizontal: 20,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  sidebarToggle: {
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(71, 85, 105, 0.1)',
+    marginRight: 12,
+  },
+  sidebarIcon: {
+    fontSize: 24,
+    color: '#475569',
+    fontWeight: 'bold',
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: width < 360 ? 16 : 18,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginRight: 12,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  newSessionButton: {
+    backgroundColor: '#475569',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#475569',
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  newSessionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   sidebarOverlay: {
     position: 'absolute',
@@ -2970,13 +2755,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 999,
   },
-  sidebarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#667eea',
-  },
   sidebarTitleContainer: {
     flex: 1,
   },
@@ -2985,13 +2763,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     marginBottom: 4,
-    fontFamily: 'RobotoMono-Bold',
   },
   sidebarSubtitle: {
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.85)',
     fontWeight: '400',
-    fontFamily: 'RobotoMono-Regular',
   },
   closeButtonContainer: {
     padding: 8,
@@ -3019,26 +2795,24 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   activeSessionItem: {
-    backgroundColor: 'rgba(102, 126, 234, 0.15)',
+    backgroundColor: 'rgba(71, 85, 105, 0.1)',
     borderLeftWidth: 4,
-    borderLeftColor: '#667eea',
+    borderLeftColor: '#475569',
   },
   sessionText: {
     fontSize: width < 360 ? 14 : 15,
-    color: '#1F2937',
+    color: '#1E293B',
     marginBottom: 6,
     lineHeight: 20,
-    fontFamily: 'RobotoMono-Medium',
   },
   activeSessionText: {
-    color: '#667eea',
-    fontWeight: '700',
+    color: '#475569',
+    fontWeight: '600',
   },
   sessionMeta: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#64748B',
     lineHeight: 16,
-    fontFamily: 'RobotoMono-Regular',
   },
   emptySessionsContainer: {
     alignItems: 'center',
@@ -3049,23 +2823,21 @@ const styles = StyleSheet.create({
   emptySessionsIcon: {
     fontSize: 48,
     marginBottom: 16,
-    color: '#6B7280',
+    color: '#64748B',
     opacity: 0.6,
   },
   emptySessions: {
     textAlign: 'center',
-    color: '#1F2937',
+    color: '#1E293B',
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 8,
-    fontFamily: 'RobotoMono-SemiBold',
   },
   emptySessionsSubtext: {
     textAlign: 'center',
-    color: '#6B7280',
+    color: '#64748B',
     fontSize: 14,
     lineHeight: 20,
-    fontFamily: 'RobotoMono-Regular',
   },
   mainContent: {
     flex: 1,
@@ -3075,9 +2847,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#EDE9FE',
+    borderBottomColor: '#E2E8F0',
     borderLeftWidth: 4,
-    borderLeftColor: '#EDE9FE',
+    borderLeftColor: '#475569',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -3093,29 +2865,35 @@ const styles = StyleSheet.create({
   referenceLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#7C3AED',
-    fontFamily: 'RobotoMono-Bold',
+    color: '#475569',
   },
   sessionCount: {
     fontSize: 12,
-    color: '#6B7280',
-    backgroundColor: '#EDE9FE',
+    color: '#64748B',
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    fontFamily: 'RobotoMono-Medium',
+  },
+  chatList: {
+    flex: 1,
+    width: '100%',
+  },
+  chatContent: {
+    padding: 16,
+    paddingBottom: 20,
+    flexGrow: 1,
   },
   referenceText: {
     fontSize: width < 360 ? 16 : 18,
-    color: '#1F2937',
+    color: '#1E293B',
     lineHeight: 26,
     marginBottom: 16,
     padding: 16,
-    backgroundColor: 'rgba(124, 58, 237, 0.05)',
+    backgroundColor: 'rgba(71, 85, 105, 0.05)',
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#7C3AED',
-    fontFamily: 'RobotoMono-Regular',
+    borderLeftColor: '#475569',
   },
   audioInputOptions: {
     flexDirection: 'row',
@@ -3129,33 +2907,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
     minWidth: 140,
   },
   recordOptionButton: {
-    backgroundColor: '#667eea',
+    backgroundColor: '#475569',
   },
   uploadOptionButton: {
-    backgroundColor: '#f093fb',
+    backgroundColor: '#475569',
   },
   audioOptionIcon: {
-    fontSize: 22,
+    fontSize: 20,
     color: '#FFFFFF',
-    marginRight: 10,
+    marginRight: 8,
   },
   audioOptionText: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#FFFFFF',
     textAlign: 'center',
-    letterSpacing: 0.3,
   },
   processingSection: {
     flexDirection: 'row',
@@ -3163,38 +2940,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     gap: 10,
-    backgroundColor: 'rgba(124, 58, 237, 0.1)',
+    backgroundColor: 'rgba(71, 85, 105, 0.1)',
     borderRadius: 10,
   },
   processingText: {
-    color: '#7C3AED',
+    color: '#475569',
     fontSize: 14,
     fontWeight: '500',
-    fontFamily: 'RobotoMono-Medium',
   },
   welcomeContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
-    backgroundColor: '#F8F9FF',
+    backgroundColor: '#F8FAFC',
   },
   welcomeTitle: {
     fontSize: width < 360 ? 22 : 24,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#1E293B',
     marginBottom: 16,
     textAlign: 'center',
-    fontFamily: 'RobotoMono-Bold',
   },
   welcomeText: {
     fontSize: 16,
-    color: '#6B7280',
+    color: '#64748B',
     textAlign: 'center',
     lineHeight: 24,
-    fontFamily: 'RobotoMono-Regular',
   },
-  // Enhanced pronunciation word styles
   pronunciationWordButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -3211,10 +2984,9 @@ const styles = StyleSheet.create({
   pronunciationWordText: {
     fontSize: 14,
     fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
   },
   sentenceAudioButton: {
-    backgroundColor: '#7C3AED',
+    backgroundColor: '#475569',
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -3230,11 +3002,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  chatContent: {
-    padding: 16,
-    paddingBottom: 20,
   },
   messageContainer: {
     marginVertical: 8,
@@ -3242,7 +3009,7 @@ const styles = StyleSheet.create({
   },
   userMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#7C3AED',
+    backgroundColor: '#475569',
     borderRadius: 16,
     borderBottomRightRadius: 4,
     padding: 12,
@@ -3259,7 +3026,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#EDE9FE',
+    borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -3269,13 +3036,12 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 16,
     lineHeight: 22,
-    fontFamily: 'RobotoMono-Regular',
   },
   userMessageText: {
     color: '#FFFFFF',
   },
   botMessageText: {
-    color: '#1F2937',
+    color: '#1E293B',
   },
   audioMessage: {
     flexDirection: 'row',
@@ -3298,21 +3064,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     flex: 1,
-    fontFamily: 'RobotoMono-Regular',
   },
   resultMessage: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#EDE9FE',
+    borderColor: '#E2E8F0',
   },
   resultTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#1E293B',
     marginBottom: 12,
-    fontFamily: 'RobotoMono-Bold',
   },
   scoreContainer: {
     flexDirection: 'row',
@@ -3323,295 +3087,31 @@ const styles = StyleSheet.create({
   scoreText: {
     fontSize: 18,
     fontWeight: '700',
-    fontFamily: 'RobotoMono-Bold',
   },
   phonemeText: {
     fontSize: 14,
-    color: '#6B7280',
-    fontFamily: 'RobotoMono-Regular',
-  },
-  audioFileInfo: {
-    flex: 1,
-    marginLeft: 8,
-  },
-  audioFileStatus: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 2,
-    fontFamily: 'RobotoMono-Regular',
-  },
-  moreWordsText: {
-    fontSize: 11,
-    color: '#6B7280',
-    fontStyle: 'italic',
-    marginTop: 4,
-    fontFamily: 'RobotoMono-Regular',
+    color: '#64748B',
   },
   feedbackContainer: {
-    backgroundColor: '#EDE9FE',
+    backgroundColor: '#F1F5F9',
     borderRadius: 8,
     padding: 12,
     flex: 1,
   },
-  feedbackTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 6,
-    fontFamily: 'RobotoMono-Bold',
-  },
-  feedbackText: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-    fontFamily: 'RobotoMono-Regular',
-  },
   messageTime: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#64748B',
     marginTop: 6,
     textAlign: 'right',
-    fontFamily: 'RobotoMono-Regular',
-  },
-  chartContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginVertical: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 20,
-    textAlign: 'center',
-    fontFamily: 'RobotoMono-Bold',
-  },
-  simpleChart: {
-    flexDirection: 'row',
-    height: 180,
-    marginVertical: 16,
-    backgroundColor: '#EDE9FE',
-    borderRadius: 12,
-    padding: 16,
-  },
-  chartYAxis: {
-    width: 60,
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    paddingRight: 12,
-  },
-  chartAxisLabel: {
-    fontSize: 11,
-    color: '#6B7280',
-    fontWeight: '600',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  chartLine: {
-    height: 130,
-    position: 'relative',
-    marginBottom: 16,
-    paddingHorizontal: 12,
-  },
-  chartArea: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    position: 'relative', // Added for proper SVG positioning
-  },
-  
-chartPointContainer: {
-  position: 'absolute',
-  width: 12,
-  height: '100%',
-  alignItems: 'center',
-  marginLeft: -6, // Center the point
-},
-chartDot: {
-  position: 'absolute',
-  width: 12,
-  height: 12,
-  borderRadius: 6,
-  borderWidth: 3,
-  borderColor: '#FFFFFF',
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.2,
-  shadowRadius: 4,
-  elevation: 5, // Higher elevation for dots to appear on top
-  zIndex: 10,
-},
-
-chartValueLabel: {
-  position: 'absolute',
-  backgroundColor: '#6B7280',
-  paddingHorizontal: 8,
-  paddingVertical: 4,
-  borderRadius: 8,
-  opacity: 0.9,
-  zIndex: 11, // Labels on top
-},
-  chartValueText: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontFamily: 'RobotoMono-Bold',
-  },
-  chartXAxis: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-  },
-  chartXLabel: {
-    fontSize: 11,
-    color: '#6B7280',
-    textAlign: 'center',
-    flex: 1,
-    fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  historyContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  historyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 16,
-    fontFamily: 'RobotoMono-Bold',
-  },
-  historyTableContainer: {
-    minWidth: 1200, // Increased width to accommodate practice column
-    flexGrow: 1,
-  },
-  historyTable: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#EDE9FE',
-    backgroundColor: '#EDE9FE',
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#7C3AED',
-    borderBottomWidth: 2,
-    borderBottomColor: '#EDE9FE',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    minWidth: 1200, // Increased width
-  },
-  tableRow: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EDE9FE',
-  },
-  colSerialNumber: {
-    width: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  colAudioFile: {
-    width: 180,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  colScore: {
-    width: 120,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  colPronunciation: {
-    width: 220,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  colPractice: {
-    width: 250, // New practice column
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  colFeedback: {
-    width: 250, // Reduced from 300 to make room
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  colDateTime: {
-    width: 120,
-    justifyContent: 'center',
-    alignItems: 'center',
-  }, 
-  tableHeaderText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    fontFamily: 'RobotoMono-Bold',
-  },
-  tableCellText: {
-    fontSize: 14,
-    color: '#1F2937',
-    textAlign: 'center',
-    fontFamily: 'RobotoMono-Regular',
-  },
-  audioButtonContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  audioPlayIcon: {
-    fontSize: 20,
-    color: '#7C3AED',
-  },
-  audioFileName: {
-    fontSize: 14,
-    color: '#1F2937',
-    flex: 1,
-    fontFamily: 'RobotoMono-Regular',
-  },
-  scoreValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: 'RobotoMono-Bold',
-  },
-  phonemeInfo: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
-    fontFamily: 'RobotoMono-Regular',
   },
   pronunciationAnalysis: {
     flex: 1,
   },
-  correctWordsSection: {
-    marginBottom: 8,
-  },
-  mispronuncedWordsSection: {
-    marginBottom: 8,
-  },
   pronunciationSectionTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1F2937',
+    color: '#475569',
     marginBottom: 6,
-    fontFamily: 'RobotoMono-SemiBold',
   },
   wordsContainer: {
     flexDirection: 'row',
@@ -3619,347 +3119,11 @@ chartValueLabel: {
     gap: 4,
     marginBottom: 8,
   },
-  correctWordTag: {
-    backgroundColor: '#6EE7B7',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  correctWordText: {
-    fontSize: 12,
-    color: '#1F2937',
-    fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  mispronunciationTag: {
-    backgroundColor: '#FCA5A5',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  mispronunciationText: {
-    fontSize: 12,
-    color: '#1F2937',
-    fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  perfectSection: {
-    backgroundColor: '#6EE7B7',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-  },
-  perfectText: {
-    fontSize: 14,
-    color: '#1F2937',
-    fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  // Practice column styles
-  practiceColumn: {
-    flex: 1,
-  },
-  practiceTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 6,
-    fontFamily: 'RobotoMono-Bold',
-  },
-  practiceWordsScrollView: {
-    maxHeight: 120,
-    marginBottom: 6,
-  },
-  practiceWordButton: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    marginBottom: 4,
-    alignItems: 'center',
-  },
-  masteredWordButton: {
-    backgroundColor: '#D1FAE5',
-    borderColor: '#10B981',
-  },
-  practiceWordText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#F59E0B',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  masteredWordText: {
-    color: '#10B981',
-  },
-  practiceWordStats: {
-    fontSize: 10,
-    color: '#6B7280',
-    marginTop: 2,
-    fontFamily: 'RobotoMono-Regular',
-  },
-  practiceHint: {
-    fontSize: 10,
-    color: '#6B7280',
+  moreWordsText: {
+    fontSize: 11,
+    color: '#64748B',
     fontStyle: 'italic',
-    textAlign: 'center',
-    fontFamily: 'RobotoMono-Regular',
-  },
-  noPracticeNeeded: {
-    backgroundColor: '#D1FAE5',
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  noPracticeText: {
-    fontSize: 12,
-    color: '#10B981',
-    fontWeight: '600',
-    textAlign: 'center',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  // Practice session overlay styles
-  practiceOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 2000,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  practiceOverlayBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  },
-  practiceModal: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    margin: 20,
-    maxWidth: width * 0.9,
-    maxHeight: height * 0.8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  practiceSessionContainer: {
-    minWidth: 300,
-  },
-  practiceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  practiceWordTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1F2937',
-    fontFamily: 'RobotoMono-Bold',
-  },
-  closePracticeButton: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closePracticeText: {
-    fontSize: 18,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  practiceAudioSection: {
-    marginBottom: 20,
-  },
-  practiceListenButton: {
-    backgroundColor: '#7C3AED',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  practiceListenText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  practiceRecordSection: {
-    marginBottom: 20,
-  },
-  practiceRecordButton: {
-    backgroundColor: '#10B981',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  practiceRecordButtonActive: {
-    backgroundColor: '#EF4444',
-  },
-  practiceRecordIcon: {
-    fontSize: 20,
-    color: '#FFFFFF',
-  },
-  practiceRecordText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  practiceStatsSection: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-  },
-  practiceStatsTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 12,
-    fontFamily: 'RobotoMono-Bold',
-  },
-  practiceStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  practiceStatText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  recentAttemptsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 8,
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  recentAttemptsList: {
-    maxHeight: 120,
-  },
-  attemptItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  attemptInfo: {
-    flex: 1,
-  },
-  attemptScore: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  attemptTime: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-    fontFamily: 'RobotoMono-Regular',
-  },
-  playAttemptButton: {
-    backgroundColor: '#7C3AED',
-    borderRadius: 16,
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 12,
-  },
-  playAttemptIcon: {
-    fontSize: 14,
-    color: '#FFFFFF',
-  },
-  practiceTipsSection: {
-    backgroundColor: '#EDE9FE',
-    borderRadius: 12,
-    padding: 16,
-  },
-  practiceTipsTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#7C3AED',
-    marginBottom: 12,
-    fontFamily: 'RobotoMono-Bold',
-  },
-  practiceTipText: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-    marginBottom: 4,
-    fontFamily: 'RobotoMono-Regular',
-  },
-  feedbackPreview: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-    fontFamily: 'RobotoMono-Regular',
-  },
-  showMoreButton: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
-    backgroundColor: '#7C3AED',
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  showMoreText: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  showLessButton: {
-    marginTop: 12,
-    alignSelf: 'center',
-    backgroundColor: '#10B981',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  showLessText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-  showMoreContainer: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  timestampText: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-    fontFamily: 'RobotoMono-Regular',
+    marginTop: 4,
   },
   inputSection: {
     position: 'absolute',
@@ -3967,10 +3131,11 @@ chartValueLabel: {
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderTopWidth: 0,
-    shadowColor: '#667eea',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -3979,37 +3144,28 @@ chartValueLabel: {
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F7FF',
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderWidth: 2,
-    borderColor: '#E8ECFF',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   textInput: {
     flex: 1,
     fontSize: 16,
-    color: '#1F2937',
+    color: '#1E293B',
     maxHeight: 100,
-    fontFamily: 'RobotoMono-Regular',
   },
   sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#667eea',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#475569',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 12,
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    marginLeft: 8,
   },
   sendButtonDisabled: {
-    backgroundColor: '#B8C5F6',
-    shadowOpacity: 0.1,
+    backgroundColor: '#94A3B8',
     opacity: 0.5,
   },
   sendButtonText: {
@@ -4018,13 +3174,12 @@ chartValueLabel: {
   },
   connectionWarning: {
     fontSize: 12,
-    color: '#F43F5E',
+    color: '#DC2626',
     textAlign: 'center',
     marginTop: 8,
-    fontFamily: 'RobotoMono-Regular',
   },
   signOutButton: {
-    backgroundColor: '#EF4444',
+    backgroundColor: '#DC2626',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -4036,157 +3191,15 @@ chartValueLabel: {
     fontWeight: '600',
   },
   userInfoBanner: {
-    backgroundColor: '#EDE9FE',
+    backgroundColor: '#F1F5F9',
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#C4B5FD',
+    borderBottomColor: '#E2E8F0',
   },
   userInfoText: {
     fontSize: 12,
-    color: '#5B21B6',
+    color: '#475569',
     fontWeight: '500',
   },
-
-  wordAttemptsTableContainer: {
-  marginTop: 16,
-  backgroundColor: '#FFFFFF',
-  borderRadius: 12,
-  padding: 12,
-  borderWidth: 1,
-  borderColor: '#EDE9FE',
-},
-feedbackShowMoreButton: {
-    marginTop: 6,
-    alignSelf: 'flex-start',
-    backgroundColor: '#7C3AED',
-    borderRadius: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  feedbackShowMoreText: {
-    fontSize: 11,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontFamily: 'RobotoMono-SemiBold',
-  },
-wordAttemptsTableTitle: {
-  fontSize: 14,
-  fontWeight: '700',
-  color: '#1F2937',
-  marginBottom: 12,
-  fontFamily: 'RobotoMono-Bold',
-},
-wordAttemptsScrollContent: {
-  minWidth: 700,
-},
-wordAttemptsTable: {
-  minWidth: 700,
-},
-wordAttemptHeader: {
-  flexDirection: 'row',
-  backgroundColor: '#7C3AED',
-  paddingVertical: 10,
-  paddingHorizontal: 8,
-  borderTopLeftRadius: 8,
-  borderTopRightRadius: 8,
-},
-wordAttemptHeaderText: {
-  fontSize: 12,
-  fontWeight: '700',
-  color: '#FFFFFF',
-  textAlign: 'center',
-  fontFamily: 'RobotoMono-Bold',
-},
-wordAttemptRow: {
-  flexDirection: 'row',
-  backgroundColor: '#FFFFFF',
-  paddingVertical: 10,
-  paddingHorizontal: 8,
-  borderBottomWidth: 1,
-  borderBottomColor: '#EDE9FE',
-},
-wordAttemptCol1: {
-  width: 50,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-wordAttemptCol2: {
-  width: 180,
-  justifyContent: 'center',
-  paddingHorizontal: 8,
-},
-wordAttemptCol3: {
-  width: 120,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-wordAttemptCol4: {
-  width: 250,
-  justifyContent: 'center',
-  paddingHorizontal: 8,
-},
-wordAttemptCol5: {
-  width: 100,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-wordAttemptText: {
-  fontSize: 14,
-  fontWeight: '600',
-  color: '#1F2937',
-  fontFamily: 'RobotoMono-SemiBold',
-},
-wordAttemptAudioButton: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 8,
-},
-wordAttemptAudioInfo: {
-  flex: 1,
-},
-wordAttemptAudioText: {
-  fontSize: 13,
-  color: '#1F2937',
-  fontFamily: 'RobotoMono-Regular',
-},
-wordAttemptAudioStatus: {
-  fontSize: 10,
-  color: '#6B7280',
-  marginTop: 2,
-  fontFamily: 'RobotoMono-Regular',
-},
-wordAttemptScore: {
-  fontSize: 16,
-  fontWeight: '700',
-  fontFamily: 'RobotoMono-Bold',
-},
-wordAttemptStatus: {
-  fontSize: 11,
-  color: '#6B7280',
-  marginTop: 4,
-  textAlign: 'center',
-  fontFamily: 'RobotoMono-Regular',
-},
-wordAttemptFeedback: {
-  fontSize: 12,
-  color: '#6B7280',
-  lineHeight: 18,
-  fontFamily: 'RobotoMono-Regular',
-},
-wordAttemptTime: {
-  fontSize: 11,
-  color: '#6B7280',
-  textAlign: 'center',
-  fontFamily: 'RobotoMono-Regular',
-},
-wordAttemptShowMoreContainer: {
-  paddingVertical: 12,
-  alignItems: 'center',
-  borderTopWidth: 1,
-  borderTopColor: '#EDE9FE',
-},
-practiceListenButtonActive: {
-  backgroundColor: '#5B21B6', // Darker purple when playing
-},
 });
