@@ -1,7 +1,7 @@
 // app/(auth)/signup.tsx
 import 'react-native-get-random-values';
 import { View, Text, ScrollView, Alert, StyleSheet, TouchableOpacity, Animated, Dimensions } from 'react-native';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link, router } from 'expo-router';
@@ -32,12 +32,13 @@ export default function Signup() {
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-  useState(() => {
+  useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 1000,
         useNativeDriver: true,
       }),
       Animated.spring(scaleAnim, {
@@ -46,8 +47,13 @@ export default function Signup() {
         tension: 40,
         useNativeDriver: true,
       }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
     ]).start();
-  });
+  }, []);
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
@@ -119,34 +125,45 @@ export default function Signup() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Decorative elements */}
+          {/* Decorative Background Elements */}
           <View style={styles.decorativeCircle1} />
           <View style={styles.decorativeCircle2} />
           <View style={styles.decorativeCircle3} />
+          <View style={styles.decorativeCircle4} />
           
           <Animated.View 
             style={[
               styles.cardWrapper,
               {
                 opacity: fadeAnim,
-                transform: [{ scale: scaleAnim }]
+                transform: [{ scale: scaleAnim }, { translateY: slideAnim }]
               }
             ]}
           >
             <View style={styles.glassCard}>
-              {/* Logo Section */}
+              {/* Logo Section with Animation */}
               <View style={styles.logoContainer}>
                 <LinearGradient
                   colors={['#f093fb', '#f5576c']}
                   style={styles.logoGradient}
                 >
-                  <Icon name="person-add" size={40} color="#FFFFFF" />
+                  <Icon name="person-add" size={48} color="#FFFFFF" />
                 </LinearGradient>
+                <View style={styles.logoPulse} />
               </View>
 
-              <Text style={styles.title}>Create Account ✨</Text>
-              <Text style={styles.subtitle}>Start your pronunciation journey today!</Text>
+              {/* Welcome Section */}
+              <View style={styles.headerSection}>
+                <Text style={styles.title}>Create Account</Text>
+                <View style={styles.emojiContainer}>
+                  <Text style={styles.emoji}>✨</Text>
+                </View>
+              </View>
+              <Text style={styles.subtitle}>
+                Start your journey to perfect pronunciation today!
+              </Text>
 
+              {/* Form Section */}
               <View style={styles.formContainer}>
                 <FormField
                   title="Full Name"
@@ -158,7 +175,7 @@ export default function Signup() {
                   error={errors.username}
                 />
                 <FormField
-                  title="Email"
+                  title="Email Address"
                   value={form.email}
                   handleChangeText={(e: string) => setForm({ ...form, email: e })}
                   otherStyles={styles.field}
@@ -184,7 +201,7 @@ export default function Signup() {
                   otherStyles={styles.field}
                   isPasswordField={true}
                   placeholder="Re-enter your password"
-                  icon={<Icon name="lock" size={22} color="#f093fb" />}
+                  icon={<Icon name="lock-outline" size={22} color="#f093fb" />}
                   error={errors.reEnterPassword}
                 />
 
@@ -193,21 +210,36 @@ export default function Signup() {
                   handlePress={submit}
                   containerStyle={styles.submitButton}
                   isLoading={isSubmitting}
+                  gradientColors={['#f093fb', '#f5576c']}
                 />
 
+                {/* Terms & Privacy */}
+                <View style={styles.termsContainer}>
+                  <Text style={styles.termsText}>
+                    By signing up, you agree to our{' '}
+                    <Text style={styles.termsLink}>Terms of Service</Text>
+                    {' '}and{' '}
+                    <Text style={styles.termsLink}>Privacy Policy</Text>
+                  </Text>
+                </View>
+
+                {/* Divider */}
                 <View style={styles.dividerContainer}>
                   <View style={styles.divider} />
-                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerTextContainer}>
+                    <Text style={styles.dividerText}>or sign up with</Text>
+                  </View>
                   <View style={styles.divider} />
                 </View>
 
+                {/* Social Sign Up Buttons */}
                 <View style={styles.socialButtonsContainer}>
                   <TouchableOpacity 
                     style={styles.socialButton}
                     onPress={() => Alert.alert('Coming Soon', 'Google sign-up will be available soon!')}
                   >
-                    <View style={styles.socialIconContainer}>
-                      <Icon name="login" size={24} color="#f093fb" />
+                    <View style={[styles.socialIconContainer, { backgroundColor: '#F3F4F6' }]}>
+                      <Icon name="g-translate" size={28} color="#f093fb" />
                     </View>
                     <Text style={styles.socialButtonText}>Google</Text>
                   </TouchableOpacity>
@@ -216,20 +248,28 @@ export default function Signup() {
                     style={styles.socialButton}
                     onPress={() => Alert.alert('Coming Soon', 'Apple sign-up will be available soon!')}
                   >
-                    <View style={styles.socialIconContainer}>
-                      <Icon name="phone-iphone" size={24} color="#f093fb" />
+                    <View style={[styles.socialIconContainer, { backgroundColor: '#F3F4F6' }]}>
+                      <Icon name="apple" size={28} color="#f093fb" />
                     </View>
                     <Text style={styles.socialButtonText}>Apple</Text>
                   </TouchableOpacity>
                 </View>
 
+                {/* Sign In Prompt */}
                 <View style={styles.prompt}>
                   <Text style={styles.promptText}>Already have an account? </Text>
-                  <Link href="/(auth)/signin" style={styles.promptLink}>Sign In</Link>
+                  <Link href="/(auth)/signin" style={styles.promptLink}>
+                    Sign In
+                  </Link>
                 </View>
               </View>
             </View>
           </Animated.View>
+
+          {/* Bottom Decoration */}
+          <View style={styles.bottomDecoration}>
+            <Text style={styles.decorationText}>🚀 Join Thousands of Learners</Text>
+          </View>
         </ScrollView>
       </LinearGradient>
     </SafeAreaView>
@@ -243,80 +283,115 @@ const styles = StyleSheet.create({
     flexGrow: 1, 
     justifyContent: 'center', 
     paddingVertical: 40,
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   decorativeCircle1: {
     position: 'absolute',
-    width: 250,
-    height: 250,
-    borderRadius: 125,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    top: -80,
+    top: -100,
     left: -80,
+    opacity: 0.6,
   },
   decorativeCircle2: {
     position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    bottom: -60,
-    right: -60,
+    bottom: -70,
+    right: -70,
+    opacity: 0.5,
   },
   decorativeCircle3: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    top: '40%',
+    right: -40,
+    opacity: 0.4,
+  },
+  decorativeCircle4: {
     position: 'absolute',
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    top: '40%',
-    right: -30,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    top: '20%',
+    left: -30,
+    opacity: 0.3,
   },
   cardWrapper: {
     zIndex: 10,
   },
   glassCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 30,
-    padding: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderRadius: 32,
+    padding: 32,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 15,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.35,
+    shadowRadius: 25,
+    elevation: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
+    position: 'relative',
   },
   logoGradient: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#f093fb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  logoPulse: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 3,
+    borderColor: 'rgba(240, 147, 251, 0.3)',
+    transform: [{ scale: 1.3 }],
+  },
+  headerSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   title: { 
-    fontSize: 32, 
-    fontWeight: '800', 
+    fontSize: 34, 
+    fontWeight: '900', 
     color: '#1a1a1a', 
-    textAlign: 'center', 
-    marginBottom: 8,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
+  },
+  emojiContainer: {
+    marginLeft: 8,
+  },
+  emoji: {
+    fontSize: 32,
   },
   subtitle: { 
     fontSize: 16, 
-    color: '#666', 
+    color: '#6B7280', 
     textAlign: 'center', 
-    marginBottom: 28,
+    marginBottom: 32,
     lineHeight: 24,
+    paddingHorizontal: 8,
+    fontWeight: '500',
   },
   formContainer: {
     width: '100%',
@@ -325,8 +400,23 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   submitButton: { 
-    marginBottom: 24,
+    marginBottom: 20,
     marginTop: 8,
+  },
+  termsContainer: {
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  termsText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  termsLink: {
+    color: '#f093fb',
+    fontWeight: '700',
   },
   dividerContainer: { 
     flexDirection: 'row', 
@@ -335,19 +425,25 @@ const styles = StyleSheet.create({
   },
   divider: { 
     flex: 1, 
-    height: 1, 
-    backgroundColor: '#E0E0E0',
+    height: 1.5, 
+    backgroundColor: '#E5E7EB',
+  },
+  dividerTextContainer: {
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
   dividerText: { 
-    fontSize: 14, 
-    color: '#999', 
-    marginHorizontal: 16,
-    fontWeight: '500',
+    fontSize: 13, 
+    color: '#9CA3AF', 
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   socialButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 16,
     marginBottom: 24,
   },
   socialButton: {
@@ -355,36 +451,57 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     borderWidth: 2,
-    borderColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderColor: '#F3F4F6',
+    shadowColor: '#f093fb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   socialIconContainer: {
-    marginBottom: 8,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
   },
   socialButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: '#374151',
+    letterSpacing: 0.3,
   },
   prompt: { 
     flexDirection: 'row', 
     justifyContent: 'center',
     alignItems: 'center',
+    paddingTop: 4,
   },
   promptText: { 
     fontSize: 15, 
-    color: '#666',
+    color: '#6B7280',
+    fontWeight: '500',
   },
   promptLink: { 
     fontSize: 15, 
     color: '#f093fb', 
+    fontWeight: '800',
+  },
+  bottomDecoration: {
+    marginTop: 32,
+    alignItems: 'center',
+  },
+  decorationText: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '700',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: 0.5,
   },
 });
