@@ -1,13 +1,16 @@
-import { View, Text, ScrollView, Alert, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import { useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, Alert, StyleSheet, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import { useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link, router } from 'expo-router';
-import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { BlurView } from 'expo-blur';
 import FormField from '@/components/FormField';
 import CustomButton from '@/components/CustomButton';
 import { auth } from '@/lib/firebase';
+
+const { width } = Dimensions.get('window');
 
 export default function Signin() {
   const [form, setForm] = useState({
@@ -16,7 +19,24 @@ export default function Signin() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const buttonScale = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+
+  useState(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  });
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
@@ -34,10 +54,7 @@ export default function Signin() {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, form.email, form.password);
       console.log('User signed in successfully:', userCredential.user.uid);
-      
-      // Direct navigation after successful sign-in
       router.replace('/(tabs)');
-      
     } catch (error: any) {
       console.error('SignIn failed:', error.message);
       Alert.alert('Sign In Error', error.message || 'An error occurred during sign in.');
@@ -46,91 +63,116 @@ export default function Signin() {
     }
   };
 
-  const animateButton = (scale: number) => {
-    Animated.spring(buttonScale, { toValue: scale, useNativeDriver: true }).start();
-  };
-
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient colors={['#F9FAFB', '#E5E7EB']} style={styles.gradient}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.card}>
-            <Text style={styles.title}>Welcome Back</Text>
-            <Text style={styles.subtitle}>Sign in to continue your pronunciation journey</Text>
+      <LinearGradient 
+        colors={['#667eea', '#764ba2', '#f093fb']} 
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.gradient}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Decorative circles */}
+          <View style={styles.decorativeCircle1} />
+          <View style={styles.decorativeCircle2} />
+          
+          <Animated.View 
+            style={[
+              styles.cardWrapper,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }]
+              }
+            ]}
+          >
+            <View style={styles.glassCard}>
+              {/* Logo/Icon Section */}
+              <View style={styles.logoContainer}>
+                <LinearGradient
+                  colors={['#667eea', '#764ba2']}
+                  style={styles.logoGradient}
+                >
+                  <Icon name="mic" size={40} color="#FFFFFF" />
+                </LinearGradient>
+              </View>
 
-            <FormField
-              title="Email"
-              value={form.email}
-              handleChangeText={(e: string) => setForm({ ...form, email: e })}
-              otherStyles={styles.field}
-              keyboardType="email-address"
-              placeholder="Enter your email"
-              icon={<Icon name="email" size={20} color="#6B7280" />}
-              error={errors.email}
-            />
-            <FormField
-              title="Password"
-              value={form.password}
-              handleChangeText={(e: string) => setForm({ ...form, password: e })}
-              otherStyles={styles.field}
-              isPasswordField={true}
-              placeholder="Enter your password"
-              icon={<Icon name="lock" size={20} color="#6B7280" />}
-              error={errors.password}
-            />
+              <Text style={styles.title}>Welcome Back! 👋</Text>
+              <Text style={styles.subtitle}>Sign in to unlock your pronunciation mastery</Text>
 
-            <TouchableOpacity 
-              style={styles.forgotPassword}
-              onPress={() => Alert.alert('Coming Soon', 'Password reset will be available soon!')}
-            >
-              <Text style={styles.forgotPasswordText}>Forgot password?</Text>
-            </TouchableOpacity>
+              <View style={styles.formContainer}>
+                <FormField
+                  title="Email"
+                  value={form.email}
+                  handleChangeText={(e: string) => setForm({ ...form, email: e })}
+                  otherStyles={styles.field}
+                  keyboardType="email-address"
+                  placeholder="you@example.com"
+                  icon={<Icon name="email" size={22} color="#667eea" />}
+                  error={errors.email}
+                />
+                <FormField
+                  title="Password"
+                  value={form.password}
+                  handleChangeText={(e: string) => setForm({ ...form, password: e })}
+                  otherStyles={styles.field}
+                  isPasswordField={true}
+                  placeholder="Enter your password"
+                  icon={<Icon name="lock" size={22} color="#667eea" />}
+                  error={errors.password}
+                />
 
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPressIn={() => animateButton(0.95)}
-              onPressOut={() => animateButton(1)}
-              onPress={loginSubmit}
-              disabled={isSubmitting}
-            >
-              <Animated.View style={[styles.submitButton, { transform: [{ scale: buttonScale }] }]}>
+                <TouchableOpacity 
+                  style={styles.forgotPassword}
+                  onPress={() => Alert.alert('Coming Soon', 'Password reset will be available soon!')}
+                >
+                  <Text style={styles.forgotPasswordText}>Forgot password? 🔑</Text>
+                </TouchableOpacity>
+
                 <CustomButton
                   title={isSubmitting ? "Signing In..." : "Sign In"}
                   handlePress={loginSubmit}
-                  containerStyle={{}}
+                  containerStyle={styles.submitButton}
                   isLoading={isSubmitting}
                 />
-              </Animated.View>
-            </TouchableOpacity>
 
-            <View style={styles.dividerContainer}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>Or continue with</Text>
-              <View style={styles.divider} />
+                <View style={styles.dividerContainer}>
+                  <View style={styles.divider} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.divider} />
+                </View>
+
+                <View style={styles.socialButtonsContainer}>
+                  <TouchableOpacity 
+                    style={styles.socialButton}
+                    onPress={() => Alert.alert('Coming Soon', 'Google sign-in will be available soon!')}
+                  >
+                    <View style={styles.socialIconContainer}>
+                      <Icon name="login" size={24} color="#667eea" />
+                    </View>
+                    <Text style={styles.socialButtonText}>Google</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.socialButton}
+                    onPress={() => Alert.alert('Coming Soon', 'Apple sign-in will be available soon!')}
+                  >
+                    <View style={styles.socialIconContainer}>
+                      <Icon name="phone-iphone" size={24} color="#667eea" />
+                    </View>
+                    <Text style={styles.socialButtonText}>Apple</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.prompt}>
+                  <Text style={styles.promptText}>New here? </Text>
+                  <Link href="/(auth)/signup" style={styles.promptLink}>Create an account</Link>
+                </View>
+              </View>
             </View>
-
-            <CustomButton
-              title="Sign in with Google"
-              containerStyle={styles.socialButton}
-              icon={<Icon name="login" size={20} color="#6B7280" />}
-              handlePress={() => {
-                Alert.alert('Coming Soon', 'Google sign-in will be available soon!');
-              }}
-            />
-            <CustomButton
-              title="Sign in with Apple"
-              containerStyle={styles.socialButton}
-              icon={<Icon name="phone-iphone" size={20} color="#6B7280" />}
-              handlePress={() => {
-                Alert.alert('Coming Soon', 'Apple sign-in will be available soon!');
-              }}
-            />
-
-            <View style={styles.prompt}>
-              <Text style={styles.promptText}>Don't have an account?</Text>
-              <Link href="/(auth)/signup" style={styles.promptLink}> Sign Up</Link>
-            </View>
-          </View>
+          </Animated.View>
         </ScrollView>
       </LinearGradient>
     </SafeAreaView>
@@ -140,36 +182,152 @@ export default function Signin() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { flex: 1 },
-  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 60 },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 32,
-    marginHorizontal: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+  scrollContent: { 
+    flexGrow: 1, 
+    justifyContent: 'center', 
+    paddingVertical: 40,
+    paddingHorizontal: 20,
   },
-  title: { fontSize: 32, fontWeight: '700', color: '#111827', textAlign: 'center', marginBottom: 8 },
-  subtitle: { fontSize: 16, color: '#6B7280', textAlign: 'center', marginBottom: 32 },
-  field: { marginBottom: 20 },
+  decorativeCircle1: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    top: -100,
+    right: -100,
+  },
+  decorativeCircle2: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    bottom: -50,
+    left: -50,
+  },
+  cardWrapper: {
+    zIndex: 10,
+  },
+  glassCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 30,
+    padding: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  logoGradient: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  title: { 
+    fontSize: 32, 
+    fontWeight: '800', 
+    color: '#1a1a1a', 
+    textAlign: 'center', 
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  subtitle: { 
+    fontSize: 16, 
+    color: '#666', 
+    textAlign: 'center', 
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  formContainer: {
+    width: '100%',
+  },
+  field: { 
+    marginBottom: 20,
+  },
   forgotPassword: {
     alignSelf: 'flex-end',
     marginBottom: 24,
+    marginTop: -8,
   },
   forgotPasswordText: {
     fontSize: 14,
-    color: '#6366F1',
+    color: '#667eea',
+    fontWeight: '600',
+  },
+  submitButton: { 
+    marginBottom: 24,
+  },
+  dividerContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 24,
+  },
+  divider: { 
+    flex: 1, 
+    height: 1, 
+    backgroundColor: '#E0E0E0',
+  },
+  dividerText: { 
+    fontSize: 14, 
+    color: '#999', 
+    marginHorizontal: 16,
     fontWeight: '500',
   },
-  submitButton: { borderRadius: 12, height: 56, justifyContent: 'center', overflow: 'hidden' },
-  dividerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
-  divider: { flex: 1, height: 1, backgroundColor: '#E5E7EB' },
-  dividerText: { fontSize: 14, color: '#6B7280', marginHorizontal: 12 },
-  socialButton: { backgroundColor: '#F3F4F6', borderRadius: 12, height: 56, justifyContent: 'center', marginBottom: 12 },
-  prompt: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
-  promptText: { fontSize: 16, color: '#6B7280', marginRight: 4 },
-  promptLink: { fontSize: 16, color: '#6366F1', fontWeight: '600' },
+  socialButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 24,
+  },
+  socialButton: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  socialIconContainer: {
+    marginBottom: 8,
+  },
+  socialButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  prompt: { 
+    flexDirection: 'row', 
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  promptText: { 
+    fontSize: 15, 
+    color: '#666',
+  },
+  promptLink: { 
+    fontSize: 15, 
+    color: '#667eea', 
+    fontWeight: '700',
+  },
 });
