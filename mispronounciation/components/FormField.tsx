@@ -1,5 +1,6 @@
 import { View, Text, TextInput, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { FC, JSX, useState, useRef } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface FormFieldProps {
   title: string;
@@ -26,87 +27,89 @@ const FormField: FC<FormFieldProps> = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const labelAnim = useRef(new Animated.Value(value ? 1 : 0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   const handleFocus = () => {
     setIsFocused(true);
-    Animated.spring(labelAnim, {
+    Animated.timing(glowAnim, {
       toValue: 1,
+      duration: 300,
       useNativeDriver: false,
-      tension: 100,
-      friction: 7,
     }).start();
   };
 
   const handleBlur = () => {
     setIsFocused(false);
-    if (!value) {
-      Animated.spring(labelAnim, {
-        toValue: 0,
-        useNativeDriver: false,
-        tension: 100,
-        friction: 7,
-      }).start();
-    }
+    Animated.timing(glowAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
   };
 
-  const labelTop = labelAnim.interpolate({
+  const borderColor = glowAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [20, 0],
+    outputRange: ['rgba(99, 102, 241, 0.2)', 'rgba(99, 102, 241, 1)'],
   });
 
-  const labelFontSize = labelAnim.interpolate({
+  const glowOpacity = glowAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [16, 12],
+    outputRange: [0, 0.4],
   });
 
   return (
     <View style={[styles.container, otherStyles]}>
-      <View style={[
-        styles.inputWrapper,
-        isFocused && styles.inputWrapperFocused,
-        error && styles.inputWrapperError
-      ]}>
-        <Animated.Text 
-          style={[
-            styles.label,
-            {
-              top: labelTop,
-              fontSize: labelFontSize,
-            },
-            isFocused && styles.labelFocused,
-            error && styles.labelError,
-          ]}
-        >
-          {title}
-        </Animated.Text>
-        
-        <View style={styles.inputRow}>
-          {icon && <View style={styles.iconWrapper}>{icon}</View>}
+      <Text style={styles.title}>{title}</Text>
+      <Animated.View 
+        style={[
+          styles.inputContainer,
+          { borderColor },
+          error && styles.inputError
+        ]}
+      >
+        {isFocused && (
+          <Animated.View 
+            style={[
+              styles.glowEffect,
+              { opacity: glowOpacity }
+            ]}
+          />
+        )}
+        <View style={styles.inputContent}>
+          {icon && <View style={styles.iconContainer}>{icon}</View>}
           <TextInput
             style={styles.input}
             value={value}
             onChangeText={handleChangeText}
-            placeholder={isFocused ? '' : placeholder}
+            placeholder={placeholder}
             secureTextEntry={isPasswordField && !showPassword}
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor="rgba(156, 163, 175, 0.8)"
             onFocus={handleFocus}
             onBlur={handleBlur}
+            keyboardType={keyboardType as any}
           />
           {isPasswordField && (
             <TouchableOpacity 
               onPress={() => setShowPassword(!showPassword)}
-              style={styles.eyeButton}
+              style={styles.toggleButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '🔒'}</Text>
+              <Text style={styles.toggleIcon}>{showPassword ? '👁️' : '🙈'}</Text>
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </Animated.View>
       {error && (
         <View style={styles.errorContainer}>
-          <Text style={styles.errorIcon}>⚠️</Text>
-          <Text style={styles.errorText}>{error}</Text>
+          <LinearGradient
+            colors={['#EF4444', '#DC2626']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.errorGradient}
+          >
+            <Text style={styles.errorIcon}>⚠</Text>
+            <Text style={styles.errorText}>{error}</Text>
+          </LinearGradient>
         </View>
       )}
     </View>
@@ -114,81 +117,80 @@ const FormField: FC<FormFieldProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    marginBottom: 24,
+  container: {
+    marginBottom: 20,
   },
-  inputWrapper: {
+  title: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#6366F1',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  inputContainer: {
     position: 'relative',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
+    backgroundColor: 'rgba(17, 24, 39, 0.6)',
+    borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#E5E7EB',
-    paddingTop: 22,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    minHeight: 65,
-    transition: 'all 0.3s ease',
+    overflow: 'hidden',
   },
-  inputWrapperFocused: {
-    borderColor: '#3B82F6',
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  inputWrapperError: {
-    borderColor: '#EF4444',
-    backgroundColor: '#FEF2F2',
-  },
-  label: {
+  glowEffect: {
     position: 'absolute',
-    left: 16,
-    color: '#6B7280',
-    fontWeight: '600',
-    backgroundColor: 'transparent',
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
+    backgroundColor: '#6366F1',
+    borderRadius: 18,
+    zIndex: -1,
   },
-  labelFocused: {
-    color: '#3B82F6',
-  },
-  labelError: {
-    color: '#EF4444',
-  },
-  inputRow: {
+  inputContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    position: 'relative',
+    zIndex: 1,
   },
-  iconWrapper: {
-    marginRight: 10,
+  iconContainer: {
+    marginRight: 12,
   },
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#111827',
-    fontWeight: '500',
-    paddingVertical: 4,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
-  eyeButton: {
+  toggleButton: {
     padding: 4,
   },
-  eyeIcon: {
-    fontSize: 20,
+  toggleIcon: {
+    fontSize: 22,
+  },
+  inputError: {
+    borderColor: '#EF4444',
   },
   errorContainer: {
+    marginTop: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  errorGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    paddingHorizontal: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   errorIcon: {
-    fontSize: 14,
-    marginRight: 6,
+    fontSize: 16,
+    marginRight: 8,
+    color: '#FFFFFF',
   },
   errorText: {
     fontSize: 13,
-    color: '#EF4444',
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontWeight: '700',
     flex: 1,
   },
 });

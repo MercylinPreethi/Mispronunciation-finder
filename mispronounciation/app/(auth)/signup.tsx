@@ -1,6 +1,6 @@
 // app/(auth)/signup.tsx
 import 'react-native-get-random-values';
-import { View, Text, ScrollView, Alert, StyleSheet, TouchableOpacity, Animated, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, Alert, StyleSheet, TouchableOpacity, Animated, Dimensions } from 'react-native';
 import { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,35 +30,58 @@ export default function Signup() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const [currentStep, setCurrentStep] = useState(0);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  const cardAnim1 = useRef(new Animated.Value(50)).current;
+  const cardAnim2 = useRef(new Animated.Value(100)).current;
+  const cardAnim3 = useRef(new Animated.Value(150)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 1000,
         useNativeDriver: true,
       }),
-      Animated.spring(slideAnim, {
+      Animated.spring(cardAnim1, {
         toValue: 0,
         tension: 50,
-        friction: 7,
+        friction: 8,
+        delay: 100,
+        useNativeDriver: true,
+      }),
+      Animated.spring(cardAnim2, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        delay: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(cardAnim3, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        delay: 300,
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
 
-  useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: currentStep,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  }, [currentStep]);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
@@ -117,384 +140,509 @@ export default function Signup() {
     }
   };
 
-  const progressWidth = progressAnim.interpolate({
-    inputRange: [0, 2],
-    outputRange: ['33%', '100%'],
-  });
-
-  const steps = [
-    { icon: 'person', label: 'Profile' },
-    { icon: 'email', label: 'Contact' },
-    { icon: 'lock', label: 'Security' },
-  ];
-
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+    <View style={styles.container}>
+      <LinearGradient
+        colors={['#0F172A', '#1E293B', '#334155']}
+        style={styles.background}
       >
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        {/* Animated mesh gradient background */}
+        <Animated.View 
+          style={[
+            styles.meshGradient1,
+            { transform: [{ scale: pulseAnim }] }
+          ]}
         >
-          {/* Header */}
-          <Animated.View 
-            style={[
-              styles.header,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }]
-              }
-            ]}
+          <LinearGradient
+            colors={['rgba(99, 102, 241, 0.2)', 'transparent']}
+            style={styles.gradientFill}
+          />
+        </Animated.View>
+        <Animated.View 
+          style={[
+            styles.meshGradient2,
+            { transform: [{ scale: pulseAnim }] }
+          ]}
+        >
+          <LinearGradient
+            colors={['rgba(139, 92, 246, 0.15)', 'transparent']}
+            style={styles.gradientFill}
+          />
+        </Animated.View>
+
+        <SafeAreaView style={styles.safeArea}>
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
           >
-            <LinearGradient
-              colors={['#3B82F6', '#2563EB']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.headerGradient}
+            {/* Header */}
+            <Animated.View 
+              style={[
+                styles.header,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: cardAnim1 }]
+                }
+              ]}
             >
-              <Icon name="person-add" size={48} color="#FFFFFF" />
-              <Text style={styles.headerTitle}>Create Account</Text>
-              <Text style={styles.headerSubtitle}>Join thousands of learners improving their pronunciation</Text>
-            </LinearGradient>
-          </Animated.View>
-
-          {/* Progress Steps */}
-          <Animated.View style={[styles.stepsContainer, { opacity: fadeAnim }]}>
-            <View style={styles.progressBar}>
-              <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
-            </View>
-            <View style={styles.steps}>
-              {steps.map((step, index) => (
-                <View key={index} style={styles.step}>
-                  <View style={[
-                    styles.stepIcon,
-                    currentStep >= index && styles.stepIconActive,
-                    currentStep > index && styles.stepIconComplete
-                  ]}>
-                    <Icon 
-                      name={currentStep > index ? 'check' : step.icon} 
-                      size={20} 
-                      color={currentStep >= index ? '#FFFFFF' : '#9CA3AF'} 
-                    />
-                  </View>
-                  <Text style={[
-                    styles.stepLabel,
-                    currentStep >= index && styles.stepLabelActive
-                  ]}>
-                    {step.label}
-                  </Text>
+              <View style={styles.headerBadge}>
+                <LinearGradient
+                  colors={['#6366F1', '#8B5CF6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.badgeGradient}
+                >
+                  <Icon name="stars" size={20} color="#FFFFFF" />
+                  <Text style={styles.badgeText}>NEW</Text>
+                </LinearGradient>
+              </View>
+              
+              <Text style={styles.headerTitle}>Join PronouncePro</Text>
+              <Text style={styles.headerSubtitle}>Start your journey to perfect pronunciation</Text>
+              
+              {/* Stats */}
+              <View style={styles.statsContainer}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>10K+</Text>
+                  <Text style={styles.statLabel}>Users</Text>
                 </View>
-              ))}
-            </View>
-          </Animated.View>
-
-          {/* Form */}
-          <Animated.View 
-            style={[
-              styles.formContainer,
-              { opacity: fadeAnim }
-            ]}
-          >
-            <View style={styles.formCard}>
-              <FormField
-                title="Full Name"
-                value={form.username}
-                handleChangeText={(e: string) => {
-                  setForm({ ...form, username: e });
-                  if (e && currentStep === 0) setCurrentStep(1);
-                }}
-                otherStyles={styles.field}
-                placeholder="John Doe"
-                icon={<Icon name="person-outline" size={20} color="#3B82F6" />}
-                error={errors.username}
-              />
-
-              <FormField
-                title="Email"
-                value={form.email}
-                handleChangeText={(e: string) => {
-                  setForm({ ...form, email: e });
-                  if (e && form.username && currentStep === 1) setCurrentStep(2);
-                }}
-                otherStyles={styles.field}
-                keyboardType="email-address"
-                placeholder="you@example.com"
-                icon={<Icon name="alternate-email" size={20} color="#3B82F6" />}
-                error={errors.email}
-              />
-
-              <FormField
-                title="Password"
-                value={form.password}
-                handleChangeText={(e: string) => setForm({ ...form, password: e })}
-                otherStyles={styles.field}
-                isPasswordField={true}
-                placeholder="Minimum 6 characters"
-                icon={<Icon name="lock-outline" size={20} color="#3B82F6" />}
-                error={errors.password}
-              />
-
-              <FormField
-                title="Confirm Password"
-                value={form.reEnterPassword}
-                handleChangeText={(e: string) => setForm({ ...form, reEnterPassword: e })}
-                otherStyles={styles.field}
-                isPasswordField={true}
-                placeholder="Re-enter your password"
-                icon={<Icon name="verified-user" size={20} color="#3B82F6" />}
-                error={errors.reEnterPassword}
-              />
-
-              {/* Terms */}
-              <View style={styles.termsContainer}>
-                <Icon name="info-outline" size={16} color="#6B7280" />
-                <Text style={styles.termsText}>
-                  By signing up, you agree to our{' '}
-                  <Text style={styles.termsLink}>Terms</Text> and{' '}
-                  <Text style={styles.termsLink}>Privacy Policy</Text>
-                </Text>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>50+</Text>
+                  <Text style={styles.statLabel}>Languages</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>4.9</Text>
+                  <Text style={styles.statLabel}>Rating</Text>
+                </View>
               </View>
+            </Animated.View>
 
-              <CustomButton
-                title="Create Account"
-                handlePress={submit}
-                containerStyle={styles.submitButton}
-                isLoading={isSubmitting}
-                size="large"
+            {/* Form Cards Stack */}
+            <View style={styles.cardsStack}>
+              {/* Back card */}
+              <Animated.View 
+                style={[
+                  styles.backCard,
+                  {
+                    opacity: fadeAnim,
+                    transform: [{ translateY: cardAnim3 }]
+                  }
+                ]}
               />
-
-              {/* Divider */}
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>OR</Text>
-                <View style={styles.dividerLine} />
-              </View>
-
-              {/* Social Buttons */}
-              <View style={styles.socialContainer}>
-                <TouchableOpacity 
-                  style={styles.socialButton}
-                  onPress={() => Alert.alert('Coming Soon', 'Google sign-up will be available soon!')}
-                >
-                  <View style={styles.socialIconBg}>
-                    <Icon name="g-translate" size={24} color="#EA4335" />
+              
+              {/* Middle card */}
+              <Animated.View 
+                style={[
+                  styles.middleCard,
+                  {
+                    opacity: fadeAnim,
+                    transform: [{ translateY: cardAnim2 }]
+                  }
+                ]}
+              />
+              
+              {/* Front card */}
+              <Animated.View 
+                style={[
+                  styles.frontCard,
+                  {
+                    opacity: fadeAnim,
+                    transform: [{ translateY: cardAnim1 }]
+                  }
+                ]}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardDots}>
+                    <View style={[styles.dot, styles.dotActive]} />
+                    <View style={styles.dot} />
+                    <View style={styles.dot} />
                   </View>
-                  <Text style={styles.socialText}>Google</Text>
-                </TouchableOpacity>
+                  <Text style={styles.cardStep}>Step 1 of 3</Text>
+                </View>
 
-                <TouchableOpacity 
-                  style={styles.socialButton}
-                  onPress={() => Alert.alert('Coming Soon', 'Apple sign-up will be available soon!')}
-                >
-                  <View style={styles.socialIconBg}>
-                    <Icon name="apple" size={24} color="#000000" />
+                <View style={styles.formContent}>
+                  <FormField
+                    title="Full Name"
+                    value={form.username}
+                    handleChangeText={(e: string) => setForm({ ...form, username: e })}
+                    otherStyles={styles.field}
+                    placeholder="John Doe"
+                    icon={<Icon name="person-outline" size={22} color="#6366F1" />}
+                    error={errors.username}
+                  />
+
+                  <FormField
+                    title="Email Address"
+                    value={form.email}
+                    handleChangeText={(e: string) => setForm({ ...form, email: e })}
+                    otherStyles={styles.field}
+                    keyboardType="email-address"
+                    placeholder="your@email.com"
+                    icon={<Icon name="mail-outline" size={22} color="#6366F1" />}
+                    error={errors.email}
+                  />
+
+                  <FormField
+                    title="Password"
+                    value={form.password}
+                    handleChangeText={(e: string) => setForm({ ...form, password: e })}
+                    otherStyles={styles.field}
+                    isPasswordField={true}
+                    placeholder="Min. 6 characters"
+                    icon={<Icon name="lock-outline" size={22} color="#6366F1" />}
+                    error={errors.password}
+                  />
+
+                  <FormField
+                    title="Confirm Password"
+                    value={form.reEnterPassword}
+                    handleChangeText={(e: string) => setForm({ ...form, reEnterPassword: e })}
+                    otherStyles={styles.field}
+                    isPasswordField={true}
+                    placeholder="Re-enter password"
+                    icon={<Icon name="verified-user" size={22} color="#6366F1" />}
+                    error={errors.reEnterPassword}
+                  />
+
+                  {/* Terms */}
+                  <View style={styles.termsContainer}>
+                    <View style={styles.checkboxContainer}>
+                      <View style={styles.checkbox}>
+                        <Icon name="check" size={14} color="#6366F1" />
+                      </View>
+                    </View>
+                    <Text style={styles.termsText}>
+                      I agree to the{' '}
+                      <Text style={styles.termsLink}>Terms of Service</Text>
+                      {' '}and{' '}
+                      <Text style={styles.termsLink}>Privacy Policy</Text>
+                    </Text>
                   </View>
-                  <Text style={styles.socialText}>Apple</Text>
-                </TouchableOpacity>
-              </View>
 
-              {/* Sign In Link */}
-              <View style={styles.signinPrompt}>
-                <Text style={styles.promptText}>Already have an account? </Text>
-                <Link href="/(auth)/signin" asChild>
-                  <TouchableOpacity>
-                    <Text style={styles.signinLink}>Sign In</Text>
-                  </TouchableOpacity>
-                </Link>
-              </View>
+                  <CustomButton
+                    title="Create Account"
+                    handlePress={submit}
+                    containerStyle={styles.submitButton}
+                    isLoading={isSubmitting}
+                    size="large"
+                    variant="primary"
+                  />
+
+                  {/* Divider */}
+                  <View style={styles.dividerContainer}>
+                    <LinearGradient
+                      colors={['transparent', 'rgba(99, 102, 241, 0.3)', 'transparent']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.dividerLine}
+                    />
+                    <Text style={styles.dividerText}>OR</Text>
+                  </View>
+
+                  {/* Social Buttons */}
+                  <View style={styles.socialButtons}>
+                    <TouchableOpacity 
+                      style={styles.socialButton}
+                      onPress={() => Alert.alert('Coming Soon', 'Google sign-up will be available soon!')}
+                    >
+                      <Icon name="g-translate" size={24} color="#6366F1" />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={styles.socialButton}
+                      onPress={() => Alert.alert('Coming Soon', 'Apple sign-up will be available soon!')}
+                    >
+                      <Icon name="apple" size={24} color="#6366F1" />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={styles.socialButton}
+                      onPress={() => Alert.alert('Coming Soon', 'GitHub sign-up will be available soon!')}
+                    >
+                      <Icon name="code" size={24} color="#6366F1" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Animated.View>
             </View>
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+
+            {/* Sign In Prompt */}
+            <Animated.View 
+              style={[
+                styles.signinPrompt,
+                { opacity: fadeAnim }
+              ]}
+            >
+              <Text style={styles.promptText}>Already have an account? </Text>
+              <Link href="/(auth)/signin" asChild>
+                <TouchableOpacity>
+                  <Text style={styles.signinLink}>Sign In →</Text>
+                </TouchableOpacity>
+              </Link>
+            </Animated.View>
+          </ScrollView>
+        </SafeAreaView>
+      </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
   },
-  keyboardView: {
+  background: {
+    flex: 1,
+  },
+  meshGradient1: {
+    position: 'absolute',
+    width: 400,
+    height: 400,
+    borderRadius: 200,
+    top: -150,
+    right: -150,
+  },
+  meshGradient2: {
+    position: 'absolute',
+    width: 350,
+    height: 350,
+    borderRadius: 175,
+    bottom: -100,
+    left: -100,
+  },
+  gradientFill: {
+    flex: 1,
+    borderRadius: 200,
+  },
+  safeArea: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 32,
     paddingBottom: 32,
   },
   header: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  headerBadge: {
+    marginBottom: 20,
+    borderRadius: 20,
     overflow: 'hidden',
   },
-  headerGradient: {
-    paddingTop: 32,
-    paddingBottom: 40,
-    paddingHorizontal: 24,
+  badgeGradient: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
-  headerTitle: {
-    fontSize: 28,
+  badgeText: {
+    fontSize: 12,
     fontWeight: '900',
     color: '#FFFFFF',
-    marginTop: 16,
+    letterSpacing: 1.5,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#FFFFFF',
     marginBottom: 8,
+    letterSpacing: -1,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#EFF6FF',
-    textAlign: 'center',
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.6)',
     fontWeight: '500',
-    paddingHorizontal: 20,
+    textAlign: 'center',
+    marginBottom: 24,
   },
-  stepsContainer: {
-    paddingHorizontal: 24,
-    paddingVertical: 28,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#3B82F6',
-    borderRadius: 3,
-  },
-  steps: {
+  statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  step: {
     alignItems: 'center',
+    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.2)',
+  },
+  statItem: {
     flex: 1,
-  },
-  stepIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#E5E7EB',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
   },
-  stepIconActive: {
-    backgroundColor: '#3B82F6',
+  statNumber: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginBottom: 4,
   },
-  stepIconComplete: {
-    backgroundColor: '#10B981',
-  },
-  stepLabel: {
+  statLabel: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: 'rgba(255, 255, 255, 0.5)',
     fontWeight: '600',
   },
-  stepLabelActive: {
-    color: '#3B82F6',
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(99, 102, 241, 0.3)',
   },
-  formContainer: {
-    flex: 1,
-    paddingHorizontal: 24,
+  cardsStack: {
+    position: 'relative',
+    marginBottom: 24,
   },
-  formCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
+  backCard: {
+    position: 'absolute',
+    top: -16,
+    left: 16,
+    right: 16,
+    height: 50,
+    backgroundColor: 'rgba(30, 41, 59, 0.3)',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.1)',
+  },
+  middleCard: {
+    position: 'absolute',
+    top: -8,
+    left: 8,
+    right: 8,
+    height: 50,
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.15)',
+  },
+  frontCard: {
+    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+    borderRadius: 28,
+    padding: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.2)',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 30,
+    elevation: 15,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  cardDots: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(99, 102, 241, 0.3)',
+  },
+  dotActive: {
+    backgroundColor: '#6366F1',
+    width: 24,
+  },
+  cardStep: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  formContent: {
+    gap: 4,
   },
   field: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   termsContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    gap: 12,
     marginBottom: 24,
-    paddingHorizontal: 4,
-    gap: 8,
+    marginTop: 4,
+  },
+  checkboxContainer: {
+    marginTop: 2,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    borderWidth: 2,
+    borderColor: '#6366F1',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   termsText: {
     flex: 1,
-    fontSize: 12,
-    color: '#6B7280',
-    lineHeight: 18,
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.6)',
+    lineHeight: 20,
     fontWeight: '500',
   },
   termsLink: {
-    color: '#3B82F6',
+    color: '#6366F1',
     fontWeight: '700',
   },
   submitButton: {
     marginBottom: 24,
   },
-  divider: {
-    flexDirection: 'row',
+  dividerContainer: {
+    position: 'relative',
+    height: 40,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E7EB',
+    position: 'absolute',
+    width: '100%',
+    height: 2,
   },
   dividerText: {
-    marginHorizontal: 16,
-    fontSize: 13,
-    color: '#9CA3AF',
-    fontWeight: '600',
+    backgroundColor: 'rgba(30, 41, 59, 0.9)',
+    paddingHorizontal: 12,
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontWeight: '800',
+    letterSpacing: 2,
   },
-  socialContainer: {
+  socialButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 24,
+    marginBottom: 8,
   },
   socialButton: {
     flex: 1,
-    flexDirection: 'row',
+    height: 56,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F9FAFB',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-  },
-  socialIconBg: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  socialText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#374151',
   },
   signinPrompt: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 8,
     paddingTop: 8,
   },
   promptText: {
     fontSize: 15,
-    color: '#6B7280',
+    color: 'rgba(255, 255, 255, 0.6)',
     fontWeight: '500',
   },
   signinLink: {
     fontSize: 15,
-    color: '#3B82F6',
+    color: '#6366F1',
     fontWeight: '800',
   },
 });
