@@ -1,7 +1,8 @@
 // lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { initializeAuth, getAuth, getReactNativePersistence, Auth } from 'firebase/auth';
 import { getDatabase, Database } from 'firebase/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
   apiKey: "AIzaSyATKCD4oJsveTPwtzaUcRz28nqXtWJsQRo",
@@ -16,8 +17,16 @@ const firebaseConfig = {
 // Initialize Firebase only once
 const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Auth (Firebase will use default persistence for React Native)
-const auth: Auth = getAuth(app);
+// Initialize Auth with AsyncStorage persistence for React Native
+let auth: Auth;
+try {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
+} catch (error) {
+  // If auth is already initialized, use getAuth
+  auth = getAuth(app);
+}
 
 // Initialize Database
 const database: Database = getDatabase(app);
