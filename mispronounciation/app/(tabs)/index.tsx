@@ -11,7 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { ref, onValue, get } from 'firebase/database';
-import { auth, db } from '../../firebaseConfig';
+import { auth, database as db } from '@/lib/firebase';
 
 const { width, height } = Dimensions.get('window');
 

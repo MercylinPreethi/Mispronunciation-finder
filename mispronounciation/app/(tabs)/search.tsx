@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { ref, onValue } from 'firebase/database';
-import { auth, db } from '../../firebaseConfig';
+import { auth, database as db } from '@/lib/firebase';
 
 const { width } = Dimensions.get('window');
 

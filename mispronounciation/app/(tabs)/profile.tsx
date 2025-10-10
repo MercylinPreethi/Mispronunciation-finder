@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { auth, db } from '../../firebaseConfig';
+import { auth, database as db } from '@/lib/firebase';
 import { ref, onValue } from 'firebase/database';
 import { signOut } from 'firebase/auth';
 import { router } from 'expo-router';
