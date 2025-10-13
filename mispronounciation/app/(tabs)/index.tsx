@@ -11,6 +11,7 @@ import {
   Animated,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -30,23 +31,113 @@ const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const API_BASE_URL = 'http://192.168.14.34:5050';
 
-// Daily word pool - rotates daily
+// Material Design 3 Colors
+const COLORS = {
+  primary: '#6366F1',
+  primaryDark: '#4F46E5',
+  primaryLight: '#818CF8',
+  secondary: '#8B5CF6',
+  tertiary: '#EC4899',
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  gold: '#FFC800',
+  gray: {
+    50: '#F8FAFC',
+    100: '#F1F5F9',
+    200: '#E2E8F0',
+    300: '#CBD5E1',
+    400: '#94A3B8',
+    500: '#64748B',
+    600: '#475569',
+    700: '#334155',
+    800: '#1E293B',
+    900: '#0F172A',
+  },
+  white: '#FFFFFF',
+  background: '#F8F9FE',
+} as const;
+
+// Difficulty color mappings
+const DIFFICULTY_COLORS = {
+  easy: { primary: '#10B981', gradient: ['#10B981', '#059669'] as const },
+  intermediate: { primary: '#F59E0B', gradient: ['#F59E0B', '#D97706'] as const },
+  hard: { primary: '#EF4444', gradient: ['#EF4444', '#DC2626'] as const },
+} as const;
+
+// Daily word pool
 const DAILY_WORDS = [
-  { word: 'Beautiful', phonetic: '/ˈbjuːtɪfəl/', difficulty: 'Medium', tip: 'Stress on first syllable: BEAU-ti-ful' },
-  { word: 'Pronunciation', phonetic: '/prəˌnʌnsiˈeɪʃən/', difficulty: 'Hard', tip: 'Watch the "nun-see-AY-shun" pattern' },
-  { word: 'Schedule', phonetic: '/ˈʃedjuːl/', difficulty: 'Hard', tip: 'UK: SHED-yool, US: SKED-yool' },
-  { word: 'Algorithm', phonetic: '/ˈælɡərɪðəm/', difficulty: 'Hard', tip: 'Stress on first syllable: AL-go-rith-m' },
-  { word: 'Comfortable', phonetic: '/ˈkʌmftəbəl/', difficulty: 'Medium', tip: 'Often said as COMF-ta-ble' },
-  { word: 'Develop', phonetic: '/dɪˈveləp/', difficulty: 'Easy', tip: 'Stress on second syllable: de-VEL-op' },
-  { word: 'Wednesday', phonetic: '/ˈwenzdeɪ/', difficulty: 'Medium', tip: 'Silent "d": WENZ-day' },
-  { word: 'Chocolate', phonetic: '/ˈtʃɒklət/', difficulty: 'Easy', tip: 'Two syllables: CHOK-let' },
-  { word: 'February', phonetic: '/ˈfebruəri/', difficulty: 'Medium', tip: 'Don\'t skip the first "r": FEB-roo-ary' },
-  { word: 'Queue', phonetic: '/kjuː/', difficulty: 'Medium', tip: 'Just sounds like "Q"' },
-  { word: 'Colonel', phonetic: '/ˈkɜːrnəl/', difficulty: 'Hard', tip: 'Sounds like "kernel"' },
-  { word: 'Choir', phonetic: '/ˈkwaɪər/', difficulty: 'Medium', tip: 'Sounds like "quire"' },
-  { word: 'Epitome', phonetic: '/ɪˈpɪtəmi/', difficulty: 'Hard', tip: 'Not "EPI-tome", say "e-PIT-o-me"' },
-  { word: 'Buffet', phonetic: '/bəˈfeɪ/', difficulty: 'Medium', tip: 'Stress on second syllable: buh-FAY' },
+  { 
+    word: 'Beautiful', 
+    phonetic: '/ˈbjuːtɪfəl/', 
+    meaning: 'Pleasing to the senses or mind aesthetically',
+    example: 'The sunset was absolutely beautiful.',
+    tip: 'Stress on first syllable: BEAU-ti-ful'
+  },
+  { 
+    word: 'Pronunciation', 
+    phonetic: '/prəˌnʌnsiˈeɪʃən/', 
+    meaning: 'The way in which a word is pronounced',
+    example: 'Her pronunciation of French words is excellent.',
+    tip: 'Watch the "nun-see-AY-shun" pattern'
+  },
+  { 
+    word: 'Schedule', 
+    phonetic: '/ˈʃedjuːl/', 
+    meaning: 'A plan for carrying out a process or procedure',
+    example: 'I need to check my schedule for tomorrow.',
+    tip: 'UK: SHED-yool, US: SKED-yool'
+  },
 ];
+
+// Word database - will be expanded dynamically
+const WORD_DATABASE = {
+  easy: [
+    { id: 'e1', word: 'Cat', phonetic: '/kæt/', meaning: 'A small domesticated carnivorous mammal', example: 'The cat is sleeping.', tip: 'Short "a" sound', difficulty: 'easy' },
+    { id: 'e2', word: 'Dog', phonetic: '/dɔɡ/', meaning: 'A domesticated carnivorous mammal', example: 'My dog loves to play.', tip: 'Short "o" sound', difficulty: 'easy' },
+    { id: 'e3', word: 'Book', phonetic: '/bʊk/', meaning: 'A written or printed work', example: 'I read a book every night.', tip: 'Short "oo" sound', difficulty: 'easy' },
+    { id: 'e4', word: 'Water', phonetic: '/ˈwɔːtər/', meaning: 'A clear liquid essential for life', example: 'Drink plenty of water.', tip: 'Two syllables: WA-ter', difficulty: 'easy' },
+    { id: 'e5', word: 'Hello', phonetic: '/həˈloʊ/', meaning: 'Used as a greeting', example: 'Hello, how are you?', tip: 'Stress on second syllable', difficulty: 'easy' },
+    { id: 'e6', word: 'Thank', phonetic: '/θæŋk/', meaning: 'Express gratitude to someone', example: 'Thank you for your help.', tip: 'Soft "th" sound', difficulty: 'easy' },
+    { id: 'e7', word: 'Please', phonetic: '/pliːz/', meaning: 'Used in polite requests', example: 'Please close the door.', tip: 'Long "ee" sound', difficulty: 'easy' },
+    { id: 'e8', word: 'Happy', phonetic: '/ˈhæpi/', meaning: 'Feeling or showing pleasure', example: 'I am happy today.', tip: 'Stress on first syllable', difficulty: 'easy' },
+    { id: 'e9', word: 'House', phonetic: '/haʊs/', meaning: 'A building for human habitation', example: 'They bought a new house.', tip: 'Diphthong "ou"', difficulty: 'easy' },
+    { id: 'e10', word: 'Friend', phonetic: '/frend/', meaning: 'A person with whom one has a bond', example: 'She is my best friend.', tip: 'Silent "i"', difficulty: 'easy' },
+    { id: 'e11', word: 'Good', phonetic: '/ɡʊd/', meaning: 'Of high quality', example: 'That was a good meal.', tip: 'Short "oo" sound', difficulty: 'easy' },
+    { id: 'e12', word: 'Time', phonetic: '/taɪm/', meaning: 'The indefinite continued progress of existence', example: 'What time is it?', tip: 'Long "i" sound', difficulty: 'easy' },
+  ],
+  intermediate: [
+    { id: 'i1', word: 'Comfortable', phonetic: '/ˈkʌmftəbəl/', meaning: 'Providing physical ease and relaxation', example: 'This chair is very comfortable.', tip: 'Often said as COMF-ta-ble', difficulty: 'intermediate' },
+    { id: 'i2', word: 'Develop', phonetic: '/dɪˈveləp/', meaning: 'Grow or cause to grow', example: 'We need to develop new skills.', tip: 'Stress on second syllable', difficulty: 'intermediate' },
+    { id: 'i3', word: 'Chocolate', phonetic: '/ˈtʃɒklət/', meaning: 'A sweet food made from cacao', example: 'I love dark chocolate.', tip: 'Two syllables: CHOK-let', difficulty: 'intermediate' },
+    { id: 'i4', word: 'Queue', phonetic: '/kjuː/', meaning: 'A line of people waiting', example: 'There is a long queue at the store.', tip: 'Just sounds like "Q"', difficulty: 'intermediate' },
+    { id: 'i5', word: 'Receipt', phonetic: '/rɪˈsiːt/', meaning: 'A written acknowledgment of payment', example: 'Keep the receipt for returns.', tip: 'Silent "p"', difficulty: 'intermediate' },
+    { id: 'i6', word: 'Island', phonetic: '/ˈaɪlənd/', meaning: 'A piece of land surrounded by water', example: 'They live on a tropical island.', tip: 'Silent "s"', difficulty: 'intermediate' },
+    { id: 'i7', word: 'Choir', phonetic: '/ˈkwaɪər/', meaning: 'An organized group of singers', example: 'She sings in the church choir.', tip: 'Sounds like "quire"', difficulty: 'intermediate' },
+    { id: 'i8', word: 'Knight', phonetic: '/naɪt/', meaning: 'A medieval warrior', example: 'The knight rode a horse.', tip: 'Silent "k" and "gh"', difficulty: 'intermediate' },
+    { id: 'i9', word: 'Language', phonetic: '/ˈlæŋɡwɪdʒ/', meaning: 'Method of human communication', example: 'She speaks three languages.', tip: 'Stress on first syllable', difficulty: 'intermediate' },
+    { id: 'i10', word: 'Business', phonetic: '/ˈbɪznəs/', meaning: 'Commercial activity', example: 'He runs a small business.', tip: 'BIZ-ness, not BIZ-ee-ness', difficulty: 'intermediate' },
+  ],
+  hard: [
+    { id: 'h1', word: 'Epitome', phonetic: '/ɪˈpɪtəmi/', meaning: 'A perfect example of something', example: 'She is the epitome of elegance.', tip: 'Not "EPI-tome", say "e-PIT-o-me"', difficulty: 'hard' },
+    { id: 'h2', word: 'Worcestershire', phonetic: '/ˈwʊstərʃər/', meaning: 'A fermented liquid condiment', example: 'Add Worcestershire sauce to the recipe.', tip: 'WOOS-ter-shur', difficulty: 'hard' },
+    { id: 'h3', word: 'Squirrel', phonetic: '/ˈskwɜːrəl/', meaning: 'A small rodent with a bushy tail', example: 'A squirrel climbed the tree.', tip: 'SKWIR-rel with rolled R', difficulty: 'hard' },
+    { id: 'h4', word: 'Rural', phonetic: '/ˈrʊərəl/', meaning: 'Relating to the countryside', example: 'They moved to a rural area.', tip: 'Two syllables with rolling R', difficulty: 'hard' },
+    { id: 'h5', word: 'Phenomenal', phonetic: '/fəˈnɒmɪnəl/', meaning: 'Very remarkable or extraordinary', example: 'Her performance was phenomenal.', tip: 'fe-NOM-i-nal', difficulty: 'hard' },
+    { id: 'h6', word: 'Brewery', phonetic: '/ˈbruːəri/', meaning: 'A place where beer is made', example: 'We toured the local brewery.', tip: 'BREW-er-y, three syllables', difficulty: 'hard' },
+    { id: 'h7', word: 'Colonel', phonetic: '/ˈkɜːrnəl/', meaning: 'A military rank', example: 'The colonel gave orders.', tip: 'Sounds like "kernel"', difficulty: 'hard' },
+    { id: 'h8', word: 'Mischievous', phonetic: '/ˈmɪstʃɪvəs/', meaning: 'Playfully troublesome', example: 'The child gave a mischievous grin.', tip: 'MIS-chi-vous, three syllables', difficulty: 'hard' },
+  ],
+};
+
+interface WordProgress {
+  wordId: string;
+  word: string;
+  completed: boolean;
+  attempts: number;
+  bestScore: number;
+  lastAttempted: string;
+}
 
 interface DailyWordProgress {
   word: string;
@@ -61,7 +152,7 @@ interface UserStats {
   streak: number;
   totalWords: number;
   accuracy: number;
-  lastCompletedDate: string;
+  xp: number;
 }
 
 interface AnalysisResult {
@@ -71,16 +162,28 @@ interface AnalysisResult {
   feedback: string;
 }
 
+type DifficultyLevel = 'easy' | 'intermediate' | 'hard';
+
 export default function HomeScreen() {
   const [userName, setUserName] = useState('');
   const [stats, setStats] = useState<UserStats>({
     streak: 0,
     totalWords: 0,
     accuracy: 0,
-    lastCompletedDate: '',
+    xp: 0,
   });
+  
   const [todayWord, setTodayWord] = useState(DAILY_WORDS[0]);
   const [todayProgress, setTodayProgress] = useState<DailyWordProgress | null>(null);
+  
+  const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel>('easy');
+  const [wordProgress, setWordProgress] = useState<{ [key: string]: WordProgress }>({});
+  const [currentWords, setCurrentWords] = useState<any[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showDailyTask, setShowDailyTask] = useState(false);
+  
+  const [selectedWord, setSelectedWord] = useState<any>(null);
+  const [showPracticeModal, setShowPracticeModal] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState('00:00');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -92,8 +195,15 @@ export default function HomeScreen() {
   const recordTimeRef = useRef('00:00');
   const recordingPathRef = useRef<string | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const resultAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
+  const modalAnim = useRef(new Animated.Value(0)).current;
+  const badgeAnims = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
+  const dailyTaskPulse = useRef(new Animated.Value(1)).current;
+  const wordNodeAnims = useRef<{ [key: string]: Animated.Value }>({}).current;
+  const glowAnims = useRef<{ [key: string]: Animated.Value }>({}).current;
 
   const getTodayWordIndex = () => {
     const today = new Date();
@@ -107,56 +217,41 @@ export default function HomeScreen() {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   };
 
-  // NOW the callback with streak calculation
   const calculateStatsFromHistory = useCallback(async (allDailyWords: any, userId: string) => {
     try {
-      console.log('📊 Calculating stats from history...');
-      
       const dates = Object.keys(allDailyWords);
       let wordsAttempted = 0;
       let totalAccuracy = 0;
       let accuracyCount = 0;
       let currentStreak = 0;
-      let lastAttemptDate = '';
+      let totalXP = 0;
 
-      // Count all attempted words and calculate average accuracy
       dates.forEach(date => {
         const dayData = allDailyWords[date];
-        
         if (dayData && dayData.attempts > 0) {
           wordsAttempted++;
-          
           if (dayData.bestScore && dayData.bestScore > 0) {
             totalAccuracy += dayData.bestScore;
             accuracyCount++;
+            totalXP += Math.round(dayData.bestScore * 10);
           }
         }
       });
 
       const averageAccuracy = accuracyCount > 0 ? totalAccuracy / accuracyCount : 0;
-
-      // Calculate streak: consecutive days with attempts
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      // Check up to 365 days back
       for (let daysAgo = 0; daysAgo < 365; daysAgo++) {
         const checkDate = new Date(today);
         checkDate.setDate(checkDate.getDate() - daysAgo);
         const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
         
         const dayData = allDailyWords[checkDateStr];
-        
         if (dayData && dayData.attempts > 0) {
           currentStreak++;
-          lastAttemptDate = checkDateStr;
-          console.log(`🔥 Day ${daysAgo}: Found attempt, streak = ${currentStreak}`);
         } else {
-          // Only break if we're past today and found a gap
-          if (daysAgo > 0) {
-            console.log(`🔥 Day ${daysAgo}: No attempt, streak ends at ${currentStreak}`);
-            break;
-          }
+          if (daysAgo > 0) break;
         }
       }
 
@@ -164,72 +259,51 @@ export default function HomeScreen() {
         streak: currentStreak,
         totalWords: wordsAttempted,
         accuracy: averageAccuracy,
-        lastCompletedDate: lastAttemptDate,
+        xp: totalXP,
       };
-
-      console.log('✅ Stats calculated:', {
-        streak: `🔥 ${currentStreak}`,
-        totalWords: wordsAttempted,
-        accuracy: `${(averageAccuracy * 100).toFixed(1)}%`
-      });
 
       const statsRef = ref(database, `users/${userId}/stats`);
       await set(statsRef, newStats);
       setStats(newStats);
-
     } catch (error) {
-      console.error('❌ Error calculating stats:', error);
+      console.error('Error calculating stats:', error);
     }
   }, []);
 
   const loadUserData = useCallback(async (userId: string) => {
     try {
-      console.log('🔄 Loading user data for:', userId);
-      
-      // Load user stats
       const statsRef = ref(database, `users/${userId}/stats`);
       onValue(statsRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-          console.log('📊 Loaded stats from Firebase:', data);
           setStats({
             streak: data.streak || 0,
             totalWords: data.totalWords || 0,
             accuracy: data.accuracy || 0,
-            lastCompletedDate: data.lastCompletedDate || '',
+            xp: data.xp || 0,
           });
         }
       });
 
-      // Load ALL daily word history to calculate accurate stats
       const dailyWordsRef = ref(database, `users/${userId}/dailyWords`);
       onValue(dailyWordsRef, (snapshot) => {
         if (snapshot.exists()) {
           const allDailyWords = snapshot.val();
-          console.log('📚 Loaded daily words from Firebase');
           calculateStatsFromHistory(allDailyWords, userId);
-        } else {
-          console.log('📚 No daily words found in Firebase');
         }
       });
 
-      // Load today's word progress
       const todayDate = getTodayDateString();
       const wordIndex = getTodayWordIndex();
       const dailyWord = DAILY_WORDS[wordIndex];
       setTodayWord(dailyWord);
 
-      console.log(`📅 Today's date: ${todayDate}, Word: ${dailyWord.word}`);
-
       const progressRef = ref(database, `users/${userId}/dailyWords/${todayDate}`);
       const snapshot = await get(progressRef);
       
       if (snapshot.exists()) {
-        const progress = snapshot.val();
-        console.log('📝 Found existing progress for today:', progress);
-        setTodayProgress(progress);
+        setTodayProgress(snapshot.val());
       } else {
-        // Initialize today's progress
         const newProgress: DailyWordProgress = {
           word: dailyWord.word,
           date: todayDate,
@@ -238,14 +312,77 @@ export default function HomeScreen() {
           attempts: 0,
           bestScore: 0,
         };
-        console.log('📝 Creating new progress for today:', newProgress);
         setTodayProgress(newProgress);
         await set(progressRef, newProgress);
       }
+
+      await loadPracticeProgress(userId);
     } catch (error) {
-      console.error('❌ Error loading user data:', error);
+      console.error('Error loading user data:', error);
     }
   }, [calculateStatsFromHistory]);
+
+  const loadPracticeProgress = async (userId: string) => {
+    try {
+      const allProgress: { [key: string]: WordProgress } = {};
+      
+      for (const difficulty of ['easy', 'intermediate', 'hard']) {
+        const diffRef = ref(database, `users/${userId}/practiceWords/${difficulty}`);
+        const snapshot = await get(diffRef);
+        
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          Object.assign(allProgress, data);
+        }
+      }
+      
+      setWordProgress(allProgress);
+      updateCurrentWords(selectedDifficulty, allProgress);
+    } catch (error) {
+      console.error('Error loading practice progress:', error);
+    }
+  };
+
+  const updateCurrentWords = (difficulty: DifficultyLevel, progress: { [key: string]: WordProgress }) => {
+    const words = WORD_DATABASE[difficulty];
+    setCurrentWords(words);
+    
+    // Initialize animations for each word
+    words.forEach((word, index) => {
+      if (!wordNodeAnims[word.id]) {
+        wordNodeAnims[word.id] = new Animated.Value(0);
+        glowAnims[word.id] = new Animated.Value(0);
+      }
+      
+      // Stagger entrance animations
+      Animated.spring(wordNodeAnims[word.id], {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        delay: index * 80,
+        useNativeDriver: true,
+      }).start();
+      
+      // Animate glow for completed and current words
+      const wordProgress = progress[word.id];
+      if (wordProgress?.completed) {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(glowAnims[word.id], {
+              toValue: 1,
+              duration: 1500,
+              useNativeDriver: false,
+            }),
+            Animated.timing(glowAnims[word.id], {
+              toValue: 0,
+              duration: 1500,
+              useNativeDriver: false,
+            }),
+          ])
+        ).start();
+      }
+    });
+  };
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -253,7 +390,38 @@ export default function HomeScreen() {
       setUserName(user.displayName || 'User');
       loadUserData(user.uid);
     }
+
+    // Badge animations
+    badgeAnims.forEach((anim, index) => {
+      Animated.spring(anim, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        delay: index * 100,
+        useNativeDriver: true,
+      }).start();
+    });
+
+    // Daily task pulse
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(dailyTaskPulse, {
+          toValue: 1.1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(dailyTaskPulse, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, [loadUserData]);
+
+  useEffect(() => {
+    updateCurrentWords(selectedDifficulty, wordProgress);
+  }, [selectedDifficulty, wordProgress]);
 
   useEffect(() => {
     if (isRecording) {
@@ -274,37 +442,48 @@ export default function HomeScreen() {
     } else {
       pulseAnim.setValue(1);
     }
-  }, [isRecording, pulseAnim]);
+  }, [isRecording]);
 
-  useEffect(() => {
-    if (showResult) {
-      Animated.parallel([
-        Animated.spring(resultAnim, {
-          toValue: 1,
-          tension: 50,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          tension: 50,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      resultAnim.setValue(0);
-      slideAnim.setValue(50);
-    }
-  }, [showResult, resultAnim, slideAnim]);
+  const handleDifficultyChange = (difficulty: DifficultyLevel) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedDifficulty(difficulty);
+    setShowDropdown(false);
+  };
+
+  const openPracticeModal = (word: any, isDaily: boolean = false) => {
+    setSelectedWord(word);
+    setShowPracticeModal(true);
+    setShowResult(false);
+    setResult(null);
+    Animated.spring(modalAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closePracticeModal = () => {
+    Animated.timing(modalAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowPracticeModal(false);
+      setSelectedWord(null);
+      setShowResult(false);
+      setResult(null);
+      setIsRecording(false);
+      setIsProcessing(false);
+    });
+  };
 
   const startRecording = async () => {
     try {
       setIsRecording(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      const path = `${RNFS.DocumentDirectoryPath}/daily_word_${Date.now()}.wav`;
-      
+      const path = `${RNFS.DocumentDirectoryPath}/word_${Date.now()}.wav`;
       const audioSet = {
         AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
         AudioSourceAndroid: AudioSourceAndroidType.MIC,
@@ -321,7 +500,6 @@ export default function HomeScreen() {
         recordTimeRef.current = audioRecorderPlayer.mmssss(Math.floor(e.currentPosition));
         setRecordingTime(recordTimeRef.current);
       });
-      
     } catch (error) {
       console.error('Recording error:', error);
       Alert.alert('Error', 'Failed to start recording');
@@ -338,19 +516,12 @@ export default function HomeScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
       const exists = await RNFS.exists(result);
-      if (!exists) {
-        throw new Error('Recording file was not created');
-      }
+      if (!exists) throw new Error('Recording file was not created');
       
       const stats = await RNFS.stat(result);
-      if (stats.size === 0) {
-        throw new Error('Recording file is empty');
-      }
-      
-      console.log(`Recording verified: ${(stats.size / 1024).toFixed(1)} KB`);
+      if (stats.size === 0) throw new Error('Recording file is empty');
       
       processAudio(result);
-      
     } catch (error) {
       console.error('Stop recording error:', error);
       Alert.alert('Error', 'Failed to process recording. Please try again.');
@@ -371,19 +542,17 @@ export default function HomeScreen() {
     
     try {
       const formData = new FormData();
-      
       formData.append('audio_file', {
         uri: Platform.OS === 'ios' ? audioPath : `file://${audioPath}`,
         type: 'audio/wav',
-        name: 'daily_word_recording.wav',
+        name: 'word_recording.wav',
       } as any);
       
-      formData.append('reference_text', todayWord.word);
+      const wordToAnalyze = selectedWord?.word || todayWord.word;
+      formData.append('reference_text', wordToAnalyze);
       formData.append('use_llm_judge', 'true');
       formData.append('generate_audio', 'false');
       formData.append('filter_extraneous', 'true');
-      
-      console.log(`Analyzing pronunciation for "${todayWord.word}"...`);
       
       const response = await axios.post(`${API_BASE_URL}/analyze_with_llm_judge`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -391,9 +560,7 @@ export default function HomeScreen() {
       });
       
       if (response.data.success) {
-        console.log('Analysis successful!');
         const analysisResult = response.data.analysis;
-        
         const resultData: AnalysisResult = {
           accuracy: analysisResult.accuracy,
           correct_phonemes: analysisResult.correct_phonemes,
@@ -401,93 +568,110 @@ export default function HomeScreen() {
           feedback: response.data.feedback || 'Great job!',
         };
         
-        console.log('📊 Analysis result:', resultData);
-        
         setResult(resultData);
         setShowResult(true);
-        
-        // Update progress
-        await updateProgress(resultData.accuracy);
-        
+        await updateWordProgress(resultData.accuracy);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
       } else {
         throw new Error(response.data.error || 'Analysis failed');
       }
-      
     } catch (error: any) {
       console.error('Processing error:', error);
-      
-      let errorMessage = 'Failed to analyze pronunciation.';
-      if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
-        errorMessage = 'Unable to connect to server. Please check your connection.';
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      }
-      
-      Alert.alert('Analysis Error', errorMessage);
-      
+      Alert.alert('Analysis Error', 'Failed to analyze pronunciation.');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const updateProgress = async (accuracy: number) => {
+  const updateWordProgress = async (accuracy: number) => {
     try {
       const user = auth.currentUser;
-      if (!user || !todayProgress) return;
+      if (!user) return;
 
-      console.log(`📝 Updating progress with accuracy: ${accuracy}`);
+      const timestamp = new Date().toISOString();
+      const isCompleted = accuracy >= 0.8;
+      const xpEarned = Math.round(accuracy * 10);
 
-      const todayDate = getTodayDateString();
-      const newAttempts = todayProgress.attempts + 1;
-      const newBestScore = Math.max(todayProgress.bestScore, accuracy);
-      const isCompleted = accuracy >= 0.8; // 80% threshold to complete
-      const wasAlreadyCompleted = todayProgress.completed;
+      if (selectedWord?.id) {
+        const wordId = selectedWord.id;
+        const difficulty = selectedWord.difficulty;
+        const currentProgress = wordProgress[wordId];
 
-      console.log(`Attempts: ${newAttempts}, Best Score: ${newBestScore}, Completed: ${isCompleted}`);
+        const newAttempts = (currentProgress?.attempts || 0) + 1;
+        const newBestScore = Math.max(currentProgress?.bestScore || 0, accuracy);
 
-      // Update daily word progress
-      const updatedProgress: DailyWordProgress = {
-        ...todayProgress,
-        accuracy: accuracy,
-        attempts: newAttempts,
-        bestScore: newBestScore,
-        completed: isCompleted || todayProgress.completed,
-      };
+        const updatedProgress: WordProgress = {
+          wordId: wordId,
+          word: selectedWord.word,
+          completed: isCompleted || (currentProgress?.completed || false),
+          attempts: newAttempts,
+          bestScore: newBestScore,
+          lastAttempted: timestamp,
+        };
 
-      const progressRef = ref(database, `users/${user.uid}/dailyWords/${todayDate}`);
-      await set(progressRef, updatedProgress);
-      setTodayProgress(updatedProgress);
+        const wordRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}`);
+        await set(wordRef, updatedProgress);
 
-      console.log('💾 Saved progress to Firebase:', updatedProgress);
+        setWordProgress(prev => ({ ...prev, [wordId]: updatedProgress }));
 
-      // Recalculate and update stats from all history
-      const dailyWordsRef = ref(database, `users/${user.uid}/dailyWords`);
-      const snapshot = await get(dailyWordsRef);
-      
-      if (snapshot.exists()) {
-        const allDailyWords = snapshot.val();
-        console.log('🔄 Recalculating stats after update...');
-        await calculateStatsFromHistory(allDailyWords, user.uid);
+        // Celebrate completion with animation
+        if (isCompleted && !currentProgress?.completed) {
+          const nodeAnim = wordNodeAnims[wordId];
+          if (nodeAnim) {
+            // Bounce animation
+            Animated.sequence([
+              Animated.timing(nodeAnim, {
+                toValue: 1.3,
+                duration: 200,
+                useNativeDriver: true,
+              }),
+              Animated.spring(nodeAnim, {
+                toValue: 1,
+                tension: 100,
+                friction: 5,
+                useNativeDriver: true,
+              }),
+            ]).start();
+
+            // Start glow animation
+            const glowAnim = glowAnims[wordId];
+            if (glowAnim) {
+              Animated.loop(
+                Animated.sequence([
+                  Animated.timing(glowAnim, {
+                    toValue: 1,
+                    duration: 1500,
+                    useNativeDriver: false,
+                  }),
+                  Animated.timing(glowAnim, {
+                    toValue: 0,
+                    duration: 1500,
+                    useNativeDriver: false,
+                  }),
+                ])
+              ).start();
+            }
+          }
+        }
       }
 
-      // Show completion message if just completed
-      if (isCompleted && !wasAlreadyCompleted) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        console.log('🎉 Daily word completed!');
-      }
+      // Update stats
+      const newXP = stats.xp + xpEarned;
+      const newTotalWords = isCompleted ? stats.totalWords + 1 : stats.totalWords;
+      setStats(prev => ({ ...prev, xp: newXP, totalWords: newTotalWords }));
+      const statsRef = ref(database, `users/${user.uid}/stats`);
+      await set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords });
     } catch (error) {
-      console.error('❌ Error updating progress:', error);
+      console.error('Error updating progress:', error);
     }
   };
 
-  const playWordPronunciation = async () => {
+  const playWordPronunciation = async (word: string) => {
     try {
       Haptics.selectionAsync();
       setPlayingAudio(true);
       
-      const response = await axios.get(`${API_BASE_URL}/get_word_audio/${todayWord.word}`, {
+      const response = await axios.get(`${API_BASE_URL}/get_word_audio/${word}`, {
         responseType: 'arraybuffer',
         timeout: 10000
       });
@@ -500,7 +684,7 @@ export default function HomeScreen() {
         }
         const base64Audio = btoa(binary);
         
-        const tempPath = `${RNFS.DocumentDirectoryPath}/temp_daily_word_${Date.now()}.wav`;
+        const tempPath = `${RNFS.DocumentDirectoryPath}/temp_word_${Date.now()}.wav`;
         await RNFS.writeFile(tempPath, base64Audio, 'base64');
         
         await audioRecorderPlayer.startPlayer(tempPath);
@@ -516,309 +700,622 @@ export default function HomeScreen() {
       }
     } catch (error) {
       console.error('Error playing pronunciation:', error);
-      Alert.alert('Audio Not Available', 'Pronunciation audio is not available for this word.');
       setPlayingAudio(false);
     }
   };
 
-  const handleTryAgain = () => {
-    setShowResult(false);
-    setResult(null);
+  const getNextUnlockedIndex = () => {
+    const completedCount = currentWords.filter(word => wordProgress[word.id]?.completed).length;
+    return completedCount;
   };
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Easy': return '#10B981';
-      case 'Medium': return '#F59E0B';
-      case 'Hard': return '#EF4444';
-      default: return '#6B7280';
-    }
+  const renderWordChain = () => {
+    const unlockedIndex = getNextUnlockedIndex();
+
+    return currentWords.map((word, index) => {
+      const progress = wordProgress[word.id];
+      const isUnlocked = index <= unlockedIndex;
+      const isCompleted = progress?.completed || false;
+      const isCurrent = index === unlockedIndex && !isCompleted;
+      
+      // Zigzag pattern
+      const isLeft = index % 2 === 0;
+      const topOffset = index * 140;
+
+      // Get animations
+      const nodeAnim = wordNodeAnims[word.id] || new Animated.Value(1);
+      const glowAnim = glowAnims[word.id] || new Animated.Value(0);
+
+      // Animated glow effect
+      const glowColor = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['rgba(99, 102, 241, 0)', 'rgba(99, 102, 241, 0.4)']
+      });
+
+      // Scale animation for entrance
+      const scale = nodeAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.3, 1]
+      });
+
+      const opacity = nodeAnim;
+
+      return (
+        <Animated.View 
+          key={word.id} 
+          style={[
+            styles.wordNodeContainer, 
+            { 
+              top: topOffset,
+              opacity: opacity,
+              transform: [{ scale: scale }]
+            }
+          ]}
+        >
+          {/* Animated Connecting Path */}
+          {index < currentWords.length - 1 && (
+            <View style={styles.pathLineContainer}>
+              <LinearGradient
+                colors={
+                  isCompleted 
+                    ? [DIFFICULTY_COLORS[selectedDifficulty].primary, DIFFICULTY_COLORS[selectedDifficulty].primary + '80'] as const
+                    : [COLORS.gray[300], COLORS.gray[200]] as const
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={[
+                  styles.pathLine,
+                  { left: isLeft ? 60 : width - 60 }
+                ]}
+              />
+              {isCompleted && (
+                <View style={[
+                  styles.pathDots,
+                  { left: isLeft ? 58 : width - 62 }
+                ]}>
+                  {[0, 1, 2].map((i) => (
+                    <Animated.View
+                      key={i}
+                      style={[
+                        styles.pathDot,
+                        {
+                          backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary,
+                          opacity: glowAnim,
+                        }
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Glow Effect */}
+          {(isCompleted || isCurrent) && (
+            <Animated.View
+              style={[
+                styles.wordGlow,
+                { 
+                  left: isLeft ? 10 : width - 110,
+                  backgroundColor: glowColor,
+                }
+              ]}
+            />
+          )}
+
+          {/* Word Circle */}
+          <TouchableOpacity
+            style={[
+              styles.wordCircle,
+              { left: isLeft ? 20 : width - 100 }
+            ]}
+            onPress={() => {
+              if (isUnlocked) {
+                // Bounce animation on press
+                Animated.sequence([
+                  Animated.timing(nodeAnim, {
+                    toValue: 0.9,
+                    duration: 100,
+                    useNativeDriver: true,
+                  }),
+                  Animated.spring(nodeAnim, {
+                    toValue: 1,
+                    tension: 100,
+                    friction: 3,
+                    useNativeDriver: true,
+                  }),
+                ]).start();
+                openPracticeModal(word);
+              }
+            }}
+            disabled={!isUnlocked}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={
+                isCompleted 
+                  ? DIFFICULTY_COLORS[selectedDifficulty].gradient
+                  : isCurrent 
+                  ? [COLORS.primary, COLORS.secondary] as const
+                  : isUnlocked
+                  ? [COLORS.white, COLORS.gray[50]] as const
+                  : [COLORS.gray[200], COLORS.gray[300]] as const
+              }
+              style={styles.circleGradient}
+            >
+              {isCompleted ? (
+                <View style={styles.completedIcon}>
+                  <Icon name="check-circle" size={36} color={COLORS.white} />
+                  {progress?.bestScore && progress.bestScore >= 0.95 && (
+                    <View style={styles.perfectStar}>
+                      <Icon name="stars" size={20} color={COLORS.gold} />
+                    </View>
+                  )}
+                </View>
+              ) : isCurrent ? (
+                <Animated.View style={{ transform: [{ rotate: '0deg' }] }}>
+                  <Icon name="star" size={36} color={COLORS.white} />
+                </Animated.View>
+              ) : !isUnlocked ? (
+                <Icon name="lock" size={28} color={COLORS.gray[400]} />
+              ) : (
+                <View style={styles.wordPreview}>
+                  <Icon name="play-circle-filled" size={32} color={COLORS.primary} />
+                </View>
+              )}
+            </LinearGradient>
+            
+            {progress?.bestScore && progress.bestScore > 0 && (
+              <Animated.View style={[styles.scoreLabel, { opacity: glowAnim }]}>
+                <LinearGradient
+                  colors={['#FFFFFF', '#F8FAFC'] as const}
+                  style={styles.scoreLabelGradient}
+                >
+                  <Icon name="stars" size={10} color={COLORS.gold} />
+                  <Text style={styles.scoreLabelText}>{Math.round(progress.bestScore * 100)}%</Text>
+                </LinearGradient>
+              </Animated.View>
+            )}
+          </TouchableOpacity>
+
+          {/* Word Label with Animation */}
+          {isUnlocked && (
+            <Animated.View 
+              style={[
+                styles.wordLabel,
+                { 
+                  left: isLeft ? 100 : 20,
+                  opacity: nodeAnim,
+                }
+              ]}
+            >
+              <LinearGradient
+                colors={
+                  isCompleted
+                    ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                    : [COLORS.white, COLORS.gray[50]] as const
+                }
+                style={styles.wordLabelGradient}
+              >
+                <Text style={[
+                  styles.wordLabelText,
+                  { color: isCompleted ? DIFFICULTY_COLORS[selectedDifficulty].primary : COLORS.gray[800] }
+                ]}>{word.word}</Text>
+                {isCurrent && (
+                  <View style={styles.currentBadge}>
+                    <Text style={styles.currentBadgeText}>NEW</Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </Animated.View>
+          )}
+        </Animated.View>
+      );
+    });
   };
 
-  const getAccuracyColor = (accuracy: number) => {
-    if (accuracy >= 0.9) return '#10B981';
-    if (accuracy >= 0.7) return '#F59E0B';
-    return '#EF4444';
-  };
-
-  const getAccuracyMessage = (accuracy: number) => {
-    if (accuracy >= 0.9) return 'Excellent! 🎉';
-    if (accuracy >= 0.8) return 'Great job! 👏';
-    if (accuracy >= 0.7) return 'Good effort! 💪';
-    return 'Keep practicing! 📚';
-  };
-
-  const formatAccuracy = (accuracy: number) => {
-    return `${(accuracy * 100).toFixed(1)}%`;
-  };
+  const modalScale = modalAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.8, 1],
+  });
 
   return (
     <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerTop}>
+          <Text style={styles.userName}>Hi, {userName}! 👋</Text>
+        </View>
+
+        {/* Badges */}
+        <View style={styles.badgesContainer}>
+          <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[0] }] }]}>
+            <LinearGradient
+              colors={[COLORS.primary, COLORS.secondary] as const}
+              style={styles.badgeGradient}
+            >
+              <Icon name="menu-book" size={24} color={COLORS.white} />
+              <View style={styles.badgeInfo}>
+                <Text style={styles.badgeValue}>{stats.totalWords}</Text>
+                <Text style={styles.badgeLabel}>Words</Text>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+
+          <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
+            <LinearGradient
+              colors={['#F59E0B', '#D97706'] as const}
+              style={styles.badgeGradient}
+            >
+              <Icon name="local-fire-department" size={24} color={COLORS.white} />
+              <View style={styles.badgeInfo}>
+                <Text style={styles.badgeValue}>{stats.streak}</Text>
+                <Text style={styles.badgeLabel}>Streak</Text>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+
+          <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[2] }] }]}>
+            <LinearGradient
+              colors={[COLORS.success, '#059669'] as const}
+              style={styles.badgeGradient}
+            >
+              <Icon name="check-circle" size={24} color={COLORS.white} />
+              <View style={styles.badgeInfo}>
+                <Text style={styles.badgeValue}>{Math.round(stats.accuracy * 100)}%</Text>
+                <Text style={styles.badgeLabel}>Accuracy</Text>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+        </View>
+      </View>
+
+      {/* Controls */}
+      <View style={styles.controls}>
+        {/* Difficulty Dropdown */}
+        <View style={styles.dropdownContainer}>
+          <TouchableOpacity
+            style={styles.dropdownButton}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setShowDropdown(!showDropdown);
+            }}
+          >
+            <Icon name="tune" size={20} color={COLORS.primary} />
+            <Text style={styles.dropdownButtonText}>
+              {selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1)}
+            </Text>
+            <Icon name={showDropdown ? "expand-less" : "expand-more"} size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+
+          {showDropdown && (
+            <View style={styles.dropdownMenu}>
+              {(['easy', 'intermediate', 'hard'] as DifficultyLevel[]).map((diff) => (
+                <TouchableOpacity
+                  key={diff}
+                  style={[
+                    styles.dropdownItem,
+                    selectedDifficulty === diff && styles.dropdownItemActive
+                  ]}
+                  onPress={() => handleDifficultyChange(diff)}
+                >
+                  <View style={[
+                    styles.difficultyDot,
+                    { backgroundColor: DIFFICULTY_COLORS[diff].primary }
+                  ]} />
+                  <Text style={[
+                    styles.dropdownItemText,
+                    selectedDifficulty === diff && styles.dropdownItemTextActive
+                  ]}>
+                    {diff.charAt(0).toUpperCase() + diff.slice(1)}
+                  </Text>
+                  {selectedDifficulty === diff && (
+                    <Icon name="check" size={18} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Daily Task */}
+        <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
+          <TouchableOpacity
+            style={styles.dailyTaskButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setShowDailyTask(true);
+            }}
+          >
+            <LinearGradient
+              colors={[COLORS.gold, '#D97706'] as const}
+              style={styles.dailyTaskGradient}
+            >
+              <Icon name="assignment" size={24} color={COLORS.white} />
+              {!todayProgress?.completed && (
+                <View style={styles.dailyTaskBadge}>
+                  <Text style={styles.dailyTaskBadgeText}>!</Text>
+                </View>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+
+      {/* Word Chain */}
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header with Gradient */}
-        <LinearGradient
-          colors={['#6366F1', '#8B5CF6', '#EC4899']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.header}
-        >
-          <View style={styles.headerContent}>
-            <View>
-              <Text style={styles.greeting}>Hello, {userName}! 👋</Text>
-              <Text style={styles.headerSubtitle}>Practice your daily word</Text>
-            </View>
-            <View style={styles.streakBadge}>
-              <Text style={styles.streakEmoji}>🔥</Text>
-              <Text style={styles.streakNumber}>{stats.streak}</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        {/* Stats Cards */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Icon name="check-circle" size={24} color="#10B981" />
-            <Text style={styles.statValue}>{stats.totalWords}</Text>
-            <Text style={styles.statLabel}>Words Completed</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Icon name="trending-up" size={24} color="#6366F1" />
-            <Text style={styles.statValue}>{(stats.accuracy * 100).toFixed(0)}%</Text>
-            <Text style={styles.statLabel}>Avg Accuracy</Text>
+        <View style={styles.pathContainer}>
+          {renderWordChain()}
+          
+          {/* Load More Indicator */}
+          <View style={styles.loadMoreContainer}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Text style={styles.loadMoreText}>Loading more words...</Text>
           </View>
         </View>
 
-        {!showResult ? (
-          <>
-            {/* Daily Word Card */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Today's Word</Text>
-                {todayProgress?.completed && (
-                  <View style={styles.completedBadge}>
-                    <Icon name="check-circle" size={16} color="#10B981" />
-                    <Text style={styles.completedText}>Completed</Text>
-                  </View>
-                )}
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      {/* Daily Task Modal */}
+      <Modal
+        visible={showDailyTask}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowDailyTask(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.dailyTaskModal}>
+            <LinearGradient
+              colors={[COLORS.gold, '#D97706'] as const}
+              style={styles.dailyTaskHeader}
+            >
+              <Icon name="wb-sunny" size={32} color={COLORS.white} />
+              <Text style={styles.dailyTaskTitle}>Today's Challenge</Text>
+              <TouchableOpacity 
+                style={styles.dailyTaskClose}
+                onPress={() => setShowDailyTask(false)}
+              >
+                <Icon name="close" size={24} color={COLORS.white} />
+              </TouchableOpacity>
+            </LinearGradient>
+
+            <View style={styles.dailyTaskContent}>
+              <Text style={styles.dailyWordText}>{todayWord.word}</Text>
+              <Text style={styles.dailyPhonetic}>{todayWord.phonetic}</Text>
+              
+              <View style={styles.dailyMeaning}>
+                <Icon name="info-outline" size={20} color={COLORS.primary} />
+                <Text style={styles.dailyMeaningText}>{todayWord.meaning}</Text>
               </View>
 
-              <View style={styles.wordCard}>
+              <View style={styles.dailyExample}>
+                <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
+                <Text style={styles.dailyExampleText}>"{todayWord.example}"</Text>
+              </View>
+
+              <View style={styles.dailyTip}>
+                <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
+                <Text style={styles.dailyTipText}>{todayWord.tip}</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.startDailyButton}
+                onPress={() => {
+                  setShowDailyTask(false);
+                  openPracticeModal(todayWord, true);
+                }}
+              >
                 <LinearGradient
-                  colors={['rgba(99, 102, 241, 0.1)', 'rgba(139, 92, 246, 0.1)']}
-                  style={styles.wordCardGradient}
+                  colors={[COLORS.primary, COLORS.secondary] as const}
+                  style={styles.startDailyGradient}
                 >
-                  {/* Word Header */}
-                  <View style={styles.wordHeader}>
-                    <View style={[
-                      styles.difficultyBadge,
-                      { backgroundColor: `${getDifficultyColor(todayWord.difficulty)}20` }
-                    ]}>
-                      <Text style={[
-                        styles.difficultyText,
-                        { color: getDifficultyColor(todayWord.difficulty) }
-                      ]}>
-                        {todayWord.difficulty}
-                      </Text>
-                    </View>
-                    {todayProgress && todayProgress.attempts > 0 && (
-                      <Text style={styles.attemptsText}>
-                        {todayProgress.attempts} attempt{todayProgress.attempts > 1 ? 's' : ''}
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* Word Display */}
-                  <View style={styles.wordDisplay}>
-                    <Text style={styles.wordText}>{todayWord.word}</Text>
-                    <Text style={styles.phoneticText}>{todayWord.phonetic}</Text>
-                  </View>
-
-                  {/* Speaker Button */}
-                  <TouchableOpacity
-                    style={styles.speakerButton}
-                    onPress={playWordPronunciation}
-                    disabled={playingAudio}
-                  >
-                    <Icon 
-                      name={playingAudio ? 'volume-up' : 'volume-up'} 
-                      size={24} 
-                      color="#6366F1" 
-                    />
-                    <Text style={styles.speakerText}>
-                      {playingAudio ? 'Playing...' : 'Listen to pronunciation'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Tip */}
-                  <View style={styles.tipContainer}>
-                    <Icon name="lightbulb-outline" size={18} color="#F59E0B" />
-                    <Text style={styles.tipText}>{todayWord.tip}</Text>
-                  </View>
-
-                  {/* Best Score */}
-                  {todayProgress && todayProgress.bestScore > 0 && (
-                    <View style={styles.bestScoreContainer}>
-                      <Text style={styles.bestScoreLabel}>Your Best Score:</Text>
-                      <Text style={[
-                        styles.bestScoreValue,
-                        { color: getAccuracyColor(todayProgress.bestScore) }
-                      ]}>
-                        {formatAccuracy(todayProgress.bestScore)}
-                      </Text>
-                    </View>
-                  )}
-                </LinearGradient>
-              </View>
-            </View>
-
-            {/* Recording Section */}
-            <View style={styles.recordingSection}>
-              {isProcessing ? (
-                <View style={styles.processingContainer}>
-                  <ActivityIndicator size="large" color="#6366F1" />
-                  <Text style={styles.processingText}>Analyzing your pronunciation...</Text>
-                </View>
-              ) : (
-                <>
-                  <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                    <TouchableOpacity
-                      style={styles.recordButton}
-                      onPress={handleRecord}
-                      activeOpacity={0.8}
-                    >
-                      <LinearGradient
-                        colors={isRecording ? ['#EF4444', '#DC2626'] : ['#6366F1', '#8B5CF6']}
-                        style={styles.recordGradient}
-                      >
-                        <Icon 
-                          name={isRecording ? 'stop' : 'mic'} 
-                          size={48} 
-                          color="#FFFFFF" 
-                        />
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </Animated.View>
-                  
-                  {isRecording && (
-                    <Text style={styles.recordingTime}>{recordingTime}</Text>
-                  )}
-                  
-                  <Text style={styles.recordLabel}>
-                    {isRecording ? 'Tap to stop recording' : 'Tap to record your pronunciation'}
+                  <Text style={styles.startDailyText}>
+                    {todayProgress?.completed ? 'Practice Again' : 'Start Challenge'}
                   </Text>
-                </>
-              )}
+                  <Icon name="arrow-forward" size={20} color={COLORS.white} />
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
-          </>
-        ) : (
-          /* Result Card */
+          </View>
+        </View>
+      </Modal>
+
+      {/* Practice Modal */}
+      <Modal
+        visible={showPracticeModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closePracticeModal}
+      >
+        <View style={styles.modalOverlay}>
           <Animated.View 
             style={[
-              styles.resultCard,
+              styles.modalContainer,
               {
-                opacity: resultAnim,
-                transform: [{ translateY: slideAnim }]
+                opacity: modalAnim,
+                transform: [{ scale: modalScale }]
               }
             ]}
           >
-            <LinearGradient
-              colors={['#FFFFFF', '#F9FAFB']}
-              style={styles.resultGradient}
-            >
-              {/* Success Icon */}
-              <View style={[
-                styles.resultIconContainer,
-                { backgroundColor: `${getAccuracyColor(result?.accuracy || 0)}20` }
-              ]}>
-                <Icon 
-                  name={result && result.accuracy >= 0.8 ? 'check-circle' : 'info'} 
-                  size={64} 
-                  color={getAccuracyColor(result?.accuracy || 0)} 
-                />
-              </View>
+            <View style={styles.modalCard}>
+              {!showResult ? (
+                <>
+                  <View style={styles.modalHeader}>
+                    <TouchableOpacity 
+                      style={styles.closeButton}
+                      onPress={closePracticeModal}
+                    >
+                      <Icon name="close" size={24} color={COLORS.gray[600]} />
+                    </TouchableOpacity>
+                  </View>
 
-              {/* Result Message */}
-              <Text style={styles.resultMessage}>
-                {result && getAccuracyMessage(result.accuracy)}
-              </Text>
+                  <View style={styles.modalWordDisplay}>
+                    <Text style={styles.modalWord}>{selectedWord?.word}</Text>
+                    <Text style={styles.modalPhonetic}>{selectedWord?.phonetic}</Text>
+                  </View>
 
-              {/* Score Display */}
-              <View style={styles.scoreDisplay}>
-                <Text style={styles.scoreLabel}>Your Score</Text>
-                <Text style={[
-                  styles.scoreValue,
-                  { color: getAccuracyColor(result?.accuracy || 0) }
-                ]}>
-                  {result && formatAccuracy(result.accuracy)}
-                </Text>
-              </View>
+                  <View style={styles.modalMeaning}>
+                    <Icon name="book" size={20} color={COLORS.primary} />
+                    <Text style={styles.modalMeaningText}>{selectedWord?.meaning}</Text>
+                  </View>
 
-              {/* Phonemes Info */}
-              <View style={styles.phonemesInfo}>
-                <View style={styles.phonemeItem}>
-                  <Icon name="check" size={20} color="#10B981" />
-                  <Text style={styles.phonemeText}>
-                    {result?.correct_phonemes || 0} correct
-                  </Text>
-                </View>
-                <View style={styles.phonemedivider} />
-                <View style={styles.phonemeItem}>
-                  <Icon name="close" size={20} color="#EF4444" />
-                  <Text style={styles.phonemeText}>
-                    {result ? result.total_phonemes - result.correct_phonemes : 0} errors
-                  </Text>
-                </View>
-              </View>
+                  <View style={styles.modalExample}>
+                    <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
+                    <Text style={styles.modalExampleText}>{selectedWord?.example}</Text>
+                  </View>
 
-              {/* Feedback */}
-              <View style={styles.feedbackContainer}>
-                <Text style={styles.feedbackTitle}>Feedback:</Text>
-                <Text style={styles.feedbackText}>{result?.feedback}</Text>
-              </View>
+                  <View style={styles.modalTip}>
+                    <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
+                    <Text style={styles.modalTipText}>{selectedWord?.tip}</Text>
+                  </View>
 
-              {/* Completion Status */}
-              {result && result.accuracy >= 0.8 && todayProgress && !todayProgress.completed && (
-                <View style={styles.completionBanner}>
-                  <Icon name="celebration" size={24} color="#10B981" />
-                  <Text style={styles.completionText}>
-                    Daily word completed! Come back tomorrow for a new word.
-                  </Text>
-                </View>
-              )}
-
-              {/* Action Buttons */}
-              <View style={styles.resultActions}>
-                <TouchableOpacity 
-                  style={styles.tryAgainButton}
-                  onPress={handleTryAgain}
-                >
-                  <Icon name="refresh" size={20} color="#6366F1" />
-                  <Text style={styles.tryAgainText}>Try Again</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={styles.continueButton}
-                  onPress={() => setShowResult(false)}
-                >
-                  <LinearGradient
-                    colors={['#6366F1', '#8B5CF6']}
-                    style={styles.continueGradient}
+                  <TouchableOpacity
+                    style={styles.modalListenButton}
+                    onPress={() => playWordPronunciation(selectedWord?.word)}
+                    disabled={playingAudio}
                   >
-                    <Text style={styles.continueText}>Continue</Text>
-                    <Icon name="arrow-forward" size={20} color="#FFFFFF" />
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            </LinearGradient>
-          </Animated.View>
-        )}
+                    <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color={COLORS.white} />
+                    <Text style={styles.modalListenText}>
+                      {playingAudio ? 'Playing...' : 'Listen'}
+                    </Text>
+                  </TouchableOpacity>
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
+                  <View style={styles.modalRecordSection}>
+                    {isProcessing ? (
+                      <View style={styles.modalProcessing}>
+                        <ActivityIndicator size="large" color={COLORS.primary} />
+                        <Text style={styles.modalProcessingText}>Analyzing...</Text>
+                      </View>
+                    ) : (
+                      <>
+                        <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                          <TouchableOpacity
+                            style={styles.modalRecordButton}
+                            onPress={handleRecord}
+                            activeOpacity={0.9}
+                          >
+                            <LinearGradient
+                              colors={isRecording ? [COLORS.error, '#DC2626'] as const : [COLORS.primary, COLORS.secondary] as const}
+                              style={styles.modalRecordCircle}
+                            >
+                              <Icon 
+                                name={isRecording ? 'stop' : 'mic'} 
+                                size={40} 
+                                color={COLORS.white} 
+                              />
+                            </LinearGradient>
+                          </TouchableOpacity>
+                        </Animated.View>
+                        
+                        {isRecording && (
+                          <Text style={styles.modalRecordingTime}>{recordingTime}</Text>
+                        )}
+                        
+                        <Text style={styles.modalRecordHint}>
+                          {isRecording ? 'Tap to stop' : 'Tap to record'}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.modalHeader}>
+                    <TouchableOpacity 
+                      style={styles.closeButton}
+                      onPress={closePracticeModal}
+                    >
+                      <Icon name="close" size={24} color={COLORS.gray[600]} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.resultContent}>
+                    <LinearGradient
+                      colors={result && result.accuracy >= 0.8 
+                        ? [COLORS.success, '#059669'] as const
+                        : [COLORS.warning, '#D97706'] as const
+                      }
+                      style={styles.resultIconCircle}
+                    >
+                      <Icon 
+                        name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} 
+                        size={64} 
+                        color={COLORS.white} 
+                      />
+                    </LinearGradient>
+                    
+                    <Text style={styles.resultTitle}>
+                      {result && result.accuracy >= 0.9 ? 'Perfect!' :
+                       result && result.accuracy >= 0.8 ? 'Excellent!' :
+                       result && result.accuracy >= 0.7 ? 'Good Job!' : 'Keep Trying!'}
+                    </Text>
+
+                    <View style={styles.xpEarned}>
+                      <Icon name="stars" size={24} color={COLORS.gold} />
+                      <Text style={styles.xpEarnedText}>
+                        +{result && Math.round(result.accuracy * 10)} XP
+                      </Text>
+                    </View>
+
+                    <View style={styles.scoreDisplay}>
+                      <Text style={styles.scoreText}>{result && Math.round(result.accuracy * 100)}%</Text>
+                      <Text style={styles.scoreLabel}>Accuracy</Text>
+                    </View>
+
+                    <View style={styles.resultStats}>
+                      <View style={styles.resultStatItem}>
+                        <Icon name="check-circle" size={24} color={COLORS.success} />
+                        <Text style={styles.resultStatValue}>{result?.correct_phonemes || 0}</Text>
+                        <Text style={styles.resultStatLabel}>Correct</Text>
+                      </View>
+                      <View style={styles.resultStatDivider} />
+                      <View style={styles.resultStatItem}>
+                        <Icon name="cancel" size={24} color={COLORS.error} />
+                        <Text style={styles.resultStatValue}>
+                          {result ? result.total_phonemes - result.correct_phonemes : 0}
+                        </Text>
+                        <Text style={styles.resultStatLabel}>Errors</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.resultFeedback}>
+                      <Text style={styles.resultFeedbackTitle}>Feedback</Text>
+                      <Text style={styles.resultFeedbackText}>{result?.feedback}</Text>
+                    </View>
+
+                    <View style={styles.resultActions}>
+                      <TouchableOpacity 
+                        style={styles.resultTryAgain}
+                        onPress={() => setShowResult(false)}
+                      >
+                        <Icon name="refresh" size={24} color={COLORS.primary} />
+                        <Text style={styles.resultTryAgainText}>Try Again</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity 
+                        style={styles.resultContinue}
+                        onPress={closePracticeModal}
+                      >
+                        <LinearGradient
+                          colors={[COLORS.primary, COLORS.secondary] as const}
+                          style={styles.resultContinueGradient}
+                        >
+                          <Text style={styles.resultContinueText}>Continue</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              )}
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -826,416 +1323,766 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FE',
+    backgroundColor: COLORS.background,
+  },
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    backgroundColor: COLORS.white,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  headerTop: {
+    marginBottom: 16,
+  },
+  userName: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+    letterSpacing: -0.5,
+  },
+  badgesContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  badge: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  badgeGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 8,
+  },
+  badgeInfo: {
+    flex: 1,
+  },
+  badgeValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: COLORS.white,
+    lineHeight: 20,
+  },
+  badgeLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.9)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  controls: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  dropdownContainer: {
+    position: 'relative',
+    zIndex: 1000,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  dropdownButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.gray[800],
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 160,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  dropdownItemActive: {
+    backgroundColor: COLORS.gray[50],
+  },
+  difficultyDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  dropdownItemText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.gray[700],
+  },
+  dropdownItemTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+  dailyTaskButton: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: COLORS.gold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  dailyTaskGradient: {
+    width: 56,
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  dailyTaskBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.white,
+  },
+  dailyTaskBadgeText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.white,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 20,
+    paddingTop: 20,
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 30,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+  pathContainer: {
+    position: 'relative',
+    minHeight: height * 2,
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  wordNodeContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: 120,
+  },
+  pathLineContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: 140,
+    top: 80,
+  },
+  pathLine: {
+    position: 'absolute',
+    width: 6,
+    height: 140,
+    borderRadius: 3,
+  },
+  pathDots: {
+    position: 'absolute',
+    height: 140,
+    justifyContent: 'space-around',
     alignItems: 'center',
+    paddingVertical: 20,
   },
-  greeting: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
+  pathDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  headerSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '500',
+  wordGlow: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    top: -10,
   },
-  streakBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  streakEmoji: {
-    fontSize: 24,
-  },
-  streakNumber: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginTop: 20,
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+  wordCircle: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
     shadowRadius: 12,
-    elevation: 3,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#1F2937',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  section: {
-    paddingHorizontal: 20,
-    marginTop: 28,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  completedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  completedText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#10B981',
-  },
-  wordCard: {
-    borderRadius: 20,
+    elevation: 6,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 5,
   },
-  wordCardGradient: {
-    backgroundColor: '#FFFFFF',
-    padding: 24,
-  },
-  wordHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  circleGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    borderRadius: 40,
   },
-  difficultyBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
+  completedIcon: {
+    position: 'relative',
   },
-  difficultyText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  attemptsText: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    fontWeight: '600',
-  },
-  wordDisplay: {
+  perfectStar: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+  },
+  wordPreview: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   wordText: {
-    fontSize: 48,
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.gray[700],
+    textAlign: 'center',
+  },
+  scoreLabel: {
+    position: 'absolute',
+    bottom: -12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  scoreLabelGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 3,
+  },
+  scoreLabelText: {
+    fontSize: 10,
     fontWeight: '900',
-    color: '#1F2937',
-    marginBottom: 8,
-    letterSpacing: -1,
+    color: COLORS.gray[800],
   },
-  phoneticText: {
-    fontSize: 18,
-    color: '#6B7280',
-    fontWeight: '500',
-    fontStyle: 'italic',
+  wordLabel: {
+    position: 'absolute',
+    top: 25,
+    borderRadius: 14,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+    overflow: 'hidden',
   },
-  speakerButton: {
+  wordLabelGradient: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  wordLabelText: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  currentBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  currentBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: 0.5,
+  },
+  loadMoreContainer: {
+    position: 'absolute',
+    bottom: 40,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.gray[500],
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  dailyTaskModal: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  dailyTaskHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#EEF2FF',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
+    padding: 20,
+    position: 'relative',
   },
-  speakerText: {
-    fontSize: 15,
+  dailyTaskTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: COLORS.white,
+    marginLeft: 8,
+  },
+  dailyTaskClose: {
+    position: 'absolute',
+    right: 16,
+    top: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dailyTaskContent: {
+    padding: 24,
+  },
+  dailyWordText: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  dailyPhonetic: {
+    fontSize: 16,
+    color: COLORS.gray[600],
     fontWeight: '600',
-    color: '#6366F1',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 20,
   },
-  tipContainer: {
+  dailyMeaning: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
-    backgroundColor: '#FEF3C7',
-    padding: 16,
+    backgroundColor: COLORS.gray[50],
+    padding: 14,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 12,
   },
-  tipText: {
+  dailyMeaningText: {
     flex: 1,
     fontSize: 14,
-    color: '#78350F',
+    color: COLORS.gray[700],
     fontWeight: '500',
     lineHeight: 20,
   },
-  bestScoreContainer: {
+  dailyExample: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    padding: 16,
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.gray[50],
+    padding: 14,
     borderRadius: 12,
+    gap: 10,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
   },
-  bestScoreLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
+  dailyExampleText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.gray[600],
+    fontStyle: 'italic',
+    fontWeight: '500',
+    lineHeight: 18,
   },
-  bestScoreValue: {
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  recordingSection: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 40,
-  },
-  processingContainer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  processingText: {
-    marginTop: 20,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  recordButton: {
+  dailyTip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFFBEB',
+    padding: 14,
+    borderRadius: 12,
+    gap: 10,
     marginBottom: 20,
-    borderRadius: 85,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    elevation: 10,
   },
-  recordGradient: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+  dailyTipText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  startDailyButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  startDailyGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  startDailyText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.white,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 440,
+    maxHeight: height * 0.9,
+  },
+  modalCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 32,
+    padding: 28,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.20,
+    shadowRadius: 32,
+    elevation: 15,
+  },
+  modalHeader: {
+    alignItems: 'flex-end',
+    marginBottom: 16,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.gray[100],
     justifyContent: 'center',
     alignItems: 'center',
   },
-  recordingTime: {
-    fontSize: 36,
+  modalWordDisplay: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalWord: {
+    fontSize: 44,
     fontWeight: '900',
-    color: '#EF4444',
-    marginBottom: 12,
-    fontVariant: ['tabular-nums'],
-  },  
-  recordLabel: {
+    color: COLORS.gray[800],
+    marginBottom: 8,
+    letterSpacing: -1.5,
+  },
+  modalPhonetic: {
+    fontSize: 18,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+    fontStyle: 'italic',
+  },
+  modalMeaning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.gray[50],
+    padding: 16,
+    borderRadius: 16,
+    gap: 10,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: COLORS.gray[200],
+  },
+  modalMeaningText: {
+    flex: 1,
+    fontSize: 15,
+    color: COLORS.gray[700],
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  modalExample: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.gray[50],
+    padding: 16,
+    borderRadius: 16,
+    gap: 10,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
+  },
+  modalExampleText: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.gray[600],
+    fontStyle: 'italic',
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  modalTip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFFBEB',
+    padding: 16,
+    borderRadius: 16,
+    gap: 10,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#FDE68A',
+  },
+  modalTipText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#92400E',
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  modalListenButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 10,
+    marginBottom: 24,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  modalListenText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.white,
+  },
+  modalRecordSection: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  modalProcessing: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  modalProcessingText: {
+    marginTop: 16,
     fontSize: 16,
     fontWeight: '600',
-    color: '#6B7280',
-    textAlign: 'center',
+    color: COLORS.gray[600],
   },
-  resultCard: {
-    marginHorizontal: 20,
-    marginTop: 28,
-    borderRadius: 24,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 10,
+  modalRecordButton: {
+    marginBottom: 16,
   },
-  resultGradient: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  resultIconContainer: {
+  modalRecordCircle: {
     width: 120,
     height: 120,
     borderRadius: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.30,
+    shadowRadius: 24,
+    elevation: 10,
   },
-  resultMessage: {
+  modalRecordingTime: {
     fontSize: 28,
     fontWeight: '900',
-    color: '#1F2937',
+    color: COLORS.error,
+    marginBottom: 8,
+    fontVariant: ['tabular-nums'],
+  },
+  modalRecordHint: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.gray[500],
+  },
+  resultContent: {
+    alignItems: 'center',
+  },
+  resultIconCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  resultTitle: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+    marginBottom: 16,
+  },
+  xpEarned: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 8,
     marginBottom: 24,
-    textAlign: 'center',
+    borderWidth: 2,
+    borderColor: '#FDE68A',
+  },
+  xpEarnedText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#92400E',
   },
   scoreDisplay: {
     alignItems: 'center',
     marginBottom: 24,
   },
-  scoreLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  scoreValue: {
-    fontSize: 56,
+  scoreText: {
+    fontSize: 64,
     fontWeight: '900',
+    color: COLORS.primary,
     letterSpacing: -2,
+    lineHeight: 64,
   },
-  phonemesInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 16,
-    marginBottom: 24,
-    gap: 20,
-  },
-  phonemeItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  phonemedivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: '#E5E7EB',
-  },
-  phonemeText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  feedbackContainer: {
-    width: '100%',
-    backgroundColor: '#EEF2FF',
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-  },
-  feedbackTitle: {
-    fontSize: 14,
+  scoreLabel: {
+    fontSize: 16,
     fontWeight: '700',
-    color: '#4F46E5',
+    color: COLORS.gray[600],
+    marginTop: 8,
+  },
+  resultStats: {
+    flexDirection: 'row',
+    width: '100%',
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  resultStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  resultStatValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  resultStatLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.gray[600],
+  },
+  resultStatDivider: {
+    width: 2,
+    height: 60,
+    backgroundColor: COLORS.gray[300],
+  },
+  resultFeedback: {
+    width: '100%',
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: COLORS.gray[200],
+  },
+  resultFeedbackTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.gray[700],
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  feedbackText: {
+  resultFeedbackText: {
     fontSize: 15,
-    color: '#4F46E5',
+    color: COLORS.gray[700],
     fontWeight: '500',
     lineHeight: 22,
-  },
-  completionBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#D1FAE5',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  completionText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#065F46',
-    lineHeight: 20,
   },
   resultActions: {
     flexDirection: 'row',
     width: '100%',
     gap: 12,
   },
-  tryAgainButton: {
+  resultTryAgain: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    paddingVertical: 14,
+    borderRadius: 16,
     gap: 8,
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 16,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#6366F1',
+    borderWidth: 3,
+    borderColor: COLORS.gray[300],
   },
-  tryAgainText: {
+  resultTryAgainText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#6366F1',
+    fontWeight: '800',
+    color: COLORS.primary,
   },
-  continueButton: {
+  resultContinue: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#6366F1',
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
     elevation: 6,
   },
-  continueGradient: {
-    flexDirection: 'row',
+  resultContinueGradient: {
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
   },
-  continueText: {
+  resultContinueText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: '800',
+    color: COLORS.white,
   },
 });

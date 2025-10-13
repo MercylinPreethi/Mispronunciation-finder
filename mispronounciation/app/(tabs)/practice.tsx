@@ -14,7 +14,9 @@ import {
   Dimensions,
   Animated,
   Alert,
-  ScrollView
+  ScrollView,
+  Modal,
+  KeyboardAvoidingView,
 } from 'react-native';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import * as DocumentPicker from 'expo-document-picker';
@@ -136,8 +138,11 @@ export default function PracticeScreen() {
   const [isAuthenticating, setIsAuthenticating] = useState(true);
   const [selectedSession, setSelectedSession] = useState<SentenceSession | null>(null);
   const [userId, setUserId] = useState<string>('');
+  const [newSessionModalVisible, setNewSessionModalVisible] = useState(false);
+  const [newSessionText, setNewSessionText] = useState('');
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const modalAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -272,26 +277,45 @@ export default function PracticeScreen() {
   };
 
   const handleNewSession = () => {
-    Alert.prompt(
-      'New Practice Session',
-      'Enter the sentence you want to practice:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Create',
-          onPress: (text) => {
-            if (text && text.trim()) {
-              // Navigate to recording interface with new session
-              router.push({
-                pathname: '/(tabs)/explore',
-                params: { referenceText: text.trim(), isNew: 'true' }
-              });
-            }
-          }
-        }
-      ],
-      'plain-text'
-    );
+    setNewSessionText('');
+    setNewSessionModalVisible(true);
+    Animated.spring(modalAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleCreateSession = () => {
+    if (newSessionText && newSessionText.trim()) {
+      // Close modal with animation
+      Animated.timing(modalAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        setNewSessionModalVisible(false);
+        // Navigate to recording interface with new session
+        router.push({
+          pathname: '/(tabs)/explore',
+          params: { referenceText: newSessionText.trim(), isNew: 'true' }
+        });
+      });
+    } else {
+      Alert.alert('Input Required', 'Please enter a sentence to practice.');
+    }
+  };
+
+  const handleCancelModal = () => {
+    Animated.timing(modalAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setNewSessionModalVisible(false);
+      setNewSessionText('');
+    });
   };
 
   const handleSessionPress = (session: SentenceSession) => {
@@ -388,6 +412,11 @@ export default function PracticeScreen() {
     return null;
   }
 
+  const modalScale = modalAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.8, 1],
+  });
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -466,6 +495,86 @@ export default function PracticeScreen() {
           </View>
         )}
       </Animated.View>
+
+      {/* New Session Modal */}
+      <Modal
+        visible={newSessionModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelModal}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity 
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={handleCancelModal}
+          >
+            <Animated.View 
+              style={[
+                styles.modalContainer,
+                {
+                  opacity: modalAnim,
+                  transform: [{ scale: modalScale }]
+                }
+              ]}
+            >
+              <TouchableOpacity activeOpacity={1}>
+                <LinearGradient
+                  colors={['#6366F1', '#8B5CF6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.modalGradient}
+                >
+                  <View style={styles.modalHeader}>
+                    <Icon name="add-circle-outline" size={32} color="#FFFFFF" />
+                    <Text style={styles.modalTitle}>New Practice Session</Text>
+                  </View>
+
+                  <View style={styles.modalContent}>
+                    <Text style={styles.modalLabel}>Enter the sentence you want to practice:</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      value={newSessionText}
+                      onChangeText={setNewSessionText}
+                      placeholder="Type your sentence here..."
+                      placeholderTextColor="rgba(99, 102, 241, 0.4)"
+                      multiline
+                      numberOfLines={3}
+                      autoFocus
+                      textAlignVertical="top"
+                    />
+                    
+                    <View style={styles.modalActions}>
+                      <TouchableOpacity 
+                        style={styles.modalCancelButton}
+                        onPress={handleCancelModal}
+                      >
+                        <Text style={styles.modalCancelText}>Cancel</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity 
+                        style={styles.modalCreateButton}
+                        onPress={handleCreateSession}
+                      >
+                        <LinearGradient
+                          colors={['#FFFFFF', '#F3F4F6']}
+                          style={styles.modalCreateGradient}
+                        >
+                          <Icon name="arrow-forward" size={20} color="#6366F1" />
+                          <Text style={styles.modalCreateText}>Create Session</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            </Animated.View>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -492,8 +601,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   headerGradient: {
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   headerTitle: {
     fontSize: 28,
@@ -517,11 +631,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E5E7EB',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   searchIcon: {
     marginRight: 10,
@@ -533,12 +652,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   newButton: {
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: 'hidden',
     shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
     elevation: 6,
   },
   newButtonGradient: {
@@ -556,13 +675,13 @@ const styles = StyleSheet.create({
   },
   sessionCard: {
     marginBottom: 16,
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 3,
+    elevation: 4,
   },
   sessionGradient: {
     backgroundColor: '#FFFFFF',
@@ -633,8 +752,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEE2E2',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: '#FECACA',
   },
   wordChipText: {
@@ -674,16 +793,123 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366F1',
     paddingHorizontal: 24,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 18,
     shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
     elevation: 6,
   },
   emptyButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  modalContainer: {
+    width: '85%',
+    maxWidth: 400,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  modalGradient: {
+    padding: 28,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginTop: 12,
+    letterSpacing: -0.5,
+  },
+  modalContent: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 20,
+    padding: 20,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 12,
+    opacity: 0.9,
+  },
+  modalInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '500',
+    minHeight: 100,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalCreateButton: {
+    flex: 1.5,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#FFFFFF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  modalCreateGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+  },
+  modalCreateText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6366F1',
   },
 });

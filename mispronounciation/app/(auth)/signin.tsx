@@ -3,7 +3,8 @@ import { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link, router } from 'expo-router';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import FormField from '@/components/FormField';
 import CustomButton from '@/components/CustomButton';
@@ -18,12 +19,17 @@ export default function Signin() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [rememberMe, setRememberMe] = useState(false);
+  const [isLoadingSavedCredentials, setIsLoadingSavedCredentials] = useState(true);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideUpAnim = useRef(new Animated.Value(100)).current;
   const floatAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Load saved credentials
+    loadSavedCredentials();
+
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -54,6 +60,42 @@ export default function Signin() {
     ).start();
   }, []);
 
+  const loadSavedCredentials = async () => {
+    try {
+      const savedEmail = await AsyncStorage.getItem('rememberedEmail');
+      const savedPassword = await AsyncStorage.getItem('rememberedPassword');
+      const savedRememberMe = await AsyncStorage.getItem('rememberMe');
+
+      if (savedRememberMe === 'true' && savedEmail) {
+        setForm({
+          email: savedEmail,
+          password: savedPassword || '',
+        });
+        setRememberMe(true);
+      }
+    } catch (error) {
+      console.error('Error loading saved credentials:', error);
+    } finally {
+      setIsLoadingSavedCredentials(false);
+    }
+  };
+
+  const saveCredentials = async () => {
+    try {
+      if (rememberMe) {
+        await AsyncStorage.setItem('rememberedEmail', form.email);
+        await AsyncStorage.setItem('rememberedPassword', form.password);
+        await AsyncStorage.setItem('rememberMe', 'true');
+      } else {
+        await AsyncStorage.removeItem('rememberedEmail');
+        await AsyncStorage.removeItem('rememberedPassword');
+        await AsyncStorage.removeItem('rememberMe');
+      }
+    } catch (error) {
+      console.error('Error saving credentials:', error);
+    }
+  };
+
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
     if (!form.email) newErrors.email = 'Email is required';
@@ -68,15 +110,80 @@ export default function Signin() {
     
     setIsSubmitting(true);
     try {
+      // Save credentials if remember me is checked
+      await saveCredentials();
+      
       const userCredential = await signInWithEmailAndPassword(auth, form.email, form.password);
       console.log('User signed in successfully:', userCredential.user.uid);
       router.replace('/(tabs)');
     } catch (error: any) {
       console.error('SignIn failed:', error.message);
-      Alert.alert('Sign In Error', error.message || 'An error occurred during sign in.');
+      
+      let errorMessage = 'An error occurred during sign in.';
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+        errorMessage = 'Invalid email or password. Please try again.';
+      } else if (error.code === 'auth/user-not-found') {
+        errorMessage = 'No account found with this email.';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Too many failed attempts. Please try again later.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('Sign In Error', errorMessage);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleForgotPassword = () => {
+    if (!form.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      Alert.alert(
+        'Email Required',
+        'Please enter your email address in the email field above to reset your password.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Reset Password',
+      `Send password reset email to ${form.email}?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Send',
+          onPress: async () => {
+            try {
+              await sendPasswordResetEmail(auth, form.email);
+              Alert.alert(
+                'Email Sent',
+                `Password reset instructions have been sent to ${form.email}. Please check your inbox and spam folder.`,
+                [{ text: 'OK' }]
+              );
+            } catch (error: any) {
+              console.error('Password reset error:', error);
+              
+              let errorMessage = 'Failed to send password reset email.';
+              if (error.code === 'auth/user-not-found') {
+                errorMessage = 'No account found with this email address.';
+              } else if (error.code === 'auth/invalid-email') {
+                errorMessage = 'Invalid email address.';
+              } else if (error.code === 'auth/too-many-requests') {
+                errorMessage = 'Too many requests. Please try again later.';
+              } else if (error.message) {
+                errorMessage = error.message;
+              }
+              
+              Alert.alert('Reset Failed', errorMessage);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const floatY = floatAnim.interpolate({
@@ -183,14 +290,25 @@ export default function Signin() {
                 />
 
                 <View style={styles.optionsRow}>
-                  <View style={styles.rememberMe}>
-                    <View style={styles.checkbox} />
-                    <Text style={styles.rememberText}>Remember me</Text>
-                  </View>
                   <TouchableOpacity 
-                    onPress={() => Alert.alert('Coming Soon', 'Password reset will be available soon!')}
+                    style={styles.rememberMe}
+                    onPress={() => setRememberMe(!rememberMe)}
+                    activeOpacity={0.7}
                   >
-                    <Text style={styles.forgotText}>Forgot?</Text>
+                    <View style={[
+                      styles.checkbox,
+                      rememberMe && styles.checkboxChecked
+                    ]}>
+                      {rememberMe && (
+                        <Icon name="check" size={16} color="#FFFFFF" />
+                      )}
+                    </View>
+                    <Text style={styles.rememberText}>Remember me</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={handleForgotPassword}
+                  >
+                    <Text style={styles.forgotText}>Forgot Password?</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -331,30 +449,30 @@ const styles = StyleSheet.create({
   logoGradient: {
     width: 90,
     height: 90,
-    borderRadius: 24,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.6,
-    shadowRadius: 24,
-    elevation: 15,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 12,
   },
   logoGlow: {
     position: 'absolute',
     width: 90,
     height: 90,
-    borderRadius: 24,
+    borderRadius: 28,
     backgroundColor: '#6366F1',
-    opacity: 0.3,
-    transform: [{ scale: 1.3 }],
+    opacity: 0.2,
+    transform: [{ scale: 1.2 }],
     zIndex: -1,
   },
   brandTitle: {
     fontSize: 36,
-    fontWeight: '900',
+    fontWeight: '800',
     color: '#FFFFFF',
-    letterSpacing: -1,
+    letterSpacing: -0.5,
     marginBottom: 12,
   },
   brandTaglineContainer: {
@@ -377,12 +495,17 @@ const styles = StyleSheet.create({
   },
   formCard: {
     position: 'relative',
-    backgroundColor: 'rgba(30, 41, 59, 0.8)',
-    borderRadius: 28,
+    backgroundColor: 'rgba(30, 41, 59, 0.75)',
+    borderRadius: 32,
     padding: 28,
     borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.2)',
+    borderColor: 'rgba(99, 102, 241, 0.25)',
     marginBottom: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
   },
   cardGlow: {
     position: 'absolute',
@@ -390,17 +513,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 28,
+    borderRadius: 32,
     borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.3)',
-    opacity: 0.5,
+    borderColor: 'rgba(99, 102, 241, 0.2)',
+    opacity: 0.4,
   },
   formHeader: {
     marginBottom: 32,
   },
   welcomeText: {
     fontSize: 28,
-    fontWeight: '900',
+    fontWeight: '800',
     color: '#FFFFFF',
     marginBottom: 8,
     letterSpacing: -0.5,
@@ -435,6 +558,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(99, 102, 241, 0.5)',
     backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#6366F1',
+    borderColor: '#6366F1',
   },
   rememberText: {
     fontSize: 14,
@@ -445,6 +574,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6366F1',
     fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   signInButton: {
     marginBottom: 24,
@@ -478,10 +608,15 @@ const styles = StyleSheet.create({
   },
   socialButton: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.2)',
+    borderColor: 'rgba(99, 102, 241, 0.25)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
   socialGradient: {
     paddingVertical: 18,
@@ -501,8 +636,13 @@ const styles = StyleSheet.create({
   },
   signupLinkGradient: {
     paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 16,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   signupLink: {
     fontSize: 15,
