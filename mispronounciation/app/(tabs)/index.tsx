@@ -202,6 +202,8 @@ export default function HomeScreen() {
     new Animated.Value(0),
   ]).current;
   const dailyTaskPulse = useRef(new Animated.Value(1)).current;
+  const wordNodeAnims = useRef<{ [key: string]: Animated.Value }>({}).current;
+  const glowAnims = useRef<{ [key: string]: Animated.Value }>({}).current;
 
   const getTodayWordIndex = () => {
     const today = new Date();
@@ -344,6 +346,42 @@ export default function HomeScreen() {
   const updateCurrentWords = (difficulty: DifficultyLevel, progress: { [key: string]: WordProgress }) => {
     const words = WORD_DATABASE[difficulty];
     setCurrentWords(words);
+    
+    // Initialize animations for each word
+    words.forEach((word, index) => {
+      if (!wordNodeAnims[word.id]) {
+        wordNodeAnims[word.id] = new Animated.Value(0);
+        glowAnims[word.id] = new Animated.Value(0);
+      }
+      
+      // Stagger entrance animations
+      Animated.spring(wordNodeAnims[word.id], {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        delay: index * 80,
+        useNativeDriver: true,
+      }).start();
+      
+      // Animate glow for completed and current words
+      const wordProgress = progress[word.id];
+      if (wordProgress?.completed) {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(glowAnims[word.id], {
+              toValue: 1,
+              duration: 1500,
+              useNativeDriver: false,
+            }),
+            Animated.timing(glowAnims[word.id], {
+              toValue: 0,
+              duration: 1500,
+              useNativeDriver: false,
+            }),
+          ])
+        ).start();
+      }
+    });
   };
 
   useEffect(() => {
@@ -575,6 +613,46 @@ export default function HomeScreen() {
         await set(wordRef, updatedProgress);
 
         setWordProgress(prev => ({ ...prev, [wordId]: updatedProgress }));
+
+        // Celebrate completion with animation
+        if (isCompleted && !currentProgress?.completed) {
+          const nodeAnim = wordNodeAnims[wordId];
+          if (nodeAnim) {
+            // Bounce animation
+            Animated.sequence([
+              Animated.timing(nodeAnim, {
+                toValue: 1.3,
+                duration: 200,
+                useNativeDriver: true,
+              }),
+              Animated.spring(nodeAnim, {
+                toValue: 1,
+                tension: 100,
+                friction: 5,
+                useNativeDriver: true,
+              }),
+            ]).start();
+
+            // Start glow animation
+            const glowAnim = glowAnims[wordId];
+            if (glowAnim) {
+              Animated.loop(
+                Animated.sequence([
+                  Animated.timing(glowAnim, {
+                    toValue: 1,
+                    duration: 1500,
+                    useNativeDriver: false,
+                  }),
+                  Animated.timing(glowAnim, {
+                    toValue: 0,
+                    duration: 1500,
+                    useNativeDriver: false,
+                  }),
+                ])
+              ).start();
+            }
+          }
+        }
       }
 
       // Update stats
@@ -644,66 +722,194 @@ export default function HomeScreen() {
       const isLeft = index % 2 === 0;
       const topOffset = index * 140;
 
+      // Get animations
+      const nodeAnim = wordNodeAnims[word.id] || new Animated.Value(1);
+      const glowAnim = glowAnims[word.id] || new Animated.Value(0);
+
+      // Animated glow effect
+      const glowColor = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['rgba(99, 102, 241, 0)', 'rgba(99, 102, 241, 0.4)']
+      });
+
+      // Scale animation for entrance
+      const scale = nodeAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.3, 1]
+      });
+
+      const opacity = nodeAnim;
+
       return (
-        <View key={word.id} style={[styles.wordNodeContainer, { top: topOffset }]}>
-          {/* Connecting Path */}
+        <Animated.View 
+          key={word.id} 
+          style={[
+            styles.wordNodeContainer, 
+            { 
+              top: topOffset,
+              opacity: opacity,
+              transform: [{ scale: scale }]
+            }
+          ]}
+        >
+          {/* Animated Connecting Path */}
           {index < currentWords.length - 1 && (
-            <View style={[
-              styles.pathLine,
-              { 
-                left: isLeft ? 60 : width - 60,
-                backgroundColor: isCompleted ? DIFFICULTY_COLORS[selectedDifficulty].primary : COLORS.gray[300]
-              }
-            ]} />
+            <View style={styles.pathLineContainer}>
+              <LinearGradient
+                colors={
+                  isCompleted 
+                    ? [DIFFICULTY_COLORS[selectedDifficulty].primary, DIFFICULTY_COLORS[selectedDifficulty].primary + '80'] as const
+                    : [COLORS.gray[300], COLORS.gray[200]] as const
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={[
+                  styles.pathLine,
+                  { left: isLeft ? 60 : width - 60 }
+                ]}
+              />
+              {isCompleted && (
+                <View style={[
+                  styles.pathDots,
+                  { left: isLeft ? 58 : width - 62 }
+                ]}>
+                  {[0, 1, 2].map((i) => (
+                    <Animated.View
+                      key={i}
+                      style={[
+                        styles.pathDot,
+                        {
+                          backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary,
+                          opacity: glowAnim,
+                        }
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Glow Effect */}
+          {(isCompleted || isCurrent) && (
+            <Animated.View
+              style={[
+                styles.wordGlow,
+                { 
+                  left: isLeft ? 10 : width - 110,
+                  backgroundColor: glowColor,
+                }
+              ]}
+            />
           )}
 
           {/* Word Circle */}
           <TouchableOpacity
             style={[
               styles.wordCircle,
-              { 
-                left: isLeft ? 20 : width - 100,
-                backgroundColor: isCompleted ? DIFFICULTY_COLORS[selectedDifficulty].primary : 
-                                isCurrent ? COLORS.primary : 
-                                isUnlocked ? COLORS.white : COLORS.gray[200],
-                borderColor: isCompleted ? DIFFICULTY_COLORS[selectedDifficulty].primary :
-                            isCurrent ? COLORS.primary : COLORS.gray[300],
-              }
+              { left: isLeft ? 20 : width - 100 }
             ]}
-            onPress={() => isUnlocked ? openPracticeModal(word) : null}
+            onPress={() => {
+              if (isUnlocked) {
+                // Bounce animation on press
+                Animated.sequence([
+                  Animated.timing(nodeAnim, {
+                    toValue: 0.9,
+                    duration: 100,
+                    useNativeDriver: true,
+                  }),
+                  Animated.spring(nodeAnim, {
+                    toValue: 1,
+                    tension: 100,
+                    friction: 3,
+                    useNativeDriver: true,
+                  }),
+                ]).start();
+                openPracticeModal(word);
+              }
+            }}
             disabled={!isUnlocked}
             activeOpacity={0.8}
           >
-            {isCompleted ? (
-              <Icon name="check-circle" size={32} color={COLORS.white} />
-            ) : isCurrent ? (
-              <Icon name="star" size={32} color={COLORS.white} />
-            ) : !isUnlocked ? (
-              <Icon name="lock" size={28} color={COLORS.gray[400]} />
-            ) : (
-              <Text style={styles.wordText}>{word.word.substring(0, 3)}</Text>
-            )}
+            <LinearGradient
+              colors={
+                isCompleted 
+                  ? DIFFICULTY_COLORS[selectedDifficulty].gradient
+                  : isCurrent 
+                  ? [COLORS.primary, COLORS.secondary] as const
+                  : isUnlocked
+                  ? [COLORS.white, COLORS.gray[50]] as const
+                  : [COLORS.gray[200], COLORS.gray[300]] as const
+              }
+              style={styles.circleGradient}
+            >
+              {isCompleted ? (
+                <View style={styles.completedIcon}>
+                  <Icon name="check-circle" size={36} color={COLORS.white} />
+                  {progress?.bestScore && progress.bestScore >= 0.95 && (
+                    <View style={styles.perfectStar}>
+                      <Icon name="stars" size={20} color={COLORS.gold} />
+                    </View>
+                  )}
+                </View>
+              ) : isCurrent ? (
+                <Animated.View style={{ transform: [{ rotate: '0deg' }] }}>
+                  <Icon name="star" size={36} color={COLORS.white} />
+                </Animated.View>
+              ) : !isUnlocked ? (
+                <Icon name="lock" size={28} color={COLORS.gray[400]} />
+              ) : (
+                <View style={styles.wordPreview}>
+                  <Icon name="play-circle-filled" size={32} color={COLORS.primary} />
+                </View>
+              )}
+            </LinearGradient>
             
             {progress?.bestScore && progress.bestScore > 0 && (
-              <View style={styles.scoreLabel}>
-                <Text style={styles.scoreLabelText}>{Math.round(progress.bestScore * 100)}%</Text>
-              </View>
+              <Animated.View style={[styles.scoreLabel, { opacity: glowAnim }]}>
+                <LinearGradient
+                  colors={['#FFFFFF', '#F8FAFC'] as const}
+                  style={styles.scoreLabelGradient}
+                >
+                  <Icon name="stars" size={10} color={COLORS.gold} />
+                  <Text style={styles.scoreLabelText}>{Math.round(progress.bestScore * 100)}%</Text>
+                </LinearGradient>
+              </Animated.View>
             )}
           </TouchableOpacity>
 
-          {/* Word Label */}
+          {/* Word Label with Animation */}
           {isUnlocked && (
-            <View style={[
-              styles.wordLabel,
-              { left: isLeft ? 100 : 20 }
-            ]}>
-              <Text style={[
-                styles.wordLabelText,
-                { color: isCompleted ? DIFFICULTY_COLORS[selectedDifficulty].primary : COLORS.gray[800] }
-              ]}>{word.word}</Text>
-            </View>
+            <Animated.View 
+              style={[
+                styles.wordLabel,
+                { 
+                  left: isLeft ? 100 : 20,
+                  opacity: nodeAnim,
+                }
+              ]}
+            >
+              <LinearGradient
+                colors={
+                  isCompleted
+                    ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                    : [COLORS.white, COLORS.gray[50]] as const
+                }
+                style={styles.wordLabelGradient}
+              >
+                <Text style={[
+                  styles.wordLabelText,
+                  { color: isCompleted ? DIFFICULTY_COLORS[selectedDifficulty].primary : COLORS.gray[800] }
+                ]}>{word.word}</Text>
+                {isCurrent && (
+                  <View style={styles.currentBadge}>
+                    <Text style={styles.currentBadgeText}>NEW</Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </Animated.View>
           )}
-        </View>
+        </Animated.View>
       );
     });
   };
@@ -1295,25 +1501,73 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 120,
   },
-  pathLine: {
+  pathLineContainer: {
     position: 'absolute',
-    width: 4,
+    width: '100%',
     height: 140,
     top: 80,
+  },
+  pathLine: {
+    position: 'absolute',
+    width: 6,
+    height: 140,
+    borderRadius: 3,
+  },
+  pathDots: {
+    position: 'absolute',
+    height: 140,
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  pathDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  wordGlow: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    top: -10,
   },
   wordCircle: {
     position: 'absolute',
     width: 80,
     height: 80,
     borderRadius: 40,
-    borderWidth: 4,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+    overflow: 'hidden',
+  },
+  circleGradient: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    borderRadius: 40,
+  },
+  completedIcon: {
+    position: 'relative',
+  },
+  perfectStar: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  wordPreview: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   wordText: {
     fontSize: 14,
@@ -1323,35 +1577,61 @@ const styles = StyleSheet.create({
   },
   scoreLabel: {
     position: 'absolute',
-    bottom: -8,
-    backgroundColor: COLORS.white,
+    bottom: -12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  scoreLabelGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: COLORS.gray[300],
+    paddingVertical: 4,
+    gap: 3,
   },
   scoreLabelText: {
     fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.gray[700],
+    fontWeight: '900',
+    color: COLORS.gray[800],
   },
   wordLabel: {
     position: 'absolute',
     top: 25,
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 14,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  wordLabelGradient: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   wordLabelText: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  currentBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  currentBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: 0.5,
   },
   loadMoreContainer: {
     position: 'absolute',
