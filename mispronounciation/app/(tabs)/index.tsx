@@ -25,23 +25,24 @@ import AudioRecorderPlayer, {
 import * as Haptics from 'expo-haptics';
 import RNFS from 'react-native-fs';
 import axios from 'axios';
+import { BlurView } from 'expo-blur';
 
 const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const API_BASE_URL = 'http://192.168.14.34:5050';
 
-// Daily word pool - rotates daily
+// Daily word pool
 const DAILY_WORDS = [
-  { word: 'Beautiful', phonetic: '/ˈbjuːtɪfəl/', difficulty: 'Medium', tip: 'Stress on first syllable: BEAU-ti-ful', level: 1 },
-  { word: 'Pronunciation', phonetic: '/prəˌnʌnsiˈeɪʃən/', difficulty: 'Hard', tip: 'Watch the "nun-see-AY-shun" pattern', level: 2 },
-  { word: 'Schedule', phonetic: '/ˈʃedjuːl/', difficulty: 'Hard', tip: 'UK: SHED-yool, US: SKED-yool', level: 3 },
-  { word: 'Algorithm', phonetic: '/ˈælɡərɪðəm/', difficulty: 'Hard', tip: 'Stress on first syllable: AL-go-rith-m', level: 4 },
-  { word: 'Comfortable', phonetic: '/ˈkʌmftəbəl/', difficulty: 'Medium', tip: 'Often said as COMF-ta-ble', level: 5 },
-  { word: 'Develop', phonetic: '/dɪˈveləp/', difficulty: 'Easy', tip: 'Stress on second syllable: de-VEL-op', level: 6 },
-  { word: 'Wednesday', phonetic: '/ˈwenzdeɪ/', difficulty: 'Medium', tip: 'Silent "d": WENZ-day', level: 7 },
-  { word: 'Chocolate', phonetic: '/ˈtʃɒklət/', difficulty: 'Easy', tip: 'Two syllables: CHOK-let', level: 8 },
-  { word: 'February', phonetic: '/ˈfebruəri/', difficulty: 'Medium', tip: 'Don\'t skip the first "r": FEB-roo-ary', level: 9 },
-  { word: 'Queue', phonetic: '/kjuː/', difficulty: 'Medium', tip: 'Just sounds like "Q"', level: 10 },
+  { word: 'Beautiful', phonetic: '/ˈbjuːtɪfəl/', difficulty: 'Medium', tip: 'Stress on first syllable: BEAU-ti-ful', category: 'Common Words', color: ['#FF6B9D', '#C44569'] },
+  { word: 'Pronunciation', phonetic: '/prəˌnʌnsiˈeɪʃən/', difficulty: 'Hard', tip: 'Watch the "nun-see-AY-shun" pattern', category: 'Advanced', color: ['#A8E6CF', '#3DDC84'] },
+  { word: 'Schedule', phonetic: '/ˈʃedjuːl/', difficulty: 'Hard', tip: 'UK: SHED-yool, US: SKED-yool', category: 'Advanced', color: ['#FFA07A', '#FF6347'] },
+  { word: 'Algorithm', phonetic: '/ˈælɡərɪðəm/', difficulty: 'Hard', tip: 'Stress on first syllable: AL-go-rith-m', category: 'Technical', color: ['#B8A4FF', '#8B7AE0'] },
+  { word: 'Comfortable', phonetic: '/ˈkʌmftəbəl/', difficulty: 'Medium', tip: 'Often said as COMF-ta-ble', category: 'Common Words', color: ['#FFD93D', '#F4A261'] },
+  { word: 'Develop', phonetic: '/dɪˈveləp/', difficulty: 'Easy', tip: 'Stress on second syllable: de-VEL-op', category: 'Easy', color: ['#6BCF7F', '#4CAF50'] },
+  { word: 'Wednesday', phonetic: '/ˈwenzdeɪ/', difficulty: 'Medium', tip: 'Silent "d": WENZ-day', category: 'Common Words', color: ['#64B5F6', '#2196F3'] },
+  { word: 'Chocolate', phonetic: '/ˈtʃɒklət/', difficulty: 'Easy', tip: 'Two syllables: CHOK-let', category: 'Easy', color: ['#FFB6C1', '#FF69B4'] },
+  { word: 'February', phonetic: '/ˈfebruəri/', difficulty: 'Medium', tip: 'Don\'t skip the first "r": FEB-roo-ary', category: 'Common Words', color: ['#87CEEB', '#4682B4'] },
+  { word: 'Queue', phonetic: '/kjuː/', difficulty: 'Medium', tip: 'Just sounds like "Q"', category: 'Common Words', color: ['#DDA0DD', '#BA55D3'] },
 ];
 
 interface DailyWordProgress {
@@ -58,8 +59,6 @@ interface UserStats {
   totalWords: number;
   accuracy: number;
   lastCompletedDate: string;
-  xp: number;
-  level: number;
 }
 
 interface AnalysisResult {
@@ -76,8 +75,6 @@ export default function HomeScreen() {
     totalWords: 0,
     accuracy: 0,
     lastCompletedDate: '',
-    xp: 0,
-    level: 1,
   });
   const [todayWord, setTodayWord] = useState(DAILY_WORDS[0]);
   const [todayProgress, setTodayProgress] = useState<DailyWordProgress | null>(null);
@@ -87,14 +84,15 @@ export default function HomeScreen() {
   const [showResult, setShowResult] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [playingAudio, setPlayingAudio] = useState(false);
+  const [showWordDetails, setShowWordDetails] = useState(false);
 
   const recordSecsRef = useRef(0);
   const recordTimeRef = useRef('00:00');
   const recordingPathRef = useRef<string | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const floatAnim = useRef(new Animated.Value(0)).current;
-  const resultAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(100)).current;
 
   const getTodayWordIndex = () => {
     const today = new Date();
@@ -116,7 +114,6 @@ export default function HomeScreen() {
       let accuracyCount = 0;
       let currentStreak = 0;
       let lastAttemptDate = '';
-      let totalXP = 0;
 
       dates.forEach(date => {
         const dayData = allDailyWords[date];
@@ -127,15 +124,12 @@ export default function HomeScreen() {
           if (dayData.bestScore && dayData.bestScore > 0) {
             totalAccuracy += dayData.bestScore;
             accuracyCount++;
-            // Award XP based on accuracy
-            totalXP += Math.round(dayData.bestScore * 100);
           }
         }
       });
 
       const averageAccuracy = accuracyCount > 0 ? totalAccuracy / accuracyCount : 0;
 
-      // Calculate streak
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -156,15 +150,11 @@ export default function HomeScreen() {
         }
       }
 
-      const level = Math.floor(totalXP / 500) + 1;
-
       const newStats: UserStats = {
         streak: currentStreak,
         totalWords: wordsAttempted,
         accuracy: averageAccuracy,
         lastCompletedDate: lastAttemptDate,
-        xp: totalXP,
-        level: level,
       };
 
       const statsRef = ref(database, `users/${userId}/stats`);
@@ -187,8 +177,6 @@ export default function HomeScreen() {
             totalWords: data.totalWords || 0,
             accuracy: data.accuracy || 0,
             lastCompletedDate: data.lastCompletedDate || '',
-            xp: data.xp || 0,
-            level: data.level || 1,
           });
         }
       });
@@ -235,6 +223,28 @@ export default function HomeScreen() {
       setUserName(user.displayName || 'User');
       loadUserData(user.uid);
     }
+
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      tension: 20,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotateAnim, {
+          toValue: 0,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, [loadUserData]);
 
   useEffect(() => {
@@ -256,46 +266,7 @@ export default function HomeScreen() {
     } else {
       pulseAnim.setValue(1);
     }
-  }, [isRecording, pulseAnim]);
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(floatAnim, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, []);
-
-  useEffect(() => {
-    if (showResult) {
-      Animated.parallel([
-        Animated.spring(resultAnim, {
-          toValue: 1,
-          tension: 50,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          tension: 50,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      resultAnim.setValue(0);
-      slideAnim.setValue(50);
-    }
-  }, [showResult, resultAnim, slideAnim]);
+  }, [isRecording]);
 
   const startRecording = async () => {
     try {
@@ -509,272 +480,309 @@ export default function HomeScreen() {
     }
   };
 
-  const getAccuracyColor = (accuracy: number) => {
-    if (accuracy >= 0.9) return '#10B981';
-    if (accuracy >= 0.7) return '#F59E0B';
-    return '#EF4444';
-  };
-
-  const getAccuracyMessage = (accuracy: number) => {
-    if (accuracy >= 0.9) return 'Perfect! 🎉';
-    if (accuracy >= 0.8) return 'Amazing! 🌟';
-    if (accuracy >= 0.7) return 'Great! 💪';
-    return 'Keep trying! 📚';
-  };
-
-  const formatAccuracy = (accuracy: number) => {
-    return `${(accuracy * 100).toFixed(0)}%`;
-  };
-
-  const floatY = floatAnim.interpolate({
+  const rotation = rotateAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -10],
+    outputRange: ['0deg', '360deg'],
   });
-
-  const currentXP = stats.xp % 500;
-  const xpForNextLevel = 500;
-  const xpProgress = (currentXP / xpForNextLevel) * 100;
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#58CC02', '#48A302']}
-        style={styles.headerGradient}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={styles.streakContainer}>
-              <Icon name="local-fire-department" size={24} color="#FF9600" />
-              <Text style={styles.streakNumber}>{stats.streak}</Text>
-            </View>
-            
-            <View style={styles.xpContainer}>
-              <Icon name="stars" size={20} color="#FFD700" />
-              <Text style={styles.xpText}>{stats.xp}</Text>
-            </View>
-          </View>
-
-          <View style={styles.levelContainer}>
-            <View style={styles.levelBadge}>
-              <Text style={styles.levelText}>Level {stats.level}</Text>
-            </View>
-            <View style={styles.progressBarContainer}>
-              <View style={styles.progressBarBackground}>
-                <LinearGradient
-                  colors={['#FFD700', '#FFA500']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[styles.progressBarFill, { width: `${xpProgress}%` }]}
-                />
-              </View>
-              <Text style={styles.progressText}>{currentXP}/{xpForNextLevel} XP</Text>
-            </View>
-          </View>
-        </View>
-      </LinearGradient>
+      {/* Decorative Background */}
+      <View style={styles.backgroundDecor}>
+        <Animated.View style={[styles.decorCircle1, { transform: [{ rotate: rotation }] }]} />
+        <Animated.View style={[styles.decorCircle2, { transform: [{ rotate: rotation }] }]} />
+      </View>
 
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>Hello, {userName}! 👋</Text>
+            <Text style={styles.subtitle}>Ready for today's challenge?</Text>
+          </View>
+          <View style={styles.streakBadge}>
+            <LinearGradient
+              colors={['#FF6B35', '#F7931E']}
+              style={styles.streakGradient}
+            >
+              <Icon name="local-fire-department" size={28} color="#FFFFFF" />
+              <Text style={styles.streakText}>{stats.streak}</Text>
+            </LinearGradient>
+          </View>
+        </View>
+
+        {/* Quick Stats */}
+        <View style={styles.quickStats}>
+          <View style={styles.quickStatItem}>
+            <View style={[styles.quickStatIcon, { backgroundColor: '#E8F5E9' }]}>
+              <Icon name="check-circle" size={24} color="#10B981" />
+            </View>
+            <Text style={styles.quickStatValue}>{stats.totalWords}</Text>
+            <Text style={styles.quickStatLabel}>Words</Text>
+          </View>
+          
+          <View style={styles.quickStatDivider} />
+          
+          <View style={styles.quickStatItem}>
+            <View style={[styles.quickStatIcon, { backgroundColor: '#EDE7F6' }]}>
+              <Icon name="analytics" size={24} color="#6366F1" />
+            </View>
+            <Text style={styles.quickStatValue}>{Math.round(stats.accuracy * 100)}%</Text>
+            <Text style={styles.quickStatLabel}>Accuracy</Text>
+          </View>
+        </View>
+
         {!showResult ? (
           <>
-            {/* Learning Path */}
-            <View style={styles.pathContainer}>
-              {/* Today's Challenge Title */}
-              <View style={styles.challengeHeader}>
-                <Icon name="emoji-events" size={28} color="#FFD700" />
-                <Text style={styles.challengeTitle}>Today's Challenge</Text>
-                <Icon name="emoji-events" size={28} color="#FFD700" />
-              </View>
-
-              {/* Main Word Node */}
-              <Animated.View style={[styles.wordNode, { transform: [{ translateY: floatY }] }]}>
+            {/* Main Word Card */}
+            <Animated.View style={[styles.mainCard, { transform: [{ scale: scaleAnim }] }]}>
+              <TouchableOpacity
+                activeOpacity={0.95}
+                onPress={() => {
+                  setShowWordDetails(!showWordDetails);
+                  Haptics.selectionAsync();
+                }}
+              >
                 <LinearGradient
-                  colors={todayProgress?.completed ? ['#10B981', '#059669'] : ['#1CB0F6', '#1899D6']}
-                  style={styles.nodeGradient}
+                  colors={todayWord.color}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.wordCardGradient}
                 >
+                  {/* Completion Badge */}
                   {todayProgress?.completed && (
-                    <View style={styles.completedStar}>
-                      <Icon name="star" size={40} color="#FFD700" />
+                    <View style={styles.completedBadge}>
+                      <Icon name="verified" size={28} color="#FFD700" />
                     </View>
                   )}
-                  
-                  <View style={styles.nodeContent}>
-                    <View style={[
-                      styles.difficultyPill,
-                      { backgroundColor: `${getDifficultyColor(todayWord.difficulty)}40` }
-                    ]}>
-                      <Text style={[
-                        styles.difficultyText,
-                        { color: getDifficultyColor(todayWord.difficulty) }
-                      ]}>
-                        {todayWord.difficulty}
-                      </Text>
-                    </View>
-                    
-                    <Text style={styles.nodeWord}>{todayWord.word}</Text>
-                    <Text style={styles.nodePhonetic}>{todayWord.phonetic}</Text>
-                    
-                    {todayProgress && todayProgress.attempts > 0 && (
-                      <View style={styles.nodeStats}>
-                        <View style={styles.nodeStat}>
-                          <Icon name="refresh" size={16} color="#FFFFFF" />
-                          <Text style={styles.nodeStatText}>{todayProgress.attempts}</Text>
-                        </View>
-                        <View style={styles.nodeStat}>
-                          <Icon name="trending-up" size={16} color="#FFFFFF" />
-                          <Text style={styles.nodeStatText}>{formatAccuracy(todayProgress.bestScore)}</Text>
-                        </View>
-                      </View>
-                    )}
+
+                  {/* Category Tag */}
+                  <View style={styles.categoryTag}>
+                    <Text style={styles.categoryText}>{todayWord.category}</Text>
                   </View>
+
+                  {/* Word Display */}
+                  <View style={styles.wordDisplay}>
+                    <Text style={styles.mainWord}>{todayWord.word}</Text>
+                    <Text style={styles.phonetic}>{todayWord.phonetic}</Text>
+                  </View>
+
+                  {/* Difficulty Badge */}
+                  <View style={[
+                    styles.difficultyBadge,
+                    { backgroundColor: 'rgba(255, 255, 255, 0.3)' }
+                  ]}>
+                    <View style={[
+                      styles.difficultyDot,
+                      { backgroundColor: getDifficultyColor(todayWord.difficulty) }
+                    ]} />
+                    <Text style={styles.difficultyText}>{todayWord.difficulty}</Text>
+                  </View>
+
+                  {/* Progress Indicator */}
+                  {todayProgress && todayProgress.attempts > 0 && (
+                    <View style={styles.progressIndicator}>
+                      <View style={styles.progressItem}>
+                        <Icon name="replay" size={18} color="#FFFFFF" />
+                        <Text style={styles.progressItemText}>{todayProgress.attempts} tries</Text>
+                      </View>
+                      <View style={styles.progressItem}>
+                        <Icon name="star" size={18} color="#FFD700" />
+                        <Text style={styles.progressItemText}>Best: {Math.round(todayProgress.bestScore * 100)}%</Text>
+                      </View>
+                    </View>
+                  )}
                 </LinearGradient>
-              </Animated.View>
+              </TouchableOpacity>
+            </Animated.View>
 
-              {/* Tip Card */}
-              <View style={styles.tipCard}>
-                <View style={styles.tipHeader}>
-                  <Icon name="lightbulb" size={24} color="#FFA500" />
-                  <Text style={styles.tipTitle}>Pro Tip</Text>
+            {/* Expandable Tip Section */}
+            {showWordDetails && (
+              <Animated.View style={styles.tipSection}>
+                <View style={styles.tipContainer}>
+                  <View style={styles.tipIconContainer}>
+                    <Icon name="lightbulb" size={24} color="#F59E0B" />
+                  </View>
+                  <View style={styles.tipContent}>
+                    <Text style={styles.tipTitle}>Pronunciation Tip</Text>
+                    <Text style={styles.tipText}>{todayWord.tip}</Text>
+                  </View>
                 </View>
-                <Text style={styles.tipText}>{todayWord.tip}</Text>
-              </View>
+              </Animated.View>
+            )}
 
-              {/* Listen Button */}
+            {/* Action Buttons */}
+            <View style={styles.actionsContainer}>
               <TouchableOpacity
                 style={styles.listenButton}
                 onPress={playWordPronunciation}
                 disabled={playingAudio}
               >
-                <LinearGradient
-                  colors={['#CE82FF', '#A869E5']}
-                  style={styles.listenGradient}
-                >
-                  <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color="#FFFFFF" />
-                  <Text style={styles.listenText}>
-                    {playingAudio ? 'Playing...' : 'Listen to Pronunciation'}
+                <View style={[styles.actionButton, { backgroundColor: '#E3F2FD' }]}>
+                  <Icon 
+                    name={playingAudio ? 'volume-up' : 'headset'} 
+                    size={28} 
+                    color="#2196F3" 
+                  />
+                  <Text style={[styles.actionButtonText, { color: '#2196F3' }]}>
+                    {playingAudio ? 'Playing' : 'Listen'}
                   </Text>
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
 
-              {/* Record Button */}
-              <View style={styles.recordSection}>
-                {isProcessing ? (
-                  <View style={styles.processingContainer}>
-                    <ActivityIndicator size="large" color="#1CB0F6" />
-                    <Text style={styles.processingText}>Analyzing...</Text>
-                  </View>
-                ) : (
-                  <>
-                    <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                      <TouchableOpacity
-                        style={styles.recordButton}
-                        onPress={handleRecord}
-                        activeOpacity={0.8}
+              <TouchableOpacity
+                style={styles.detailsButton}
+                onPress={() => {
+                  setShowWordDetails(!showWordDetails);
+                  Haptics.selectionAsync();
+                }}
+              >
+                <View style={[styles.actionButton, { backgroundColor: '#F3E5F5' }]}>
+                  <Icon 
+                    name={showWordDetails ? 'expand-less' : 'expand-more'} 
+                    size={28} 
+                    color="#9C27B0" 
+                  />
+                  <Text style={[styles.actionButtonText, { color: '#9C27B0' }]}>
+                    {showWordDetails ? 'Hide' : 'Tips'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* Practice Section */}
+            <View style={styles.practiceSection}>
+              <Text style={styles.practiceTitle}>Start Practicing</Text>
+              
+              {isProcessing ? (
+                <View style={styles.processingContainer}>
+                  <ActivityIndicator size="large" color="#6366F1" />
+                  <Text style={styles.processingText}>Analyzing your pronunciation...</Text>
+                </View>
+              ) : (
+                <>
+                  <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                    <TouchableOpacity
+                      style={styles.recordButton}
+                      onPress={handleRecord}
+                      activeOpacity={0.9}
+                    >
+                      <LinearGradient
+                        colors={isRecording ? ['#EF4444', '#DC2626'] : ['#6366F1', '#8B5CF6', '#EC4899']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.recordGradient}
                       >
-                        <LinearGradient
-                          colors={isRecording ? ['#FF4B4B', '#E63946'] : ['#58CC02', '#48A302']}
-                          style={styles.recordGradient}
-                        >
+                        <View style={styles.recordInner}>
                           <Icon 
-                            name={isRecording ? 'stop' : 'mic'} 
-                            size={48} 
+                            name={isRecording ? 'stop-circle' : 'mic'} 
+                            size={64} 
                             color="#FFFFFF" 
                           />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </Animated.View>
-                    
-                    {isRecording && (
-                      <Text style={styles.recordingTime}>{recordingTime}</Text>
-                    )}
-                    
-                    <Text style={styles.recordLabel}>
-                      {isRecording ? 'Tap to stop' : 'Tap to practice'}
-                    </Text>
-                  </>
-                )}
-              </View>
+                        </View>
+                      </LinearGradient>
+                      {isRecording && (
+                        <View style={styles.recordingIndicator}>
+                          <View style={styles.recordingDot} />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </Animated.View>
+                  
+                  {isRecording && (
+                    <Text style={styles.recordingTime}>{recordingTime}</Text>
+                  )}
+                  
+                  <Text style={styles.recordHint}>
+                    {isRecording ? 'Recording... Tap to stop' : 'Tap the microphone to record'}
+                  </Text>
+                </>
+              )}
             </View>
           </>
         ) : (
-          /* Result Screen */
-          <Animated.View 
-            style={[
-              styles.resultCard,
-              {
-                opacity: resultAnim,
-                transform: [{ translateY: slideAnim }]
-              }
-            ]}
-          >
+          /* Result Card */
+          <View style={styles.resultContainer}>
             <LinearGradient
-              colors={result && result.accuracy >= 0.8 ? ['#10B981', '#059669'] : ['#F59E0B', '#D97706']}
+              colors={result && result.accuracy >= 0.8 
+                ? ['#10B981', '#059669', '#047857'] 
+                : result && result.accuracy >= 0.7
+                ? ['#F59E0B', '#D97706', '#B45309']
+                : ['#EF4444', '#DC2626', '#B91C1C']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
               style={styles.resultGradient}
             >
-              {/* Mascot/Icon */}
+              {/* Result Icon */}
               <View style={styles.resultIconContainer}>
                 <Icon 
-                  name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} 
+                  name={
+                    result && result.accuracy >= 0.8 ? 'emoji-events' :
+                    result && result.accuracy >= 0.7 ? 'thumb-up' : 'psychology'
+                  } 
                   size={80} 
                   color="#FFFFFF" 
                 />
               </View>
 
+              {/* Message */}
               <Text style={styles.resultMessage}>
-                {result && getAccuracyMessage(result.accuracy)}
+                {result && result.accuracy >= 0.9 ? 'Perfect! 🌟' :
+                 result && result.accuracy >= 0.8 ? 'Excellent! 🎉' :
+                 result && result.accuracy >= 0.7 ? 'Good Job! 💪' :
+                 'Keep Practicing! 📚'}
               </Text>
 
-              {/* Score */}
-              <View style={styles.scoreCircle}>
-                <Text style={styles.scoreValue}>
-                  {result && formatAccuracy(result.accuracy)}
+              {/* Score Display */}
+              <View style={styles.scoreDisplay}>
+                <Text style={styles.scoreNumber}>
+                  {result && Math.round(result.accuracy * 100)}
                 </Text>
-                <Text style={styles.scoreLabel}>Accuracy</Text>
+                <Text style={styles.scorePercent}>%</Text>
               </View>
+              <Text style={styles.scoreLabel}>Accuracy Score</Text>
 
-              {/* XP Earned */}
-              <View style={styles.xpEarned}>
-                <Icon name="stars" size={32} color="#FFD700" />
-                <Text style={styles.xpEarnedText}>+{result ? Math.round(result.accuracy * 100) : 0} XP</Text>
-              </View>
-
-              {/* Phonemes */}
-              <View style={styles.phonemeStats}>
-                <View style={styles.phonemeStat}>
-                  <Icon name="check-circle" size={24} color="#FFFFFF" />
-                  <Text style={styles.phonemeStatText}>
-                    {result?.correct_phonemes || 0} correct
-                  </Text>
+              {/* Details Grid */}
+              <View style={styles.detailsGrid}>
+                <View style={styles.detailCard}>
+                  <Icon name="check-circle" size={32} color="#FFFFFF" />
+                  <Text style={styles.detailValue}>{result?.correct_phonemes || 0}</Text>
+                  <Text style={styles.detailLabel}>Correct</Text>
                 </View>
-                <View style={styles.phonemeStat}>
-                  <Icon name="cancel" size={24} color="#FFFFFF" />
-                  <Text style={styles.phonemeStatText}>
-                    {result ? result.total_phonemes - result.correct_phonemes : 0} errors
+                <View style={styles.detailCard}>
+                  <Icon name="error" size={32} color="#FFFFFF" />
+                  <Text style={styles.detailValue}>
+                    {result ? result.total_phonemes - result.correct_phonemes : 0}
                   </Text>
+                  <Text style={styles.detailLabel}>Errors</Text>
                 </View>
               </View>
 
               {/* Feedback */}
-              <View style={styles.feedbackBox}>
+              <View style={styles.feedbackCard}>
+                <Text style={styles.feedbackTitle}>AI Feedback:</Text>
                 <Text style={styles.feedbackText}>{result?.feedback}</Text>
               </View>
 
-              {/* Actions */}
-              <View style={styles.resultActions}>
+              {/* Action Buttons */}
+              <View style={styles.resultButtons}>
                 <TouchableOpacity 
-                  style={styles.tryAgainButton}
+                  style={styles.continueButton}
                   onPress={handleTryAgain}
                 >
-                  <Icon name="refresh" size={24} color="#FFFFFF" />
-                  <Text style={styles.tryAgainText}>Practice Again</Text>
+                  <View style={styles.continueInner}>
+                    <Icon name="refresh" size={24} color="#6366F1" />
+                    <Text style={styles.continueText}>Try Again</Text>
+                  </View>
                 </TouchableOpacity>
               </View>
             </LinearGradient>
-          </Animated.View>
+          </View>
         )}
 
         <View style={{ height: 40 }} />
@@ -786,385 +794,471 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAFC',
   },
-  headerGradient: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  header: {
-    paddingHorizontal: 20,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  streakContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 8,
-  },
-  streakNumber: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  xpContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 8,
-  },
-  xpText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  levelContainer: {
-    gap: 8,
-  },
-  levelBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  levelText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  progressBarContainer: {
-    gap: 6,
-  },
-  progressBarBackground: {
-    height: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 8,
+  backgroundDecor: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 300,
     overflow: 'hidden',
   },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 8,
+  decorCircle1: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    top: -50,
+    right: -50,
   },
-  progressText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'right',
+  decorCircle2: {
+    position: 'absolute',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(139, 92, 246, 0.06)',
+    top: 100,
+    left: -30,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
-  pathContainer: {
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     paddingHorizontal: 20,
-    paddingTop: 24,
-    alignItems: 'center',
+    marginBottom: 24,
   },
-  challengeHeader: {
+  greeting: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1F2937',
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  streakBadge: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  streakGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 32,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
   },
-  challengeTitle: {
+  streakText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  quickStats: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  quickStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  quickStatIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  quickStatValue: {
     fontSize: 24,
     fontWeight: '900',
     color: '#1F2937',
-    letterSpacing: -0.5,
+    marginBottom: 4,
   },
-  wordNode: {
-    width: width * 0.85,
-    maxWidth: 400,
+  quickStatLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  quickStatDivider: {
+    width: 1,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 16,
+  },
+  mainCard: {
+    marginHorizontal: 20,
     borderRadius: 32,
-    marginBottom: 24,
+    marginBottom: 20,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 10,
   },
-  nodeGradient: {
+  wordCardGradient: {
     padding: 32,
     borderRadius: 32,
     position: 'relative',
   },
-  completedStar: {
+  completedBadge: {
     position: 'absolute',
-    top: -20,
-    right: -10,
+    top: 20,
+    right: 20,
   },
-  nodeContent: {
-    alignItems: 'center',
-  },
-  difficultyPill: {
-    paddingHorizontal: 16,
+  categoryTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 16,
+    borderRadius: 16,
+    marginBottom: 20,
   },
-  difficultyText: {
-    fontSize: 13,
+  categoryText: {
+    fontSize: 12,
     fontWeight: '800',
+    color: '#FFFFFF',
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
-  nodeWord: {
-    fontSize: 48,
+  wordDisplay: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  mainWord: {
+    fontSize: 52,
     fontWeight: '900',
     color: '#FFFFFF',
-    marginBottom: 8,
-    letterSpacing: -1,
+    marginBottom: 12,
+    letterSpacing: -1.5,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
-  nodePhonetic: {
-    fontSize: 18,
-    color: 'rgba(255, 255, 255, 0.9)',
+  phonetic: {
+    fontSize: 20,
+    color: 'rgba(255, 255, 255, 0.95)',
     fontWeight: '600',
     fontStyle: 'italic',
-    marginBottom: 16,
   },
-  nodeStats: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  nodeStat: {
+  difficultyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
   },
-  nodeStatText: {
+  difficultyDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  difficultyText: {
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
-  tipCard: {
-    backgroundColor: '#FFF9E6',
-    borderRadius: 20,
-    padding: 20,
-    width: '100%',
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: '#FFE066',
+  progressIndicator: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 20,
   },
-  tipHeader: {
+  progressItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    gap: 6,
+  },
+  progressItemText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  tipSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  tipContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFBEB',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: '#FDE68A',
+  },
+  tipIconContainer: {
+    marginRight: 12,
+  },
+  tipContent: {
+    flex: 1,
   },
   tipTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#B8860B',
+    color: '#92400E',
+    marginBottom: 6,
   },
   tipText: {
-    fontSize: 15,
-    color: '#8B7355',
-    fontWeight: '600',
-    lineHeight: 22,
+    fontSize: 14,
+    color: '#78350F',
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 12,
+    marginBottom: 32,
   },
   listenButton: {
-    width: '100%',
-    borderRadius: 20,
-    overflow: 'hidden',
-    marginBottom: 32,
-    shadowColor: '#A869E5',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    flex: 1,
   },
-  listenGradient: {
+  detailsButton: {
+    flex: 1,
+  },
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    gap: 12,
+    borderRadius: 20,
+    gap: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  listenText: {
-    fontSize: 17,
+  actionButtonText: {
+    fontSize: 16,
     fontWeight: '800',
-    color: '#FFFFFF',
   },
-  recordSection: {
+  practiceSection: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  practiceTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1F2937',
+    marginBottom: 24,
   },
   processingContainer: {
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: 60,
   },
   processingText: {
-    marginTop: 16,
+    marginTop: 20,
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1CB0F6',
-  },
-  recordButton: {
-    marginBottom: 16,
-    borderRadius: 90,
-    shadowColor: '#58CC02',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  recordGradient: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 6,
-    borderColor: '#FFFFFF',
-  },
-  recordingTime: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#FF4B4B',
-    marginBottom: 8,
-    fontVariant: ['tabular-nums'],
-  },
-  recordLabel: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#6B7280',
   },
-  resultCard: {
-    marginHorizontal: 20,
-    marginTop: 20,
-    borderRadius: 32,
-    overflow: 'hidden',
-    shadowColor: '#000000',
+  recordButton: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  recordGradient: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    padding: 8,
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.4,
     shadowRadius: 24,
     elevation: 12,
   },
+  recordInner: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 72,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingIndicator: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+  },
+  recordingDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#EF4444',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  recordingTime: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#EF4444',
+    marginBottom: 8,
+    fontVariant: ['tabular-nums'],
+  },
+  recordHint: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
+  resultContainer: {
+    marginHorizontal: 20,
+    borderRadius: 32,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.25,
+    shadowRadius: 32,
+    elevation: 16,
+  },
   resultGradient: {
-    padding: 32,
+    padding: 40,
     alignItems: 'center',
   },
   resultIconContainer: {
-    marginBottom: 20,
-  },
-  resultMessage: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  scoreCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    borderWidth: 6,
-    borderColor: '#FFFFFF',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
   },
-  scoreValue: {
-    fontSize: 42,
+  resultMessage: {
+    fontSize: 36,
     fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: -2,
+    marginBottom: 32,
+    textAlign: 'center',
+    letterSpacing: -1,
+  },
+  scoreDisplay: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  scoreNumber: {
+    fontSize: 72,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -3,
+    lineHeight: 72,
+  },
+  scorePercent: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 8,
   },
   scoreLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF',
-    marginTop: 4,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 32,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
-  xpEarned: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
-    marginBottom: 24,
-  },
-  xpEarnedText: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  phonemeStats: {
+  detailsGrid: {
     flexDirection: 'row',
     gap: 16,
-    marginBottom: 24,
+    marginBottom: 28,
+    width: '100%',
   },
-  phonemeStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  detailCard: {
+    flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 16,
-  },
-  phonemeStatText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  feedbackBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     borderRadius: 20,
     padding: 20,
+    alignItems: 'center',
+  },
+  detailValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  detailLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  feedbackCard: {
     width: '100%',
-    marginBottom: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 28,
+  },
+  feedbackTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 12,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   feedbackText: {
     fontSize: 15,
     color: '#FFFFFF',
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: '500',
     lineHeight: 22,
   },
-  resultActions: {
+  resultButtons: {
     width: '100%',
   },
-  tryAgainButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+  continueButton: {
     backgroundColor: '#FFFFFF',
-    paddingVertical: 16,
     borderRadius: 20,
+    overflow: 'hidden',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  tryAgainText: {
+  continueInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    gap: 12,
+  },
+  continueText: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#58CC02',
+    color: '#6366F1',
   },
 });
