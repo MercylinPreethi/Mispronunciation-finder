@@ -1,6 +1,7 @@
 import { View, Text, TextInput, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { FC, JSX, useState, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
 interface FormFieldProps {
   title: string;
@@ -94,7 +95,11 @@ const FormField: FC<FormFieldProps> = ({
               style={styles.toggleButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={styles.toggleIcon}>{showPassword ? '👁️' : '🙈'}</Text>
+              <Icon 
+                name={showPassword ? 'visibility' : 'visibility-off'} 
+                size={22} 
+                color="rgba(255, 255, 255, 0.7)" 
+              />
             </TouchableOpacity>
           )}
         </View>
@@ -163,10 +168,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   toggleButton: {
-    padding: 4,
-  },
-  toggleIcon: {
-    fontSize: 22,
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   inputError: {
     borderColor: '#EF4444',
