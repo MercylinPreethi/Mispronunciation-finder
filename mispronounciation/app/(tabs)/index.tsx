@@ -31,12 +31,30 @@ const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const API_BASE_URL = 'http://192.168.14.34:5050';
 
-// Monochromatic Green Color Palette (Duolingo-inspired)
+// Color schemes per difficulty
+const DIFFICULTY_COLORS = {
+  easy: {
+    primary: '#58CC02',
+    dark: '#46A302',
+    light: '#89E219',
+    gradient: ['#58CC02', '#46A302'],
+  },
+  intermediate: {
+    primary: '#FFC800',
+    dark: '#FF9600',
+    light: '#FFD93D',
+    gradient: ['#FFC800', '#FF9600'],
+  },
+  hard: {
+    primary: '#FF4B4B',
+    dark: '#CE2D4F',
+    light: '#FF6B6B',
+    gradient: ['#FF4B4B', '#CE2D4F'],
+  },
+};
+
 const COLORS = {
   primary: '#58CC02',
-  primaryDark: '#46A302',
-  primaryLight: '#89E219',
-  secondary: '#1CB0F6',
   gold: '#FFC800',
   gray: {
     50: '#F9FAFB',
@@ -49,9 +67,6 @@ const COLORS = {
     700: '#374151',
     800: '#1F2937',
   },
-  success: '#58CC02',
-  warning: '#FFC800',
-  error: '#FF4B4B',
   white: '#FFFFFF',
 };
 
@@ -104,6 +119,8 @@ const EASY_WORDS = [
   { id: 'e6', word: 'Thank', phonetic: '/θæŋk/', meaning: 'Express gratitude to someone', example: 'Thank you for your help.', tip: 'Soft "th" sound' },
   { id: 'e7', word: 'Please', phonetic: '/pliːz/', meaning: 'Used in polite requests', example: 'Please close the door.', tip: 'Long "ee" sound' },
   { id: 'e8', word: 'Happy', phonetic: '/ˈhæpi/', meaning: 'Feeling or showing pleasure', example: 'I am happy today.', tip: 'Stress on first syllable' },
+  { id: 'e9', word: 'House', phonetic: '/haʊs/', meaning: 'A building for human habitation', example: 'They bought a new house.', tip: 'Diphthong "ou"' },
+  { id: 'e10', word: 'Friend', phonetic: '/frend/', meaning: 'A person with whom one has a bond', example: 'She is my best friend.', tip: 'Silent "i"' },
 ];
 
 // Intermediate Level Words
@@ -114,6 +131,8 @@ const INTERMEDIATE_WORDS = [
   { id: 'i4', word: 'Queue', phonetic: '/kjuː/', meaning: 'A line of people waiting', example: 'There is a long queue at the store.', tip: 'Just sounds like "Q"' },
   { id: 'i5', word: 'Receipt', phonetic: '/rɪˈsiːt/', meaning: 'A written acknowledgment of payment', example: 'Keep the receipt for returns.', tip: 'Silent "p"' },
   { id: 'i6', word: 'Island', phonetic: '/ˈaɪlənd/', meaning: 'A piece of land surrounded by water', example: 'They live on a tropical island.', tip: 'Silent "s"' },
+  { id: 'i7', word: 'Choir', phonetic: '/ˈkwaɪər/', meaning: 'An organized group of singers', example: 'She sings in the church choir.', tip: 'Sounds like "quire"' },
+  { id: 'i8', word: 'Knight', phonetic: '/naɪt/', meaning: 'A medieval warrior', example: 'The knight rode a horse.', tip: 'Silent "k" and "gh"' },
 ];
 
 // Hard Level Words
@@ -123,6 +142,7 @@ const HARD_WORDS = [
   { id: 'h3', word: 'Squirrel', phonetic: '/ˈskwɜːrəl/', meaning: 'A small rodent with a bushy tail', example: 'A squirrel climbed the tree.', tip: 'SKWIR-rel with rolled R' },
   { id: 'h4', word: 'Rural', phonetic: '/ˈrʊərəl/', meaning: 'Relating to the countryside', example: 'They moved to a rural area.', tip: 'Two syllables with rolling R' },
   { id: 'h5', word: 'Phenomenal', phonetic: '/fəˈnɒmɪnəl/', meaning: 'Very remarkable or extraordinary', example: 'Her performance was phenomenal.', tip: 'fe-NOM-i-nal' },
+  { id: 'h6', word: 'Brewery', phonetic: '/ˈbruːəri/', meaning: 'A place where beer is made', example: 'We toured the local brewery.', tip: 'BREW-er-y, three syllables' },
 ];
 
 interface WordProgress {
@@ -157,6 +177,8 @@ interface AnalysisResult {
   feedback: string;
 }
 
+type DifficultyLevel = 'easy' | 'intermediate' | 'hard' | null;
+
 export default function HomeScreen() {
   const [userName, setUserName] = useState('');
   const [stats, setStats] = useState<UserStats>({
@@ -172,6 +194,9 @@ export default function HomeScreen() {
   const [easyProgress, setEasyProgress] = useState<WordProgress[]>([]);
   const [intermediateProgress, setIntermediateProgress] = useState<WordProgress[]>([]);
   const [hardProgress, setHardProgress] = useState<WordProgress[]>([]);
+  
+  // Level selection state
+  const [selectedLevel, setSelectedLevel] = useState<DifficultyLevel>(null);
   
   const [selectedWord, setSelectedWord] = useState<any>(null);
   const [selectedWordType, setSelectedWordType] = useState<'daily' | 'easy' | 'intermediate' | 'hard'>('daily');
@@ -189,6 +214,7 @@ export default function HomeScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const modalAnim = useRef(new Animated.Value(0)).current;
   const floatAnim = useRef(new Animated.Value(0)).current;
+  const levelTransitionAnim = useRef(new Animated.Value(0)).current;
 
   const getTodayWordIndex = () => {
     const today = new Date();
@@ -399,6 +425,30 @@ export default function HomeScreen() {
     }
   }, [isRecording]);
 
+  const handleLevelSelect = (level: 'easy' | 'intermediate' | 'hard') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedLevel(level);
+    
+    Animated.spring(levelTransitionAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleBackToLevelSelect = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    Animated.timing(levelTransitionAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setSelectedLevel(null);
+    });
+  };
+
   const openPracticeModal = (word: any, type: 'daily' | 'easy' | 'intermediate' | 'hard', wordData?: any) => {
     setSelectedWord(wordData || word);
     setSelectedWordType(type);
@@ -597,11 +647,12 @@ export default function HomeScreen() {
         }
       }
 
-      // Update XP
+      // Update XP and total words
       const newXP = stats.xp + xpEarned;
-      setStats(prev => ({ ...prev, xp: newXP }));
+      const newTotalWords = stats.totalWords + (isCompleted ? 1 : 0);
+      setStats(prev => ({ ...prev, xp: newXP, totalWords: newTotalWords }));
       const statsRef = ref(database, `users/${user.uid}/stats`);
-      await set(statsRef, { ...stats, xp: newXP });
+      await set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords });
     } catch (error) {
       console.error('Error updating progress:', error);
     }
@@ -647,69 +698,136 @@ export default function HomeScreen() {
 
   const getNextUnlockedIndex = (progressArray: WordProgress[]) => {
     const firstIncomplete = progressArray.findIndex(p => !p.completed);
-    // If all completed, unlock all for review practice
     return firstIncomplete === -1 ? progressArray.length : firstIncomplete;
   };
 
-  const isUnitCompleted = (progressArray: WordProgress[]) => {
-    return progressArray.length > 0 && progressArray.every(p => p.completed);
+  const getCurrentLevelData = () => {
+    switch (selectedLevel) {
+      case 'easy':
+        return { words: EASY_WORDS, progress: easyProgress, colors: DIFFICULTY_COLORS.easy };
+      case 'intermediate':
+        return { words: INTERMEDIATE_WORDS, progress: intermediateProgress, colors: DIFFICULTY_COLORS.intermediate };
+      case 'hard':
+        return { words: HARD_WORDS, progress: hardProgress, colors: DIFFICULTY_COLORS.hard };
+      default:
+        return { words: [], progress: [], colors: DIFFICULTY_COLORS.easy };
+    }
   };
 
-  const renderLessonNode = (word: any, progress: WordProgress, index: number, unlockedIndex: number, isLast: boolean, difficulty: 'easy' | 'intermediate' | 'hard') => {
-    const isUnlocked = index <= unlockedIndex;
-    const isCompleted = progress.completed;
-    const isCurrent = index === unlockedIndex && !isCompleted;
-    const canPractice = isCompleted || isUnlocked; // Completed words can be replayed
+  const renderWordPath = () => {
+    const { words, progress, colors } = getCurrentLevelData();
+    const unlockedIndex = getNextUnlockedIndex(progress);
 
-    return (
-      <View key={word.id} style={styles.lessonNodeContainer}>
-        {!isLast && <View style={styles.pathLine} />}
-        <TouchableOpacity
-          style={[
-            styles.lessonNode,
-            { left: index % 2 === 0 ? 20 : width - 100 }
-          ]}
-          onPress={() => canPractice ? openPracticeModal(word, difficulty, word) : null}
-          disabled={!canPractice}
-          activeOpacity={0.8}
-        >
-          <View style={[
-            styles.nodeCircle,
-            isCompleted && styles.nodeCompleted,
-            isCurrent && styles.nodeCurrent,
-            !isUnlocked && styles.nodeLocked,
-          ]}>
-            {isCompleted ? (
-              <View style={styles.completedStars}>
-                <Icon name="check-circle" size={32} color={COLORS.success} />
-                {progress.bestScore >= 0.95 && (
-                  <View style={styles.perfectBadge}>
-                    <Icon name="stars" size={16} color={COLORS.gold} />
+    return words.map((word, index) => {
+      const wordProgress = progress[index] || { 
+        wordId: word.id, 
+        word: word.word, 
+        completed: false, 
+        attempts: 0, 
+        bestScore: 0, 
+        lastAttempted: '' 
+      };
+      const isUnlocked = index <= unlockedIndex;
+      const isCompleted = wordProgress.completed;
+      const isCurrent = index === unlockedIndex && !isCompleted;
+      const canPractice = isCompleted || isUnlocked;
+
+      // Alternating position (left/right zigzag)
+      const isLeft = index % 2 === 0;
+
+      return (
+        <View key={word.id} style={styles.pathNodeContainer}>
+          {/* Connecting Line */}
+          {index < words.length - 1 && (
+            <View style={[
+              styles.pathConnector,
+              { backgroundColor: isCompleted ? colors.primary : COLORS.gray[300] }
+            ]} />
+          )}
+          
+          {/* Word Node */}
+          <TouchableOpacity
+            style={[
+              styles.wordNodeWrapper,
+              { alignSelf: isLeft ? 'flex-start' : 'flex-end' }
+            ]}
+            onPress={() => canPractice ? openPracticeModal(word, selectedLevel!, word) : null}
+            disabled={!canPractice}
+            activeOpacity={0.8}
+          >
+            <Animated.View style={[
+              styles.wordNode,
+              isCompleted && { 
+                borderColor: colors.primary,
+                backgroundColor: colors.light + '20',
+              },
+              isCurrent && {
+                borderColor: colors.primary,
+                shadowColor: colors.primary,
+                shadowOpacity: 0.4,
+              },
+              !isUnlocked && {
+                borderColor: COLORS.gray[300],
+                backgroundColor: COLORS.gray[100],
+              }
+            ]}>
+              {/* Node Icon */}
+              <View style={styles.nodeIconContainer}>
+                {isCompleted ? (
+                  <LinearGradient
+                    colors={colors.gradient}
+                    style={styles.nodeIconGradient}
+                  >
+                    <Icon name="check-circle" size={40} color={COLORS.white} />
+                  </LinearGradient>
+                ) : isCurrent ? (
+                  <LinearGradient
+                    colors={colors.gradient}
+                    style={styles.nodeIconGradient}
+                  >
+                    <Icon name="star" size={40} color={COLORS.white} />
+                  </LinearGradient>
+                ) : !isUnlocked ? (
+                  <View style={styles.nodeIconLocked}>
+                    <Icon name="lock" size={32} color={COLORS.gray[400]} />
                   </View>
+                ) : (
+                  <LinearGradient
+                    colors={colors.gradient}
+                    style={styles.nodeIconGradient}
+                  >
+                    <Icon name="play-circle-filled" size={40} color={COLORS.white} />
+                  </LinearGradient>
                 )}
               </View>
-            ) : isCurrent ? (
-              <Icon name="star" size={32} color={COLORS.gold} />
-            ) : !isUnlocked ? (
-              <Icon name="lock" size={28} color={COLORS.gray[400]} />
-            ) : (
-              <Icon name="play-circle-filled" size={32} color={COLORS.primary} />
-            )}
-          </View>
-          {canPractice && (
-            <View style={styles.nodeLabel}>
-              <Text style={[
-                styles.nodeLabelText,
-                !isCompleted && styles.nodeLabelTextActive
-              ]}>{word.word}</Text>
-              {isCompleted && progress.bestScore > 0 && (
-                <Text style={styles.nodeBestScore}>{Math.round(progress.bestScore * 100)}%</Text>
+
+              {/* Word Info */}
+              {canPractice && (
+                <View style={styles.nodeInfo}>
+                  <Text style={[
+                    styles.nodeWord,
+                    { color: isCompleted ? colors.dark : isCurrent ? colors.primary : COLORS.gray[700] }
+                  ]}>{word.word}</Text>
+                  {isCompleted && wordProgress.bestScore > 0 && (
+                    <View style={[styles.scoreChip, { backgroundColor: colors.light + '40' }]}>
+                      <Icon name="stars" size={14} color={colors.dark} />
+                      <Text style={[styles.scoreText, { color: colors.dark }]}>
+                        {Math.round(wordProgress.bestScore * 100)}%
+                      </Text>
+                    </View>
+                  )}
+                  {isCurrent && (
+                    <View style={[styles.currentBadge, { backgroundColor: colors.primary }]}>
+                      <Text style={styles.currentText}>START</Text>
+                    </View>
+                  )}
+                </View>
               )}
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-    );
+            </Animated.View>
+          </TouchableOpacity>
+        </View>
+      );
+    });
   };
 
   const floatY = floatAnim.interpolate({
@@ -722,30 +840,65 @@ export default function HomeScreen() {
     outputRange: [0.8, 1],
   });
 
-  const easyUnlocked = getNextUnlockedIndex(easyProgress);
-  const intUnlocked = getNextUnlockedIndex(intermediateProgress);
-  const hardUnlocked = getNextUnlockedIndex(hardProgress);
+  const levelOpacity = levelTransitionAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
 
-  const easyCompleted = isUnitCompleted(easyProgress);
-  const intCompleted = isUnitCompleted(intermediateProgress);
-  const hardCompleted = isUnitCompleted(hardProgress);
-  const allUnitsCompleted = easyCompleted && intCompleted && hardCompleted;
+  const levelScale = levelTransitionAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.9, 1],
+  });
+
+  const getLevelStats = (level: 'easy' | 'intermediate' | 'hard') => {
+    const progressMap = {
+      easy: easyProgress,
+      intermediate: intermediateProgress,
+      hard: hardProgress,
+    };
+    const wordsMap = {
+      easy: EASY_WORDS,
+      intermediate: INTERMEDIATE_WORDS,
+      hard: HARD_WORDS,
+    };
+    
+    const progress = progressMap[level];
+    const total = wordsMap[level].length;
+    const completed = progress.filter(p => p.completed).length;
+    
+    return { completed, total };
+  };
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <LinearGradient
-        colors={[COLORS.primary, COLORS.primaryDark]}
+        colors={selectedLevel ? getCurrentLevelData().colors.gradient : [COLORS.primary, '#46A302']}
         style={styles.header}
       >
-        <View style={styles.headerTop}>
-          <View style={styles.streakContainer}>
-            <Icon name="local-fire-department" size={24} color={COLORS.gold} />
-            <Text style={styles.streakText}>{stats.streak}</Text>
-          </View>
-          <View style={styles.xpContainer}>
-            <Icon name="stars" size={20} color={COLORS.gold} />
-            <Text style={styles.xpText}>{stats.xp} XP</Text>
+        <View style={styles.headerContent}>
+          {selectedLevel ? (
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={handleBackToLevelSelect}
+            >
+              <Icon name="arrow-back" size={24} color={COLORS.white} />
+            </TouchableOpacity>
+          ) : null}
+          
+          <View style={styles.headerStats}>
+            <View style={styles.statBadge}>
+              <Icon name="check-circle" size={20} color={COLORS.gold} />
+              <Text style={styles.statText}>{stats.totalWords}</Text>
+            </View>
+            <View style={styles.statBadge}>
+              <Icon name="local-fire-department" size={20} color={COLORS.gold} />
+              <Text style={styles.statText}>{stats.streak}</Text>
+            </View>
+            <View style={styles.statBadge}>
+              <Icon name="stars" size={20} color={COLORS.gold} />
+              <Text style={styles.statText}>{stats.xp}</Text>
+            </View>
           </View>
         </View>
       </LinearGradient>
@@ -755,270 +908,146 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Daily Challenge */}
-        <View style={styles.dailySection}>
-          <Text style={styles.sectionTitle}>Today's Challenge</Text>
-          <Animated.View style={{ transform: [{ translateY: floatY }] }}>
-            <TouchableOpacity
-              style={styles.dailyCard}
-              onPress={() => openPracticeModal(todayWord, 'daily')}
-              activeOpacity={0.9}
-            >
-              <LinearGradient
-                colors={todayProgress?.completed 
-                  ? [COLORS.success, COLORS.primaryDark] 
-                  : [COLORS.primary, COLORS.primaryLight]
-                }
-                style={styles.dailyCardGradient}
+        {!selectedLevel ? (
+          /* Level Selection View */
+          <>
+            <Text style={styles.welcomeTitle}>Choose Your Level</Text>
+            <Text style={styles.welcomeSubtitle}>Select a difficulty to start your learning journey</Text>
+
+            {/* Daily Challenge */}
+            <Animated.View style={[styles.dailyCardWrapper, { transform: [{ translateY: floatY }] }]}>
+              <TouchableOpacity
+                style={styles.dailyCard}
+                onPress={() => openPracticeModal(todayWord, 'daily')}
+                activeOpacity={0.9}
               >
-                <View style={styles.dailyCardHeader}>
-                  <View style={styles.dailyBadge}>
-                    <Text style={styles.dailyBadgeText}>DAILY</Text>
+                <LinearGradient
+                  colors={todayProgress?.completed ? [COLORS.primary, '#46A302'] : ['#1CB0F6', '#0090E0']}
+                  style={styles.dailyGradient}
+                >
+                  <View style={styles.dailyHeader}>
+                    <View style={styles.dailyBadge}>
+                      <Text style={styles.dailyBadgeText}>DAILY WORD</Text>
+                    </View>
+                    {todayProgress?.completed && (
+                      <Icon name="check-circle" size={24} color={COLORS.gold} />
+                    )}
                   </View>
-                  {todayProgress?.completed && (
-                    <Icon name="check-circle" size={28} color={COLORS.gold} />
-                  )}
-                </View>
-                
-                <View style={styles.dailyContent}>
-                  <Text style={styles.dailyWordText}>{todayWord.word}</Text>
+                  <Text style={styles.dailyWord}>{todayWord.word}</Text>
                   <Text style={styles.dailyPhonetic}>{todayWord.phonetic}</Text>
-                  
-                  <View style={styles.dailyMeaning}>
-                    <Icon name="info-outline" size={16} color={COLORS.white} />
-                    <Text style={styles.dailyMeaningText}>{todayWord.meaning}</Text>
-                  </View>
-                  
-                  <View style={styles.dailyExample}>
-                    <Text style={styles.dailyExampleText}>"{todayWord.example}"</Text>
-                  </View>
-                </View>
-
-                <View style={styles.dailyFooter}>
-                  <View style={styles.dailyButton}>
-                    <Text style={styles.dailyButtonText}>
-                      {todayProgress?.completed ? 'Practice Again' : 'Start Learning'}
+                  <View style={styles.dailyFooter}>
+                    <Text style={styles.dailyAction}>
+                      {todayProgress?.completed ? 'Practice Again →' : 'Start Now →'}
                     </Text>
-                    <Icon name="arrow-forward" size={20} color={COLORS.primary} />
                   </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            </Animated.View>
+
+            {/* Level Cards */}
+            <View style={styles.levelCardsContainer}>
+              {/* Easy */}
+              <TouchableOpacity
+                style={styles.levelCard}
+                onPress={() => handleLevelSelect('easy')}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={DIFFICULTY_COLORS.easy.gradient}
+                  style={styles.levelGradient}
+                >
+                  <Icon name="sentiment-very-satisfied" size={48} color={COLORS.white} />
+                  <Text style={styles.levelTitle}>Easy</Text>
+                  <Text style={styles.levelDescription}>Perfect for beginners</Text>
+                  <View style={styles.levelProgress}>
+                    <Text style={styles.levelProgressText}>
+                      {getLevelStats('easy').completed} / {getLevelStats('easy').total} words
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Intermediate */}
+              <TouchableOpacity
+                style={styles.levelCard}
+                onPress={() => handleLevelSelect('intermediate')}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={DIFFICULTY_COLORS.intermediate.gradient}
+                  style={styles.levelGradient}
+                >
+                  <Icon name="emoji-events" size={48} color={COLORS.white} />
+                  <Text style={styles.levelTitle}>Intermediate</Text>
+                  <Text style={styles.levelDescription}>Challenge yourself</Text>
+                  <View style={styles.levelProgress}>
+                    <Text style={styles.levelProgressText}>
+                      {getLevelStats('intermediate').completed} / {getLevelStats('intermediate').total} words
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Hard */}
+              <TouchableOpacity
+                style={styles.levelCard}
+                onPress={() => handleLevelSelect('hard')}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={DIFFICULTY_COLORS.hard.gradient}
+                  style={styles.levelGradient}
+                >
+                  <Icon name="fitness-center" size={48} color={COLORS.white} />
+                  <Text style={styles.levelTitle}>Hard</Text>
+                  <Text style={styles.levelDescription}>Master pronunciation</Text>
+                  <View style={styles.levelProgress}>
+                    <Text style={styles.levelProgressText}>
+                      {getLevelStats('hard').completed} / {getLevelStats('hard').total} words
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          /* Learning Path View */
+          <Animated.View style={{
+            opacity: levelOpacity,
+            transform: [{ scale: levelScale }]
+          }}>
+            <View style={styles.pathHeader}>
+              <Text style={[styles.pathTitle, { color: getCurrentLevelData().colors.primary }]}>
+                {selectedLevel.charAt(0).toUpperCase() + selectedLevel.slice(1)} Level
+              </Text>
+              <Text style={styles.pathSubtitle}>
+                {getLevelStats(selectedLevel).completed} / {getLevelStats(selectedLevel).total} completed
+              </Text>
+            </View>
+
+            <View style={styles.pathView}>
+              {renderWordPath()}
+              
+              {/* Completion Badge */}
+              {getLevelStats(selectedLevel).completed === getLevelStats(selectedLevel).total && (
+                <View style={styles.completionBadge}>
+                  <LinearGradient
+                    colors={getCurrentLevelData().colors.gradient}
+                    style={styles.completionGradient}
+                  >
+                    <Icon name="workspace-premium" size={48} color={COLORS.gold} />
+                    <Text style={styles.completionText}>Level Complete! 🎉</Text>
+                    <Text style={styles.completionSubtext}>
+                      You've mastered all {getLevelStats(selectedLevel).total} words!
+                    </Text>
+                  </LinearGradient>
                 </View>
-              </LinearGradient>
-            </TouchableOpacity>
+              )}
+            </View>
           </Animated.View>
-        </View>
-
-        {/* Learning Path - Easy */}
-        <View style={styles.pathSection}>
-          <View style={styles.unitHeader}>
-            <View style={[
-              styles.unitBadge, 
-              { backgroundColor: easyCompleted ? COLORS.gold : COLORS.gray[200] }
-            ]}>
-              <Icon 
-                name={easyCompleted ? "emoji-events" : "school"} 
-                size={20} 
-                color={easyCompleted ? COLORS.white : COLORS.primary} 
-              />
-            </View>
-            <View style={styles.unitInfo}>
-              <View style={styles.unitTitleRow}>
-                <Text style={styles.unitTitle}>Unit 1 • Easy</Text>
-                {easyCompleted && (
-                  <View style={styles.masteryBadge}>
-                    <Icon name="verified" size={16} color={COLORS.success} />
-                    <Text style={styles.masteryText}>MASTERED</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.unitSubtitle}>
-                {easyProgress.filter(p => p.completed).length} / {EASY_WORDS.length} completed
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.pathContainer}>
-            {EASY_WORDS.map((word, index) => {
-              const progress = easyProgress[index] || { 
-                wordId: word.id, word: word.word, completed: false, attempts: 0, bestScore: 0, lastAttempted: '' 
-              };
-              return (
-                <View key={word.id}>
-                  {renderLessonNode(word, progress, index, easyUnlocked, index === EASY_WORDS.length - 1, 'easy')}
-                </View>
-              );
-            })}
-            
-            {/* Checkpoint */}
-            <View style={styles.checkpointContainer}>
-              <View style={[
-                styles.checkpoint,
-                easyCompleted && styles.checkpointCompleted
-              ]}>
-                <Icon 
-                  name={easyCompleted ? "verified" : "emoji-events"} 
-                  size={32} 
-                  color={COLORS.white} 
-                />
-                <Text style={styles.checkpointText}>
-                  {easyCompleted ? "Unit 1 Complete! 🎉" : "Checkpoint"}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Learning Path - Intermediate */}
-        <View style={styles.pathSection}>
-          <View style={styles.unitHeader}>
-            <View style={[
-              styles.unitBadge, 
-              { backgroundColor: intCompleted ? COLORS.gold : COLORS.gray[200] }
-            ]}>
-              <Icon 
-                name={intCompleted ? "emoji-events" : "trending-up"} 
-                size={20} 
-                color={intCompleted ? COLORS.white : COLORS.primary} 
-              />
-            </View>
-            <View style={styles.unitInfo}>
-              <View style={styles.unitTitleRow}>
-                <Text style={styles.unitTitle}>Unit 2 • Intermediate</Text>
-                {intCompleted && (
-                  <View style={styles.masteryBadge}>
-                    <Icon name="verified" size={16} color={COLORS.success} />
-                    <Text style={styles.masteryText}>MASTERED</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.unitSubtitle}>
-                {intermediateProgress.filter(p => p.completed).length} / {INTERMEDIATE_WORDS.length} completed
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.pathContainer}>
-            {INTERMEDIATE_WORDS.map((word, index) => {
-              const progress = intermediateProgress[index] || { 
-                wordId: word.id, word: word.word, completed: false, attempts: 0, bestScore: 0, lastAttempted: '' 
-              };
-              return (
-                <View key={word.id}>
-                  {renderLessonNode(word, progress, index, intUnlocked, index === INTERMEDIATE_WORDS.length - 1, 'intermediate')}
-                </View>
-              );
-            })}
-            
-            <View style={styles.checkpointContainer}>
-              <View style={[
-                styles.checkpoint,
-                intCompleted && styles.checkpointCompleted
-              ]}>
-                <Icon 
-                  name={intCompleted ? "verified" : "emoji-events"} 
-                  size={32} 
-                  color={COLORS.white} 
-                />
-                <Text style={styles.checkpointText}>
-                  {intCompleted ? "Unit 2 Complete! 🎉" : "Checkpoint"}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Learning Path - Hard */}
-        <View style={styles.pathSection}>
-          <View style={styles.unitHeader}>
-            <View style={[
-              styles.unitBadge, 
-              { backgroundColor: hardCompleted ? COLORS.gold : COLORS.gray[200] }
-            ]}>
-              <Icon 
-                name={hardCompleted ? "emoji-events" : "fitness-center"} 
-                size={20} 
-                color={hardCompleted ? COLORS.white : COLORS.primary} 
-              />
-            </View>
-            <View style={styles.unitInfo}>
-              <View style={styles.unitTitleRow}>
-                <Text style={styles.unitTitle}>Unit 3 • Hard</Text>
-                {hardCompleted && (
-                  <View style={styles.masteryBadge}>
-                    <Icon name="verified" size={16} color={COLORS.success} />
-                    <Text style={styles.masteryText}>MASTERED</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.unitSubtitle}>
-                {hardProgress.filter(p => p.completed).length} / {HARD_WORDS.length} completed
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.pathContainer}>
-            {HARD_WORDS.map((word, index) => {
-              const progress = hardProgress[index] || { 
-                wordId: word.id, word: word.word, completed: false, attempts: 0, bestScore: 0, lastAttempted: '' 
-              };
-              return (
-                <View key={word.id}>
-                  {renderLessonNode(word, progress, index, hardUnlocked, index === HARD_WORDS.length - 1, 'hard')}
-                </View>
-              );
-            })}
-            
-            <View style={styles.checkpointContainer}>
-              <View style={[
-                styles.checkpoint,
-                hardCompleted && styles.checkpointCompleted
-              ]}>
-                <Icon 
-                  name={hardCompleted ? "military-tech" : "emoji-events"} 
-                  size={32} 
-                  color={COLORS.white} 
-                />
-                <Text style={styles.checkpointText}>
-                  {hardCompleted ? "Unit 3 Complete! 🎉" : "Checkpoint"}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* All Units Completed Badge */}
-        {allUnitsCompleted && (
-          <View style={styles.allCompletedSection}>
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.primaryDark]}
-              style={styles.allCompletedCard}
-            >
-              <Icon name="workspace-premium" size={64} color={COLORS.gold} />
-              <Text style={styles.allCompletedTitle}>🎉 Congratulations! 🎉</Text>
-              <Text style={styles.allCompletedText}>
-                You've mastered all pronunciation units!
-              </Text>
-              <Text style={styles.allCompletedSubtext}>
-                Keep practicing to maintain your skills. You can replay any word to improve your score!
-              </Text>
-              <View style={styles.allCompletedStats}>
-                <View style={styles.allCompletedStat}>
-                  <Icon name="stars" size={24} color={COLORS.gold} />
-                  <Text style={styles.allCompletedStatValue}>{stats.xp}</Text>
-                  <Text style={styles.allCompletedStatLabel}>Total XP</Text>
-                </View>
-                <View style={styles.allCompletedStat}>
-                  <Icon name="check-circle" size={24} color={COLORS.gold} />
-                  <Text style={styles.allCompletedStatValue}>
-                    {EASY_WORDS.length + INTERMEDIATE_WORDS.length + HARD_WORDS.length}
-                  </Text>
-                  <Text style={styles.allCompletedStatLabel}>Words Mastered</Text>
-                </View>
-              </View>
-            </LinearGradient>
-          </View>
         )}
 
-        <View style={{ height: 60 }} />
+        <View style={{ height: 80 }} />
       </ScrollView>
 
       {/* Practice Modal */}
@@ -1109,16 +1138,16 @@ export default function HomeScreen() {
                                 onPress={handleRecord}
                                 activeOpacity={0.9}
                               >
-                                <View style={[
-                                  styles.modalRecordCircle,
-                                  isRecording && styles.modalRecordCircleActive
-                                ]}>
+                                <LinearGradient
+                                  colors={isRecording ? ['#FF4B4B', '#CE2D4F'] : [COLORS.primary, '#46A302']}
+                                  style={styles.modalRecordCircle}
+                                >
                                   <Icon 
                                     name={isRecording ? 'stop' : 'mic'} 
                                     size={40} 
                                     color={COLORS.white} 
                                   />
-                                </View>
+                                </LinearGradient>
                               </TouchableOpacity>
                             </Animated.View>
                             
@@ -1145,16 +1174,19 @@ export default function HomeScreen() {
                       </View>
 
                       <View style={styles.resultContent}>
-                        <View style={[
-                          styles.resultIconCircle,
-                          { backgroundColor: result && result.accuracy >= 0.8 ? COLORS.success : COLORS.gold }
-                        ]}>
+                        <LinearGradient
+                          colors={result && result.accuracy >= 0.8 
+                            ? [COLORS.primary, '#46A302'] 
+                            : ['#FFC800', '#FF9600']
+                          }
+                          style={styles.resultIconCircle}
+                        >
                           <Icon 
                             name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} 
                             size={64} 
                             color={COLORS.white} 
                           />
-                        </View>
+                        </LinearGradient>
                         
                         <Text style={styles.resultTitle}>
                           {result && result.accuracy >= 0.9 ? 'Perfect!' :
@@ -1176,13 +1208,13 @@ export default function HomeScreen() {
 
                         <View style={styles.resultStats}>
                           <View style={styles.resultStatItem}>
-                            <Icon name="check-circle" size={24} color={COLORS.success} />
+                            <Icon name="check-circle" size={24} color={COLORS.primary} />
                             <Text style={styles.resultStatValue}>{result?.correct_phonemes || 0}</Text>
                             <Text style={styles.resultStatLabel}>Correct</Text>
                           </View>
                           <View style={styles.resultStatDivider} />
                           <View style={styles.resultStatItem}>
-                            <Icon name="cancel" size={24} color={COLORS.error} />
+                            <Icon name="cancel" size={24} color="#FF4B4B" />
                             <Text style={styles.resultStatValue}>
                               {result ? result.total_phonemes - result.correct_phonemes : 0}
                             </Text>
@@ -1209,7 +1241,7 @@ export default function HomeScreen() {
                             onPress={closePracticeModal}
                           >
                             <LinearGradient
-                              colors={[COLORS.primary, COLORS.primaryDark]}
+                              colors={[COLORS.primary, '#46A302']}
                               style={styles.resultContinueGradient}
                             >
                               <Text style={styles.resultContinueText}>Continue</Text>
@@ -1239,38 +1271,38 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     paddingHorizontal: 20,
   },
-  headerTop: {
+  headerContent: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  streakContainer: {
+  headerStats: {
+    flexDirection: 'row',
+    gap: 10,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  statBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.white,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     gap: 6,
   },
-  streakText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.gold,
-  },
-  xpContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 6,
-  },
-  xpText: {
+  statText: {
     fontSize: 16,
     fontWeight: '800',
-    color: COLORS.primary,
+    color: COLORS.gray[800],
   },
   scrollView: {
     flex: 1,
@@ -1278,15 +1310,25 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 20,
   },
-  dailySection: {
-    padding: 20,
-    backgroundColor: COLORS.gray[50],
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: '800',
+  welcomeTitle: {
+    fontSize: 32,
+    fontWeight: '900',
     color: COLORS.gray[800],
-    marginBottom: 16,
+    textAlign: 'center',
+    marginTop: 32,
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  welcomeSubtitle: {
+    fontSize: 16,
+    color: COLORS.gray[600],
+    textAlign: 'center',
+    marginBottom: 32,
+    fontWeight: '500',
+  },
+  dailyCardWrapper: {
+    paddingHorizontal: 20,
+    marginBottom: 32,
   },
   dailyCard: {
     borderRadius: 24,
@@ -1297,14 +1339,14 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  dailyCardGradient: {
+  dailyGradient: {
     padding: 24,
   },
-  dailyCardHeader: {
+  dailyHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   dailyBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
@@ -1313,300 +1355,206 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   dailyBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
     color: COLORS.white,
     letterSpacing: 1,
   },
-  dailyContent: {
-    marginBottom: 20,
-  },
-  dailyWordText: {
-    fontSize: 40,
+  dailyWord: {
+    fontSize: 36,
     fontWeight: '900',
     color: COLORS.white,
-    marginBottom: 8,
+    marginBottom: 6,
     letterSpacing: -1,
   },
   dailyPhonetic: {
-    fontSize: 18,
+    fontSize: 16,
     color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '600',
     fontStyle: 'italic',
     marginBottom: 16,
   },
-  dailyMeaning: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginBottom: 12,
-  },
-  dailyMeaningText: {
-    flex: 1,
-    fontSize: 15,
-    color: COLORS.white,
-    fontWeight: '600',
-    lineHeight: 22,
-  },
-  dailyExample: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 12,
-    borderRadius: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.white,
-  },
-  dailyExampleText: {
-    fontSize: 14,
-    color: COLORS.white,
-    fontStyle: 'italic',
-    fontWeight: '500',
-  },
   dailyFooter: {
     alignItems: 'center',
   },
-  dailyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
-    gap: 8,
-  },
-  dailyButtonText: {
+  dailyAction: {
     fontSize: 16,
     fontWeight: '800',
-    color: COLORS.primary,
+    color: COLORS.white,
   },
-  pathSection: {
-    paddingTop: 32,
+  levelCardsContainer: {
+    paddingHorizontal: 20,
+    gap: 16,
   },
-  unitHeader: {
+  levelCard: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  levelGradient: {
+    padding: 28,
+    alignItems: 'center',
+  },
+  levelTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: COLORS.white,
+    marginTop: 12,
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  levelDescription: {
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  levelProgress: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  levelProgressText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.white,
+  },
+  pathHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
+    alignItems: 'center',
+  },
+  pathTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  pathSubtitle: {
+    fontSize: 16,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+  },
+  pathView: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  pathNodeContainer: {
+    position: 'relative',
+    marginBottom: 24,
+  },
+  pathConnector: {
+    position: 'absolute',
+    width: 4,
+    height: 50,
+    left: '50%',
+    top: 90,
+    marginLeft: -2,
+    zIndex: -1,
+  },
+  wordNodeWrapper: {
+    width: '100%',
+  },
+  wordNode: {
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 3,
+    borderColor: COLORS.gray[200],
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 24,
-    gap: 12,
+    gap: 16,
   },
-  unitBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  nodeIconContainer: {
+    width: 70,
+    height: 70,
+  },
+  nodeIconGradient: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  unitInfo: {
+  nodeIconLocked: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: COLORS.gray[200],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nodeInfo: {
     flex: 1,
   },
-  unitTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 4,
-  },
-  unitTitle: {
-    fontSize: 20,
+  nodeWord: {
+    fontSize: 22,
     fontWeight: '800',
-    color: COLORS.gray[800],
+    marginBottom: 6,
+    letterSpacing: -0.5,
   },
-  masteryBadge: {
+  scoreChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
   },
-  masteryText: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.success,
-    letterSpacing: 0.5,
+  scoreText: {
+    fontSize: 13,
+    fontWeight: '800',
   },
-  unitSubtitle: {
-    fontSize: 14,
-    color: COLORS.gray[600],
-    fontWeight: '600',
-  },
-  pathContainer: {
-    position: 'relative',
-    paddingVertical: 20,
-    minHeight: 400,
-  },
-  pathLine: {
-    position: 'absolute',
-    left: '50%',
-    top: 0,
-    width: 4,
-    height: 120,
-    backgroundColor: COLORS.gray[200],
-    marginLeft: -2,
-    zIndex: -1,
-  },
-  lessonNodeContainer: {
-    height: 120,
-    width: '100%',
-    position: 'relative',
-  },
-  lessonNode: {
-    position: 'absolute',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  nodeCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.white,
-    borderWidth: 4,
-    borderColor: COLORS.gray[300],
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  nodeCompleted: {
-    borderColor: COLORS.success,
-    backgroundColor: COLORS.gray[50],
-  },
-  nodeCurrent: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.white,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.3,
-  },
-  nodeLocked: {
-    borderColor: COLORS.gray[300],
-    backgroundColor: COLORS.gray[100],
-  },
-  nodeLabel: {
-    marginTop: 8,
-    backgroundColor: COLORS.white,
+  currentBadge: {
+    alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    borderWidth: 2,
-    borderColor: COLORS.gray[200],
-    alignItems: 'center',
   },
-  nodeLabelText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.gray[600],
-  },
-  nodeLabelTextActive: {
-    color: COLORS.primary,
-  },
-  nodeBestScore: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.success,
-    marginTop: 2,
-  },
-  completedStars: {
-    position: 'relative',
-  },
-  perfectBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: COLORS.gold,
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.white,
-  },
-  checkpointContainer: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  checkpoint: {
-    backgroundColor: COLORS.gold,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 20,
-    alignItems: 'center',
-    shadowColor: COLORS.gold,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  checkpointText: {
-    fontSize: 16,
-    fontWeight: '800',
+  currentText: {
+    fontSize: 12,
+    fontWeight: '900',
     color: COLORS.white,
-    marginTop: 8,
+    letterSpacing: 0.5,
   },
-  checkpointCompleted: {
-    backgroundColor: COLORS.success,
+  completionBadge: {
+    marginTop: 32,
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  allCompletedSection: {
-    paddingHorizontal: 20,
-    paddingTop: 32,
-  },
-  allCompletedCard: {
-    borderRadius: 32,
+  completionGradient: {
     padding: 32,
     alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 10,
   },
-  allCompletedTitle: {
-    fontSize: 28,
+  completionText: {
+    fontSize: 24,
     fontWeight: '900',
     color: COLORS.white,
-    marginTop: 20,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  allCompletedText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.white,
-    textAlign: 'center',
+    marginTop: 16,
     marginBottom: 8,
   },
-  allCompletedSubtext: {
+  completionSubtext: {
     fontSize: 15,
-    fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
-  },
-  allCompletedStats: {
-    flexDirection: 'row',
-    gap: 24,
-  },
-  allCompletedStat: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 20,
-  },
-  allCompletedStatValue: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: COLORS.gold,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  allCompletedStatLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.white,
   },
   modalOverlay: {
     flex: 1,
@@ -1760,7 +1708,6 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: COLORS.primary,
@@ -1769,14 +1716,10 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  modalRecordCircleActive: {
-    backgroundColor: COLORS.error,
-    shadowColor: COLORS.error,
-  },
   modalRecordingTime: {
     fontSize: 28,
     fontWeight: '900',
-    color: COLORS.error,
+    color: '#FF4B4B',
     marginBottom: 8,
     fontVariant: ['tabular-nums'],
   },
