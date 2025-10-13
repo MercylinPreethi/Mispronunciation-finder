@@ -31,45 +31,52 @@ const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const API_BASE_URL = 'http://192.168.14.34:5050';
 
-// Monochromatic Green Color Scheme (matching other tabs)
+// Material Design 3 Color Scheme (matching other tabs)
 const DIFFICULTY_COLORS = {
   easy: {
-    primary: '#89E219',
-    dark: '#6BC714',
-    light: '#A8F050',
-    gradient: ['#89E219', '#6BC714'],
+    primary: '#10B981',
+    dark: '#059669',
+    light: '#34D399',
+    gradient: ['#10B981', '#059669'],
   },
   intermediate: {
-    primary: '#58CC02',
-    dark: '#46A302',
-    light: '#6FDB0A',
-    gradient: ['#58CC02', '#46A302'],
+    primary: '#6366F1',
+    dark: '#4F46E5',
+    light: '#818CF8',
+    gradient: ['#6366F1', '#8B5CF6'],
   },
   hard: {
-    primary: '#46A302',
-    dark: '#3A8602',
-    light: '#58B803',
-    gradient: ['#46A302', '#3A8602'],
+    primary: '#EC4899',
+    dark: '#DB2777',
+    light: '#F472B6',
+    gradient: ['#EC4899', '#DB2777'],
   },
 };
 
 const COLORS = {
-  primary: '#58CC02',
-  primaryDark: '#46A302',
-  primaryLight: '#89E219',
-  gold: '#FFD700',
+  primary: '#6366F1',
+  primaryDark: '#4F46E5',
+  primaryLight: '#818CF8',
+  secondary: '#8B5CF6',
+  tertiary: '#EC4899',
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  gold: '#FFC800',
   gray: {
-    50: '#F9FAFB',
-    100: '#F3F4F6',
-    200: '#E5E7EB',
-    300: '#D1D5DB',
-    400: '#9CA3AF',
-    500: '#6B7280',
-    600: '#4B5563',
-    700: '#374151',
-    800: '#1F2937',
+    50: '#F8FAFC',
+    100: '#F1F5F9',
+    200: '#E2E8F0',
+    300: '#CBD5E1',
+    400: '#94A3B8',
+    500: '#64748B',
+    600: '#475569',
+    700: '#334155',
+    800: '#1E293B',
+    900: '#0F172A',
   },
   white: '#FFFFFF',
+  background: '#F8F9FE',
 };
 
 // Daily word pool
@@ -875,7 +882,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       {/* Header */}
       <LinearGradient
-        colors={selectedLevel ? getCurrentLevelData().colors.gradient : [COLORS.primary, COLORS.primaryDark]}
+        colors={selectedLevel ? getCurrentLevelData().colors.gradient : [COLORS.primary, COLORS.secondary]}
         style={styles.header}
       >
         <View style={styles.headerContent}>
@@ -924,7 +931,7 @@ export default function HomeScreen() {
                 activeOpacity={0.9}
               >
                 <LinearGradient
-                  colors={todayProgress?.completed ? [COLORS.primary, COLORS.primaryDark] : [COLORS.primaryLight, COLORS.primary]}
+                  colors={todayProgress?.completed ? [COLORS.success, '#059669'] : [COLORS.primary, COLORS.secondary]}
                   style={styles.dailyGradient}
                 >
                   <View style={styles.dailyHeader}>
@@ -1141,7 +1148,7 @@ export default function HomeScreen() {
                                 activeOpacity={0.9}
                               >
                                 <LinearGradient
-                                  colors={isRecording ? ['#FF4B4B', '#CE2D4F'] : [COLORS.primary, '#46A302']}
+                                  colors={isRecording ? [COLORS.error, '#DC2626'] : [COLORS.primary, COLORS.secondary]}
                                   style={styles.modalRecordCircle}
                                 >
                                   <Icon 
@@ -1178,8 +1185,8 @@ export default function HomeScreen() {
                       <View style={styles.resultContent}>
                         <LinearGradient
                           colors={result && result.accuracy >= 0.8 
-                            ? [COLORS.primary, '#46A302'] 
-                            : ['#FFC800', '#FF9600']
+                            ? [COLORS.success, '#059669'] 
+                            : [COLORS.warning, '#D97706']
                           }
                           style={styles.resultIconCircle}
                         >
@@ -1216,7 +1223,7 @@ export default function HomeScreen() {
                           </View>
                           <View style={styles.resultStatDivider} />
                           <View style={styles.resultStatItem}>
-                            <Icon name="cancel" size={24} color="#DC2626" />
+                            <Icon name="cancel" size={24} color={COLORS.error} />
                             <Text style={styles.resultStatValue}>
                               {result ? result.total_phonemes - result.correct_phonemes : 0}
                             </Text>
@@ -1243,7 +1250,7 @@ export default function HomeScreen() {
                             onPress={closePracticeModal}
                           >
                             <LinearGradient
-                              colors={[COLORS.primary, '#46A302']}
+                              colors={[COLORS.primary, COLORS.secondary]}
                               style={styles.resultContinueGradient}
                             >
                               <Text style={styles.resultContinueText}>Continue</Text>
@@ -1266,7 +1273,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.background,
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
@@ -1337,9 +1344,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    elevation: 10,
   },
   dailyGradient: {
     padding: 24,
@@ -1392,9 +1399,9 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
     elevation: 6,
   },
   levelGradient: {
@@ -1471,9 +1478,9 @@ const styles = StyleSheet.create({
     borderColor: COLORS.gray[200],
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
@@ -1537,9 +1544,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    elevation: 10,
   },
   completionGradient: {
     padding: 32,
@@ -1580,10 +1587,10 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     padding: 28,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.20,
     shadowRadius: 32,
-    elevation: 16,
+    elevation: 15,
   },
   modalHeader: {
     alignItems: 'flex-end',
@@ -1680,9 +1687,9 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
   },
   modalListenText: {
     fontSize: 16,
@@ -1714,14 +1721,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOpacity: 0.30,
+    shadowRadius: 24,
+    elevation: 10,
   },
   modalRecordingTime: {
     fontSize: 28,
     fontWeight: '900',
-    color: '#DC2626',
+    color: COLORS.error,
     marginBottom: 8,
     fontVariant: ['tabular-nums'],
   },
@@ -1862,9 +1869,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
   },
   resultContinueGradient: {
     paddingVertical: 14,
