@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, database } from '../../lib/firebase';
 import { ref, get } from 'firebase/database';
 import { signOut } from 'firebase/auth';
@@ -357,14 +358,31 @@ export default function ProfileScreen() {
   const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
-      'Are you sure you want to sign out?',
+      'Do you want to clear your saved login credentials?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Sign Out',
+          text: 'Keep Credentials',
+          onPress: async () => {
+            try {
+              await signOut(auth);
+              router.replace('/(auth)/signin');
+            } catch (error) {
+              console.error('Sign out error:', error);
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            }
+          },
+        },
+        {
+          text: 'Clear & Sign Out',
           style: 'destructive',
           onPress: async () => {
             try {
+              // Clear saved credentials
+              await AsyncStorage.removeItem('rememberedEmail');
+              await AsyncStorage.removeItem('rememberedPassword');
+              await AsyncStorage.removeItem('rememberMe');
+              
               await signOut(auth);
               router.replace('/(auth)/signin');
             } catch (error) {
