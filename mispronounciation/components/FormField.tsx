@@ -122,27 +122,27 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#6366F1',
     marginBottom: 10,
     textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
   },
   inputContainer: {
     position: 'relative',
-    backgroundColor: 'rgba(17, 24, 39, 0.6)',
+    backgroundColor: 'rgba(17, 24, 39, 0.5)',
     borderRadius: 16,
-    borderWidth: 2,
+    borderWidth: 1.5,
     overflow: 'hidden',
   },
   glowEffect: {
     position: 'absolute',
-    top: -2,
-    left: -2,
-    right: -2,
-    bottom: -2,
+    top: -1.5,
+    left: -1.5,
+    right: -1.5,
+    bottom: -1.5,
     backgroundColor: '#6366F1',
-    borderRadius: 18,
+    borderRadius: 17.5,
     zIndex: -1,
   },
   inputContent: {
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#FFFFFF',
-    fontWeight: '600',
+    fontWeight: '500',
   },
   toggleButton: {
     padding: 4,
@@ -173,14 +173,14 @@ const styles = StyleSheet.create({
   },
   errorContainer: {
     marginTop: 8,
-    borderRadius: 8,
+    borderRadius: 10,
     overflow: 'hidden',
   },
   errorGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
   },
   errorIcon: {
     fontSize: 16,
@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 13,
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontWeight: '600',
     flex: 1,
   },
 });
