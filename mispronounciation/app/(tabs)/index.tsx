@@ -31,31 +31,33 @@ const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const API_BASE_URL = 'http://192.168.14.34:5050';
 
-// Color schemes per difficulty
+// Monochromatic Green Color Scheme (matching other tabs)
 const DIFFICULTY_COLORS = {
   easy: {
-    primary: '#58CC02',
-    dark: '#46A302',
-    light: '#89E219',
-    gradient: ['#58CC02', '#46A302'],
+    primary: '#89E219',
+    dark: '#6BC714',
+    light: '#A8F050',
+    gradient: ['#89E219', '#6BC714'],
   },
   intermediate: {
-    primary: '#FFC800',
-    dark: '#FF9600',
-    light: '#FFD93D',
-    gradient: ['#FFC800', '#FF9600'],
+    primary: '#58CC02',
+    dark: '#46A302',
+    light: '#6FDB0A',
+    gradient: ['#58CC02', '#46A302'],
   },
   hard: {
-    primary: '#FF4B4B',
-    dark: '#CE2D4F',
-    light: '#FF6B6B',
-    gradient: ['#FF4B4B', '#CE2D4F'],
+    primary: '#46A302',
+    dark: '#3A8602',
+    light: '#58B803',
+    gradient: ['#46A302', '#3A8602'],
   },
 };
 
 const COLORS = {
   primary: '#58CC02',
-  gold: '#FFC800',
+  primaryDark: '#46A302',
+  primaryLight: '#89E219',
+  gold: '#FFD700',
   gray: {
     50: '#F9FAFB',
     100: '#F3F4F6',
@@ -873,7 +875,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       {/* Header */}
       <LinearGradient
-        colors={selectedLevel ? getCurrentLevelData().colors.gradient : [COLORS.primary, '#46A302']}
+        colors={selectedLevel ? getCurrentLevelData().colors.gradient : [COLORS.primary, COLORS.primaryDark]}
         style={styles.header}
       >
         <View style={styles.headerContent}>
@@ -922,7 +924,7 @@ export default function HomeScreen() {
                 activeOpacity={0.9}
               >
                 <LinearGradient
-                  colors={todayProgress?.completed ? [COLORS.primary, '#46A302'] : ['#1CB0F6', '#0090E0']}
+                  colors={todayProgress?.completed ? [COLORS.primary, COLORS.primaryDark] : [COLORS.primaryLight, COLORS.primary]}
                   style={styles.dailyGradient}
                 >
                   <View style={styles.dailyHeader}>
@@ -1214,7 +1216,7 @@ export default function HomeScreen() {
                           </View>
                           <View style={styles.resultStatDivider} />
                           <View style={styles.resultStatItem}>
-                            <Icon name="cancel" size={24} color="#FF4B4B" />
+                            <Icon name="cancel" size={24} color="#DC2626" />
                             <Text style={styles.resultStatValue}>
                               {result ? result.total_phonemes - result.correct_phonemes : 0}
                             </Text>
@@ -1719,7 +1721,7 @@ const styles = StyleSheet.create({
   modalRecordingTime: {
     fontSize: 28,
     fontWeight: '900',
-    color: '#FF4B4B',
+    color: '#DC2626',
     marginBottom: 8,
     fontVariant: ['tabular-nums'],
   },
