@@ -400,6 +400,7 @@ export default function HomeScreen() {
       let currentStreak = 0;
       let totalXP = 0;
 
+      // Count daily words with attempts > 0
       dates.forEach(date => {
         const dayData = allDailyWords[date];
         if (dayData && dayData.attempts > 0) {
@@ -411,6 +412,26 @@ export default function HomeScreen() {
           }
         }
       });
+
+      // Also count practice words from all difficulty levels
+      for (const difficulty of ['easy', 'intermediate', 'hard']) {
+        const diffRef = ref(database, `users/${userId}/practiceWords/${difficulty}`);
+        const snapshot = await get(diffRef);
+        
+        if (snapshot.exists()) {
+          const practiceWords = snapshot.val();
+          Object.values(practiceWords).forEach((wordData: any) => {
+            if (wordData.attempts > 0) {
+              wordsAttempted++;
+              if (wordData.bestScore && wordData.bestScore > 0) {
+                totalAccuracy += wordData.bestScore;
+                accuracyCount++;
+                totalXP += Math.round(wordData.bestScore * 10);
+              }
+            }
+          });
+        }
+      }
 
       const averageAccuracy = accuracyCount > 0 ? totalAccuracy / accuracyCount : 0;
       const today = new Date();
@@ -794,9 +815,10 @@ export default function HomeScreen() {
         }
       }
 
-      // Update stats
+      // Update stats - increment totalWords on first attempt
       const newXP = stats.xp + xpEarned;
-      const newTotalWords = isCompleted ? stats.totalWords + 1 : stats.totalWords;
+      const isFirstAttempt = newAttempts === 1;
+      const newTotalWords = isFirstAttempt ? stats.totalWords + 1 : stats.totalWords;
       setStats(prev => ({ ...prev, xp: newXP, totalWords: newTotalWords }));
       const statsRef = ref(database, `users/${user.uid}/stats`);
       await set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords });
