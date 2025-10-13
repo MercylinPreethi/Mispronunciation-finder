@@ -21,6 +21,7 @@ import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import * as Haptics from 'expo-haptics';
 import RNFS from 'react-native-fs';
 import axios from 'axios';
+import ProgressCircle from '../../components/ProgressCircle';
 
 const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
@@ -399,6 +400,7 @@ export default function HomeScreen() {
       let currentStreak = 0;
       let totalXP = 0;
 
+      // Count daily words with attempts > 0
       dates.forEach(date => {
         const dayData = allDailyWords[date];
         if (dayData && dayData.attempts > 0) {
@@ -410,6 +412,26 @@ export default function HomeScreen() {
           }
         }
       });
+
+      // Also count practice words from all difficulty levels
+      for (const difficulty of ['easy', 'intermediate', 'hard']) {
+        const diffRef = ref(database, `users/${userId}/practiceWords/${difficulty}`);
+        const snapshot = await get(diffRef);
+        
+        if (snapshot.exists()) {
+          const practiceWords = snapshot.val();
+          Object.values(practiceWords).forEach((wordData: any) => {
+            if (wordData.attempts > 0) {
+              wordsAttempted++;
+              if (wordData.bestScore && wordData.bestScore > 0) {
+                totalAccuracy += wordData.bestScore;
+                accuracyCount++;
+                totalXP += Math.round(wordData.bestScore * 10);
+              }
+            }
+          });
+        }
+      }
 
       const averageAccuracy = accuracyCount > 0 ? totalAccuracy / accuracyCount : 0;
       const today = new Date();
@@ -793,9 +815,10 @@ export default function HomeScreen() {
         }
       }
 
-      // Update stats
+      // Update stats - increment totalWords on first attempt
       const newXP = stats.xp + xpEarned;
-      const newTotalWords = isCompleted ? stats.totalWords + 1 : stats.totalWords;
+      const isFirstAttempt = newAttempts === 1;
+      const newTotalWords = isFirstAttempt ? stats.totalWords + 1 : stats.totalWords;
       setStats(prev => ({ ...prev, xp: newXP, totalWords: newTotalWords }));
       const statsRef = ref(database, `users/${user.uid}/stats`);
       await set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords });
@@ -848,8 +871,9 @@ export default function HomeScreen() {
   };
 
   const getNextUnlockedIndex = () => {
-    const completedCount = batchWords.filter(word => wordProgress[word.id]?.completed).length;
-    return completedCount;
+    // Unlock next word after practicing current word at least once (attempts > 0)
+    const practicedCount = batchWords.filter(word => wordProgress[word.id]?.attempts > 0).length;
+    return practicedCount;
   };
 
   const getPathPositions = () => {
@@ -958,8 +982,8 @@ export default function HomeScreen() {
                 >
                   <LinearGradient
                     colors={
-                      isCompleted 
-                        ? [DIFFICULTY_COLORS[selectedDifficulty].primary, DIFFICULTY_COLORS[selectedDifficulty].primary + '80'] as const
+                      progress?.attempts > 0
+                        ? [COLORS.warning, '#D97706'] as const  // Yellow for practiced words
                         : [COLORS.gray[300], COLORS.gray[200]] as const
                     }
                     start={{ x: 0, y: 0 }}
@@ -967,7 +991,7 @@ export default function HomeScreen() {
                     style={styles.pathGradient}
                   />
                   
-                  {isCompleted && (
+                  {progress?.attempts > 0 && (
                     <View style={styles.pathDotsContainer}>
                       {[0.25, 0.5, 0.75].map((position, i) => (
                         <Animated.View
@@ -976,7 +1000,7 @@ export default function HomeScreen() {
                             styles.pathDotMoving,
                             {
                               left: `${position * 100}%`,
-                              backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary,
+                              backgroundColor: COLORS.warning,
                               opacity: glowAnim,
                             }
                           ]}
@@ -1042,10 +1066,16 @@ export default function HomeScreen() {
                     }
                     style={styles.circleGradient}
                   >
-                    {isCompleted ? (
-                      <View style={styles.completedIcon}>
-                        <Icon name="check-circle" size={36} color={COLORS.white} />
-                        {progress?.bestScore && progress.bestScore >= 0.95 && (
+                    {progress?.attempts > 0 ? (
+                      // Show pie-chart progress circle for practiced words
+                      <View style={styles.progressCircleContainer}>
+                        <ProgressCircle
+                          size={70}
+                          accuracy={progress.bestScore}
+                          strokeWidth={8}
+                          showPercentage={true}
+                        />
+                        {isCompleted && progress.bestScore >= 0.95 && (
                           <View style={styles.perfectStar}>
                             <Icon name="stars" size={20} color={COLORS.gold} />
                           </View>
@@ -1064,15 +1094,15 @@ export default function HomeScreen() {
                     )}
                   </LinearGradient>
                   
-                  {progress?.bestScore && progress.bestScore > 0 && (
-                    <Animated.View style={[styles.scoreLabel, { opacity: glowAnim }]}>
+                  {progress?.attempts > 0 && !isCompleted && progress?.bestScore && progress.bestScore > 0 && (
+                    <Animated.View style={[styles.scoreLabel, { opacity: 1 }]}>
                       <LinearGradient
                         colors={['#FFFFFF', '#F8FAFC'] as const}
                         style={styles.scoreLabelGradient}
                       >
                         <Icon name="stars" size={10} color={COLORS.gold} />
                         <Text style={styles.scoreLabelText}>
-                          {Math.round(progress.bestScore * 100)}%
+                          {progress.attempts} {progress.attempts === 1 ? 'try' : 'tries'}
                         </Text>
                       </LinearGradient>
                     </Animated.View>
@@ -1157,51 +1187,49 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.userName}>Hi, {userName}! 👋</Text>
-        </View>
+      <View style={styles.headerContainer}>
+        <LinearGradient
+          colors={['#6366F1', '#8B5CF6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerTop}>
+            <Text style={styles.userName}>Hi, {userName}! 👋</Text>
+          </View>
 
-        <View style={styles.badgesContainer}>
+          <View style={styles.badgesContainer}>
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[0] }] }]}>
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.secondary] as const}
-              style={styles.badgeGradient}
-            >
+            <View style={styles.badgeGradient}>
               <Icon name="menu-book" size={24} color={COLORS.white} />
               <View style={styles.badgeInfo}>
                 <Text style={styles.badgeValue}>{stats.totalWords}</Text>
                 <Text style={styles.badgeLabel}>Words</Text>
               </View>
-            </LinearGradient>
+            </View>
           </Animated.View>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
-            <LinearGradient
-              colors={['#F59E0B', '#D97706'] as const}
-              style={styles.badgeGradient}
-            >
-              <Icon name="local-fire-department" size={24} color={COLORS.white} />
+            <View style={styles.badgeGradient}>
+              <Icon name="local-fire-department" size={24} color={COLORS.gold} />
               <View style={styles.badgeInfo}>
                 <Text style={styles.badgeValue}>{stats.streak}</Text>
                 <Text style={styles.badgeLabel}>Streak</Text>
               </View>
-            </LinearGradient>
+            </View>
           </Animated.View>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[2] }] }]}>
-            <LinearGradient
-              colors={[COLORS.success, '#059669'] as const}
-              style={styles.badgeGradient}
-            >
-              <Icon name="check-circle" size={24} color={COLORS.white} />
+            <View style={styles.badgeGradient}>
+              <Icon name="check-circle" size={24} color={COLORS.success} />
               <View style={styles.badgeInfo}>
                 <Text style={styles.badgeValue}>{Math.round(stats.accuracy * 100)}%</Text>
                 <Text style={styles.badgeLabel}>Accuracy</Text>
               </View>
-            </LinearGradient>
+            </View>
           </Animated.View>
         </View>
+        </LinearGradient>
       </View>
 
       <View style={styles.controls}>
@@ -1594,16 +1622,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  header: {
+  headerContainer: {
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
     paddingHorizontal: 20,
     paddingBottom: 16,
-    backgroundColor: COLORS.white,
+  },
+  headerGradient: {
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 4,
   },
@@ -1613,7 +1644,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 28,
     fontWeight: '900',
-    color: COLORS.gray[800],
+    color: COLORS.white,
     letterSpacing: -0.5,
   },
   badgesContainer: {
@@ -1624,11 +1655,12 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   badgeGradient: {
     flexDirection: 'row',
@@ -1888,6 +1920,11 @@ const styles = StyleSheet.create({
   },
   completedIcon: {
     position: 'relative',
+  },
+  progressCircleContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   perfectStar: {
     position: 'absolute',
