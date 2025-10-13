@@ -519,6 +519,16 @@ export default function ProfileScreen() {
                     disabled={weeklyWordCounts[index] === 0}
                     activeOpacity={0.7}
                   >
+                    {/* Accuracy percentage above bar */}
+                    {value > 0 && (
+                      <Text style={[
+                        styles.barPercentage,
+                        selectedDayIndex === index && styles.barPercentageSelected
+                      ]}>
+                        {value}%
+                      </Text>
+                    )}
+                    
                     <View style={styles.barWrapper}>
                       <LinearGradient
                         colors={value > 0 ? ['#6366F1', '#8B5CF6'] : ['#E5E7EB', '#E5E7EB']}
@@ -528,12 +538,8 @@ export default function ProfileScreen() {
                           selectedDayIndex === index && styles.barSelected
                         ]}
                       />
-                      {value > 0 && (
-                        <View style={styles.barValueContainer}>
-                          <Text style={styles.barValue}>{value}%</Text>
-                        </View>
-                      )}
                     </View>
+                    
                     <Text style={[
                       styles.barLabel,
                       selectedDayIndex === index && styles.barLabelSelected
@@ -918,11 +924,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    height: 150,
+    height: 180,
+    paddingTop: 10,
   },
   barContainer: {
     flex: 1,
     alignItems: 'center',
+    paddingTop: 24,
+  },
+  barPercentage: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#6366F1',
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  barPercentageSelected: {
+    color: '#4F46E5',
+    fontSize: 14,
   },
   barWrapper: {
     flex: 1,
@@ -946,18 +965,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
     transform: [{ scale: 1.05 }],
-  },
-  barValueContainer: {
-    position: 'absolute',
-    top: -20,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  barValue: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#6366F1',
   },
   barLabel: {
     fontSize: 12,
