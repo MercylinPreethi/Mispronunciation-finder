@@ -31,57 +31,98 @@ const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const API_BASE_URL = 'http://192.168.14.34:5050';
 
-// Daily word pool - rotates daily (MANDATORY)
+// Monochromatic Green Color Palette (Duolingo-inspired)
+const COLORS = {
+  primary: '#58CC02',
+  primaryDark: '#46A302',
+  primaryLight: '#89E219',
+  secondary: '#1CB0F6',
+  gold: '#FFC800',
+  gray: {
+    50: '#F9FAFB',
+    100: '#F3F4F6',
+    200: '#E5E7EB',
+    300: '#D1D5DB',
+    400: '#9CA3AF',
+    500: '#6B7280',
+    600: '#4B5563',
+    700: '#374151',
+    800: '#1F2937',
+  },
+  success: '#58CC02',
+  warning: '#FFC800',
+  error: '#FF4B4B',
+  white: '#FFFFFF',
+};
+
+// Daily word pool
 const DAILY_WORDS = [
-  { word: 'Beautiful', phonetic: '/ˈbjuːtɪfəl/', tip: 'Stress on first syllable: BEAU-ti-ful' },
-  { word: 'Pronunciation', phonetic: '/prəˌnʌnsiˈeɪʃən/', tip: 'Watch the "nun-see-AY-shun" pattern' },
-  { word: 'Schedule', phonetic: '/ˈʃedjuːl/', tip: 'UK: SHED-yool, US: SKED-yool' },
-  { word: 'Algorithm', phonetic: '/ˈælɡərɪðəm/', tip: 'Stress on first syllable: AL-go-rith-m' },
-  { word: 'Wednesday', phonetic: '/ˈwenzdeɪ/', tip: 'Silent "d": WENZ-day' },
-  { word: 'February', phonetic: '/ˈfebruəri/', tip: 'Don\'t skip the first "r": FEB-roo-ary' },
-  { word: 'Colonel', phonetic: '/ˈkɜːrnəl/', tip: 'Sounds like "kernel"' },
+  { 
+    word: 'Beautiful', 
+    phonetic: '/ˈbjuːtɪfəl/', 
+    meaning: 'Pleasing to the senses or mind aesthetically',
+    example: 'The sunset was absolutely beautiful.',
+    tip: 'Stress on first syllable: BEAU-ti-ful'
+  },
+  { 
+    word: 'Pronunciation', 
+    phonetic: '/prəˌnʌnsiˈeɪʃən/', 
+    meaning: 'The way in which a word is pronounced',
+    example: 'Her pronunciation of French words is excellent.',
+    tip: 'Watch the "nun-see-AY-shun" pattern'
+  },
+  { 
+    word: 'Schedule', 
+    phonetic: '/ˈʃedjuːl/', 
+    meaning: 'A plan for carrying out a process or procedure',
+    example: 'I need to check my schedule for tomorrow.',
+    tip: 'UK: SHED-yool, US: SKED-yool'
+  },
+  { 
+    word: 'Algorithm', 
+    phonetic: '/ˈælɡərɪðəm/', 
+    meaning: 'A process or set of rules to be followed in calculations',
+    example: 'The algorithm sorts data efficiently.',
+    tip: 'Stress on first syllable: AL-go-rith-m'
+  },
+  { 
+    word: 'Wednesday', 
+    phonetic: '/ˈwenzdeɪ/', 
+    meaning: 'The day of the week after Tuesday and before Thursday',
+    example: 'We have a meeting every Wednesday.',
+    tip: 'Silent "d": WENZ-day'
+  },
 ];
 
 // Easy Level Words
 const EASY_WORDS = [
-  { id: 'e1', word: 'Cat', phonetic: '/kæt/', tip: 'Short "a" sound' },
-  { id: 'e2', word: 'Dog', phonetic: '/dɔɡ/', tip: 'Short "o" sound' },
-  { id: 'e3', word: 'Book', phonetic: '/bʊk/', tip: 'Short "oo" sound' },
-  { id: 'e4', word: 'Water', phonetic: '/ˈwɔːtər/', tip: 'Two syllables: WA-ter' },
-  { id: 'e5', word: 'Hello', phonetic: '/həˈloʊ/', tip: 'Stress on second syllable' },
-  { id: 'e6', word: 'Thank', phonetic: '/θæŋk/', tip: 'Soft "th" sound' },
-  { id: 'e7', word: 'Please', phonetic: '/pliːz/', tip: 'Long "ee" sound' },
-  { id: 'e8', word: 'Happy', phonetic: '/ˈhæpi/', tip: 'Stress on first syllable' },
-  { id: 'e9', word: 'House', phonetic: '/haʊs/', tip: 'Diphthong "ou"' },
-  { id: 'e10', word: 'Friend', phonetic: '/frend/', tip: 'Silent "i"' },
+  { id: 'e1', word: 'Cat', phonetic: '/kæt/', meaning: 'A small domesticated carnivorous mammal', example: 'The cat is sleeping.', tip: 'Short "a" sound' },
+  { id: 'e2', word: 'Dog', phonetic: '/dɔɡ/', meaning: 'A domesticated carnivorous mammal', example: 'My dog loves to play.', tip: 'Short "o" sound' },
+  { id: 'e3', word: 'Book', phonetic: '/bʊk/', meaning: 'A written or printed work', example: 'I read a book every night.', tip: 'Short "oo" sound' },
+  { id: 'e4', word: 'Water', phonetic: '/ˈwɔːtər/', meaning: 'A clear liquid essential for life', example: 'Drink plenty of water.', tip: 'Two syllables: WA-ter' },
+  { id: 'e5', word: 'Hello', phonetic: '/həˈloʊ/', meaning: 'Used as a greeting', example: 'Hello, how are you?', tip: 'Stress on second syllable' },
+  { id: 'e6', word: 'Thank', phonetic: '/θæŋk/', meaning: 'Express gratitude to someone', example: 'Thank you for your help.', tip: 'Soft "th" sound' },
+  { id: 'e7', word: 'Please', phonetic: '/pliːz/', meaning: 'Used in polite requests', example: 'Please close the door.', tip: 'Long "ee" sound' },
+  { id: 'e8', word: 'Happy', phonetic: '/ˈhæpi/', meaning: 'Feeling or showing pleasure', example: 'I am happy today.', tip: 'Stress on first syllable' },
 ];
 
 // Intermediate Level Words
 const INTERMEDIATE_WORDS = [
-  { id: 'i1', word: 'Comfortable', phonetic: '/ˈkʌmftəbəl/', tip: 'Often said as COMF-ta-ble' },
-  { id: 'i2', word: 'Develop', phonetic: '/dɪˈveləp/', tip: 'Stress on second syllable' },
-  { id: 'i3', word: 'Chocolate', phonetic: '/ˈtʃɒklət/', tip: 'Two syllables: CHOK-let' },
-  { id: 'i4', word: 'Queue', phonetic: '/kjuː/', tip: 'Just sounds like "Q"' },
-  { id: 'i5', word: 'Choir', phonetic: '/ˈkwaɪər/', tip: 'Sounds like "quire"' },
-  { id: 'i6', word: 'Buffet', phonetic: '/bəˈfeɪ/', tip: 'Stress on second syllable: buh-FAY' },
-  { id: 'i7', word: 'Receipt', phonetic: '/rɪˈsiːt/', tip: 'Silent "p"' },
-  { id: 'i8', word: 'Island', phonetic: '/ˈaɪlənd/', tip: 'Silent "s"' },
-  { id: 'i9', word: 'Knight', phonetic: '/naɪt/', tip: 'Silent "k" and "gh"' },
-  { id: 'i10', word: 'Tongue', phonetic: '/tʌŋ/', tip: 'Silent "ue"' },
+  { id: 'i1', word: 'Comfortable', phonetic: '/ˈkʌmftəbəl/', meaning: 'Providing physical ease and relaxation', example: 'This chair is very comfortable.', tip: 'Often said as COMF-ta-ble' },
+  { id: 'i2', word: 'Develop', phonetic: '/dɪˈveləp/', meaning: 'Grow or cause to grow', example: 'We need to develop new skills.', tip: 'Stress on second syllable' },
+  { id: 'i3', word: 'Chocolate', phonetic: '/ˈtʃɒklət/', meaning: 'A sweet food made from cacao', example: 'I love dark chocolate.', tip: 'Two syllables: CHOK-let' },
+  { id: 'i4', word: 'Queue', phonetic: '/kjuː/', meaning: 'A line of people waiting', example: 'There is a long queue at the store.', tip: 'Just sounds like "Q"' },
+  { id: 'i5', word: 'Receipt', phonetic: '/rɪˈsiːt/', meaning: 'A written acknowledgment of payment', example: 'Keep the receipt for returns.', tip: 'Silent "p"' },
+  { id: 'i6', word: 'Island', phonetic: '/ˈaɪlənd/', meaning: 'A piece of land surrounded by water', example: 'They live on a tropical island.', tip: 'Silent "s"' },
 ];
 
 // Hard Level Words
 const HARD_WORDS = [
-  { id: 'h1', word: 'Epitome', phonetic: '/ɪˈpɪtəmi/', tip: 'Not "EPI-tome", say "e-PIT-o-me"' },
-  { id: 'h2', word: 'Worcestershire', phonetic: '/ˈwʊstərʃər/', tip: 'WOOS-ter-shur' },
-  { id: 'h3', word: 'Squirrel', phonetic: '/ˈskwɜːrəl/', tip: 'SKWIR-rel with rolled R' },
-  { id: 'h4', word: 'Rural', phonetic: '/ˈrʊərəl/', tip: 'Two syllables with rolling R' },
-  { id: 'h5', word: 'Brewery', phonetic: '/ˈbruːəri/', tip: 'BREW-er-y, three syllables' },
-  { id: 'h6', word: 'Anemone', phonetic: '/əˈneməni/', tip: 'uh-NEM-uh-nee' },
-  { id: 'h7', word: 'Otorhinolaryngologist', phonetic: '/ˌoʊtoʊˌraɪnoʊˌlærɪŋˈɡɒlədʒɪst/', tip: 'Ear, nose, and throat doctor' },
-  { id: 'h8', word: 'Phenomenal', phonetic: '/fəˈnɒmɪnəl/', tip: 'fe-NOM-i-nal' },
-  { id: 'h9', word: 'Mischievous', phonetic: '/ˈmɪstʃɪvəs/', tip: 'MIS-chi-vous, three syllables' },
-  { id: 'h10', word: 'Sixth', phonetic: '/sɪksθ/', tip: 'Two "th" sounds' },
+  { id: 'h1', word: 'Epitome', phonetic: '/ɪˈpɪtəmi/', meaning: 'A perfect example of something', example: 'She is the epitome of elegance.', tip: 'Not "EPI-tome", say "e-PIT-o-me"' },
+  { id: 'h2', word: 'Worcestershire', phonetic: '/ˈwʊstərʃər/', meaning: 'A fermented liquid condiment', example: 'Add Worcestershire sauce to the recipe.', tip: 'WOOS-ter-shur' },
+  { id: 'h3', word: 'Squirrel', phonetic: '/ˈskwɜːrəl/', meaning: 'A small rodent with a bushy tail', example: 'A squirrel climbed the tree.', tip: 'SKWIR-rel with rolled R' },
+  { id: 'h4', word: 'Rural', phonetic: '/ˈrʊərəl/', meaning: 'Relating to the countryside', example: 'They moved to a rural area.', tip: 'Two syllables with rolling R' },
+  { id: 'h5', word: 'Phenomenal', phonetic: '/fəˈnɒmɪnəl/', meaning: 'Very remarkable or extraordinary', example: 'Her performance was phenomenal.', tip: 'fe-NOM-i-nal' },
 ];
 
 interface WordProgress {
@@ -106,7 +147,7 @@ interface UserStats {
   streak: number;
   totalWords: number;
   accuracy: number;
-  lastCompletedDate: string;
+  xp: number;
 }
 
 interface AnalysisResult {
@@ -122,19 +163,16 @@ export default function HomeScreen() {
     streak: 0,
     totalWords: 0,
     accuracy: 0,
-    lastCompletedDate: '',
+    xp: 0,
   });
   
-  // Daily word state
   const [todayWord, setTodayWord] = useState(DAILY_WORDS[0]);
   const [todayProgress, setTodayProgress] = useState<DailyWordProgress | null>(null);
   
-  // Practice words state
   const [easyProgress, setEasyProgress] = useState<WordProgress[]>([]);
   const [intermediateProgress, setIntermediateProgress] = useState<WordProgress[]>([]);
   const [hardProgress, setHardProgress] = useState<WordProgress[]>([]);
   
-  // UI state
   const [selectedWord, setSelectedWord] = useState<any>(null);
   const [selectedWordType, setSelectedWordType] = useState<'daily' | 'easy' | 'intermediate' | 'hard'>('daily');
   const [showPracticeModal, setShowPracticeModal] = useState(false);
@@ -150,6 +188,7 @@ export default function HomeScreen() {
   const recordingPathRef = useRef<string | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const modalAnim = useRef(new Animated.Value(0)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
 
   const getTodayWordIndex = () => {
     const today = new Date();
@@ -170,7 +209,7 @@ export default function HomeScreen() {
       let totalAccuracy = 0;
       let accuracyCount = 0;
       let currentStreak = 0;
-      let lastAttemptDate = '';
+      let totalXP = 0;
 
       dates.forEach(date => {
         const dayData = allDailyWords[date];
@@ -179,6 +218,7 @@ export default function HomeScreen() {
           if (dayData.bestScore && dayData.bestScore > 0) {
             totalAccuracy += dayData.bestScore;
             accuracyCount++;
+            totalXP += Math.round(dayData.bestScore * 10);
           }
         }
       });
@@ -195,7 +235,6 @@ export default function HomeScreen() {
         const dayData = allDailyWords[checkDateStr];
         if (dayData && dayData.attempts > 0) {
           currentStreak++;
-          lastAttemptDate = checkDateStr;
         } else {
           if (daysAgo > 0) break;
         }
@@ -205,7 +244,7 @@ export default function HomeScreen() {
         streak: currentStreak,
         totalWords: wordsAttempted,
         accuracy: averageAccuracy,
-        lastCompletedDate: lastAttemptDate,
+        xp: totalXP,
       };
 
       const statsRef = ref(database, `users/${userId}/stats`);
@@ -218,7 +257,6 @@ export default function HomeScreen() {
 
   const loadUserData = useCallback(async (userId: string) => {
     try {
-      // Load stats
       const statsRef = ref(database, `users/${userId}/stats`);
       onValue(statsRef, (snapshot) => {
         const data = snapshot.val();
@@ -227,12 +265,11 @@ export default function HomeScreen() {
             streak: data.streak || 0,
             totalWords: data.totalWords || 0,
             accuracy: data.accuracy || 0,
-            lastCompletedDate: data.lastCompletedDate || '',
+            xp: data.xp || 0,
           });
         }
       });
 
-      // Load daily words history
       const dailyWordsRef = ref(database, `users/${userId}/dailyWords`);
       onValue(dailyWordsRef, (snapshot) => {
         if (snapshot.exists()) {
@@ -241,7 +278,6 @@ export default function HomeScreen() {
         }
       });
 
-      // Load today's word
       const todayDate = getTodayDateString();
       const wordIndex = getTodayWordIndex();
       const dailyWord = DAILY_WORDS[wordIndex];
@@ -265,7 +301,6 @@ export default function HomeScreen() {
         await set(progressRef, newProgress);
       }
 
-      // Load practice words progress
       await loadPracticeProgress(userId);
     } catch (error) {
       console.error('Error loading user data:', error);
@@ -274,7 +309,6 @@ export default function HomeScreen() {
 
   const loadPracticeProgress = async (userId: string) => {
     try {
-      // Load Easy words progress
       const easyRef = ref(database, `users/${userId}/practiceWords/easy`);
       const easySnapshot = await get(easyRef);
       if (easySnapshot.exists()) {
@@ -289,7 +323,6 @@ export default function HomeScreen() {
         })));
       }
 
-      // Load Intermediate words progress
       const intRef = ref(database, `users/${userId}/practiceWords/intermediate`);
       const intSnapshot = await get(intRef);
       if (intSnapshot.exists()) {
@@ -304,7 +337,6 @@ export default function HomeScreen() {
         })));
       }
 
-      // Load Hard words progress
       const hardRef = ref(database, `users/${userId}/practiceWords/hard`);
       const hardSnapshot = await get(hardRef);
       if (hardSnapshot.exists()) {
@@ -329,6 +361,21 @@ export default function HomeScreen() {
       setUserName(user.displayName || 'User');
       loadUserData(user.uid);
     }
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, [loadUserData]);
 
   useEffect(() => {
@@ -387,7 +434,6 @@ export default function HomeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
       const path = `${RNFS.DocumentDirectoryPath}/word_${Date.now()}.wav`;
-      
       const audioSet = {
         AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
         AudioSourceAndroid: AudioSourceAndroidType.MIC,
@@ -494,9 +540,9 @@ export default function HomeScreen() {
 
       const timestamp = new Date().toISOString();
       const isCompleted = accuracy >= 0.8;
+      const xpEarned = Math.round(accuracy * 10);
 
       if (selectedWordType === 'daily') {
-        // Update daily word
         const todayDate = getTodayDateString();
         const newAttempts = (todayProgress?.attempts || 0) + 1;
         const newBestScore = Math.max(todayProgress?.bestScore || 0, accuracy);
@@ -514,14 +560,12 @@ export default function HomeScreen() {
         await set(progressRef, updatedProgress);
         setTodayProgress(updatedProgress);
 
-        // Recalculate stats
         const dailyWordsRef = ref(database, `users/${user.uid}/dailyWords`);
         const snapshot = await get(dailyWordsRef);
         if (snapshot.exists()) {
           await calculateStatsFromHistory(snapshot.val(), user.uid);
         }
       } else {
-        // Update practice word
         const level = selectedWordType;
         const wordId = selectedWord.id;
         const currentProgress = 
@@ -544,7 +588,6 @@ export default function HomeScreen() {
         const wordRef = ref(database, `users/${user.uid}/practiceWords/${level}/${wordId}`);
         await set(wordRef, updatedProgress);
 
-        // Update local state
         if (level === 'easy') {
           setEasyProgress(prev => prev.map(p => p.wordId === wordId ? updatedProgress : p));
         } else if (level === 'intermediate') {
@@ -553,6 +596,12 @@ export default function HomeScreen() {
           setHardProgress(prev => prev.map(p => p.wordId === wordId ? updatedProgress : p));
         }
       }
+
+      // Update XP
+      const newXP = stats.xp + xpEarned;
+      setStats(prev => ({ ...prev, xp: newXP }));
+      const statsRef = ref(database, `users/${user.uid}/stats`);
+      await set(statsRef, { ...stats, xp: newXP });
     } catch (error) {
       console.error('Error updating progress:', error);
     }
@@ -601,55 +650,56 @@ export default function HomeScreen() {
     return firstIncomplete === -1 ? progressArray.length : firstIncomplete;
   };
 
-  const renderWordNode = (word: any, progress: WordProgress, index: number, unlockedIndex: number, difficulty: 'easy' | 'intermediate' | 'hard') => {
+  const renderLessonNode = (word: any, progress: WordProgress, index: number, unlockedIndex: number, isLast: boolean) => {
     const isUnlocked = index <= unlockedIndex;
     const isCompleted = progress.completed;
     const isCurrent = index === unlockedIndex && !isCompleted;
 
-    const colors = {
-      easy: ['#10B981', '#059669'],
-      intermediate: ['#F59E0B', '#D97706'],
-      hard: ['#EF4444', '#DC2626'],
-    };
-
     return (
-      <TouchableOpacity
-        key={word.id}
-        style={styles.wordNode}
-        onPress={() => isUnlocked ? openPracticeModal(word, difficulty, word) : null}
-        disabled={!isUnlocked}
-        activeOpacity={0.8}
-      >
-        <LinearGradient
-          colors={
-            isCompleted ? ['#10B981', '#059669'] :
-            isCurrent ? colors[difficulty] :
-            ['#E5E7EB', '#D1D5DB']
-          }
-          style={[styles.nodeGradient, !isUnlocked && styles.nodeLocked]}
+      <View key={word.id} style={styles.lessonNodeContainer}>
+        {!isLast && <View style={styles.pathLine} />}
+        <TouchableOpacity
+          style={[
+            styles.lessonNode,
+            { left: index % 2 === 0 ? 20 : width - 100 }
+          ]}
+          onPress={() => isUnlocked ? openPracticeModal(word, selectedWordType, word) : null}
+          disabled={!isUnlocked}
+          activeOpacity={0.8}
         >
-          {isCompleted && (
-            <View style={styles.nodeCheckmark}>
-              <Icon name="check-circle" size={24} color="#FFD700" />
+          <View style={[
+            styles.nodeCircle,
+            isCompleted && styles.nodeCompleted,
+            isCurrent && styles.nodeCurrent,
+            !isUnlocked && styles.nodeLocked,
+          ]}>
+            {isCompleted ? (
+              <Icon name="check-circle" size={32} color={COLORS.success} />
+            ) : isCurrent ? (
+              <Icon name="star" size={32} color={COLORS.gold} />
+            ) : !isUnlocked ? (
+              <Icon name="lock" size={28} color={COLORS.gray[400]} />
+            ) : (
+              <Icon name="play-circle-filled" size={32} color={COLORS.primary} />
+            )}
+          </View>
+          {isUnlocked && (
+            <View style={styles.nodeLabel}>
+              <Text style={[
+                styles.nodeLabelText,
+                !isCompleted && styles.nodeLabelTextActive
+              ]}>{word.word}</Text>
             </View>
           )}
-          {!isUnlocked && (
-            <Icon name="lock" size={28} color="#9CA3AF" />
-          )}
-          {isUnlocked && !isCompleted && (
-            <Icon name="play-circle-filled" size={28} color="#FFFFFF" />
-          )}
-          <Text style={[
-            styles.nodeText,
-            !isUnlocked && styles.nodeTextLocked
-          ]}>{word.word}</Text>
-          {progress.attempts > 0 && (
-            <Text style={styles.nodeAttempts}>{progress.attempts} tries</Text>
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
     );
   };
+
+  const floatY = floatAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -10],
+  });
 
   const modalScale = modalAnim.interpolate({
     inputRange: [0, 1],
@@ -662,146 +712,187 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header */}
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.primaryDark]}
+        style={styles.header}
+      >
+        <View style={styles.headerTop}>
+          <View style={styles.streakContainer}>
+            <Icon name="local-fire-department" size={24} color={COLORS.gold} />
+            <Text style={styles.streakText}>{stats.streak}</Text>
+          </View>
+          <View style={styles.xpContainer}>
+            <Icon name="stars" size={20} color={COLORS.gold} />
+            <Text style={styles.xpText}>{stats.xp} XP</Text>
+          </View>
+        </View>
+      </LinearGradient>
+
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Hi, {userName}! 👋</Text>
-            <Text style={styles.subtitle}>Your learning journey</Text>
-          </View>
-          <View style={styles.streakBadge}>
-            <Icon name="local-fire-department" size={24} color="#FF6B35" />
-            <Text style={styles.streakText}>{stats.streak}</Text>
-          </View>
-        </View>
-
-        {/* Quick Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Icon name="check-circle" size={24} color="#10B981" />
-            <Text style={styles.statValue}>{stats.totalWords}</Text>
-            <Text style={styles.statLabel}>Words</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Icon name="trending-up" size={24} color="#6366F1" />
-            <Text style={styles.statValue}>{Math.round(stats.accuracy * 100)}%</Text>
-            <Text style={styles.statLabel}>Accuracy</Text>
-          </View>
-        </View>
-
-        {/* Daily Word (Mandatory) */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Icon name="star" size={24} color="#FFD700" />
-            <Text style={styles.sectionTitle}>Daily Challenge (Mandatory)</Text>
-          </View>
-          
-          <TouchableOpacity
-            style={styles.dailyCard}
-            onPress={() => openPracticeModal(todayWord, 'daily')}
-            activeOpacity={0.9}
-          >
-            <LinearGradient
-              colors={todayProgress?.completed ? ['#10B981', '#059669'] : ['#6366F1', '#8B5CF6']}
-              style={styles.dailyGradient}
+        {/* Daily Challenge */}
+        <View style={styles.dailySection}>
+          <Text style={styles.sectionTitle}>Today's Challenge</Text>
+          <Animated.View style={{ transform: [{ translateY: floatY }] }}>
+            <TouchableOpacity
+              style={styles.dailyCard}
+              onPress={() => openPracticeModal(todayWord, 'daily')}
+              activeOpacity={0.9}
             >
-              {todayProgress?.completed && (
-                <View style={styles.completedStar}>
-                  <Icon name="verified" size={32} color="#FFD700" />
+              <LinearGradient
+                colors={todayProgress?.completed 
+                  ? [COLORS.success, COLORS.primaryDark] 
+                  : [COLORS.primary, COLORS.primaryLight]
+                }
+                style={styles.dailyCardGradient}
+              >
+                <View style={styles.dailyCardHeader}>
+                  <View style={styles.dailyBadge}>
+                    <Text style={styles.dailyBadgeText}>DAILY</Text>
+                  </View>
+                  {todayProgress?.completed && (
+                    <Icon name="check-circle" size={28} color={COLORS.gold} />
+                  )}
                 </View>
-              )}
-              <Text style={styles.dailyWord}>{todayWord.word}</Text>
-              <Text style={styles.dailyPhonetic}>{todayWord.phonetic}</Text>
-              {todayProgress && todayProgress.attempts > 0 && (
-                <View style={styles.dailyStats}>
-                  <Text style={styles.dailyStatsText}>
-                    {todayProgress.attempts} attempts • Best: {Math.round(todayProgress.bestScore * 100)}%
-                  </Text>
+                
+                <View style={styles.dailyContent}>
+                  <Text style={styles.dailyWordText}>{todayWord.word}</Text>
+                  <Text style={styles.dailyPhonetic}>{todayWord.phonetic}</Text>
+                  
+                  <View style={styles.dailyMeaning}>
+                    <Icon name="info-outline" size={16} color={COLORS.white} />
+                    <Text style={styles.dailyMeaningText}>{todayWord.meaning}</Text>
+                  </View>
+                  
+                  <View style={styles.dailyExample}>
+                    <Text style={styles.dailyExampleText}>"{todayWord.example}"</Text>
+                  </View>
                 </View>
-              )}
-              <View style={styles.dailyBadge}>
-                <Text style={styles.dailyBadgeText}>
-                  {todayProgress?.completed ? 'Completed ✓' : 'Start Practice'}
-                </Text>
+
+                <View style={styles.dailyFooter}>
+                  <View style={styles.dailyButton}>
+                    <Text style={styles.dailyButtonText}>
+                      {todayProgress?.completed ? 'Practice Again' : 'Start Learning'}
+                    </Text>
+                    <Icon name="arrow-forward" size={20} color={COLORS.primary} />
+                  </View>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+
+        {/* Learning Path - Easy */}
+        <View style={styles.pathSection}>
+          <View style={styles.unitHeader}>
+            <View style={[styles.unitBadge, { backgroundColor: COLORS.gray[200] }]}>
+              <Icon name="school" size={20} color={COLORS.primary} />
+            </View>
+            <View style={styles.unitInfo}>
+              <Text style={styles.unitTitle}>Unit 1 • Easy</Text>
+              <Text style={styles.unitSubtitle}>
+                {easyProgress.filter(p => p.completed).length} / {EASY_WORDS.length} completed
+              </Text>
+            </View>
+          </View>
+          
+          <View style={styles.pathContainer}>
+            {EASY_WORDS.map((word, index) => {
+              const progress = easyProgress[index] || { 
+                wordId: word.id, word: word.word, completed: false, attempts: 0, bestScore: 0, lastAttempted: '' 
+              };
+              return (
+                <View key={word.id}>
+                  {renderLessonNode(word, progress, index, easyUnlocked, index === EASY_WORDS.length - 1)}
+                </View>
+              );
+            })}
+            
+            {/* Checkpoint */}
+            <View style={styles.checkpointContainer}>
+              <View style={styles.checkpoint}>
+                <Icon name="emoji-events" size={32} color={COLORS.gold} />
+                <Text style={styles.checkpointText}>Checkpoint</Text>
               </View>
-            </LinearGradient>
-          </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
-        {/* Easy Level */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.levelBadge} backgroundColor="#D1FAE5">
-              <Icon name="mood" size={20} color="#10B981" />
+        {/* Learning Path - Intermediate */}
+        <View style={styles.pathSection}>
+          <View style={styles.unitHeader}>
+            <View style={[styles.unitBadge, { backgroundColor: COLORS.gray[200] }]}>
+              <Icon name="trending-up" size={20} color={COLORS.primary} />
             </View>
-            <Text style={styles.sectionTitle}>Easy Level</Text>
-            <Text style={styles.levelProgress}>
-              {easyProgress.filter(p => p.completed).length}/{EASY_WORDS.length}
-            </Text>
+            <View style={styles.unitInfo}>
+              <Text style={styles.unitTitle}>Unit 2 • Intermediate</Text>
+              <Text style={styles.unitSubtitle}>
+                {intermediateProgress.filter(p => p.completed).length} / {INTERMEDIATE_WORDS.length} completed
+              </Text>
+            </View>
           </View>
           
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.nodesScroll}
-          >
-            {EASY_WORDS.map((word, index) => 
-              renderWordNode(word, easyProgress[index] || { wordId: word.id, word: word.word, completed: false, attempts: 0, bestScore: 0, lastAttempted: '' }, index, easyUnlocked, 'easy')
-            )}
-          </ScrollView>
+          <View style={styles.pathContainer}>
+            {INTERMEDIATE_WORDS.map((word, index) => {
+              const progress = intermediateProgress[index] || { 
+                wordId: word.id, word: word.word, completed: false, attempts: 0, bestScore: 0, lastAttempted: '' 
+              };
+              return (
+                <View key={word.id}>
+                  {renderLessonNode(word, progress, index, intUnlocked, index === INTERMEDIATE_WORDS.length - 1)}
+                </View>
+              );
+            })}
+            
+            <View style={styles.checkpointContainer}>
+              <View style={styles.checkpoint}>
+                <Icon name="emoji-events" size={32} color={COLORS.gold} />
+                <Text style={styles.checkpointText}>Checkpoint</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        {/* Intermediate Level */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={[styles.levelBadge, { backgroundColor: '#FEF3C7' }]}>
-              <Icon name="school" size={20} color="#F59E0B" />
+        {/* Learning Path - Hard */}
+        <View style={styles.pathSection}>
+          <View style={styles.unitHeader}>
+            <View style={[styles.unitBadge, { backgroundColor: COLORS.gray[200] }]}>
+              <Icon name="fitness-center" size={20} color={COLORS.primary} />
             </View>
-            <Text style={styles.sectionTitle}>Intermediate Level</Text>
-            <Text style={styles.levelProgress}>
-              {intermediateProgress.filter(p => p.completed).length}/{INTERMEDIATE_WORDS.length}
-            </Text>
+            <View style={styles.unitInfo}>
+              <Text style={styles.unitTitle}>Unit 3 • Hard</Text>
+              <Text style={styles.unitSubtitle}>
+                {hardProgress.filter(p => p.completed).length} / {HARD_WORDS.length} completed
+              </Text>
+            </View>
           </View>
           
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.nodesScroll}
-          >
-            {INTERMEDIATE_WORDS.map((word, index) => 
-              renderWordNode(word, intermediateProgress[index] || { wordId: word.id, word: word.word, completed: false, attempts: 0, bestScore: 0, lastAttempted: '' }, index, intUnlocked, 'intermediate')
-            )}
-          </ScrollView>
-        </View>
-
-        {/* Hard Level */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={[styles.levelBadge, { backgroundColor: '#FEE2E2' }]}>
-              <Icon name="fitness-center" size={20} color="#EF4444" />
+          <View style={styles.pathContainer}>
+            {HARD_WORDS.map((word, index) => {
+              const progress = hardProgress[index] || { 
+                wordId: word.id, word: word.word, completed: false, attempts: 0, bestScore: 0, lastAttempted: '' 
+              };
+              return (
+                <View key={word.id}>
+                  {renderLessonNode(word, progress, index, hardUnlocked, index === HARD_WORDS.length - 1)}
+                </View>
+              );
+            })}
+            
+            <View style={styles.checkpointContainer}>
+              <View style={styles.checkpoint}>
+                <Icon name="emoji-events" size={32} color={COLORS.gold} />
+                <Text style={styles.checkpointText}>Mastery Achieved!</Text>
+              </View>
             </View>
-            <Text style={styles.sectionTitle}>Hard Level</Text>
-            <Text style={styles.levelProgress}>
-              {hardProgress.filter(p => p.completed).length}/{HARD_WORDS.length}
-            </Text>
           </View>
-          
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.nodesScroll}
-          >
-            {HARD_WORDS.map((word, index) => 
-              renderWordNode(word, hardProgress[index] || { wordId: word.id, word: word.word, completed: false, attempts: 0, bestScore: 0, lastAttempted: '' }, index, hardUnlocked, 'hard')
-            )}
-          </ScrollView>
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: 60 }} />
       </ScrollView>
 
       {/* Practice Modal */}
@@ -830,13 +921,12 @@ export default function HomeScreen() {
                 <View style={styles.modalCard}>
                   {!showResult ? (
                     <>
-                      {/* Word Header */}
                       <View style={styles.modalHeader}>
                         <TouchableOpacity 
                           style={styles.closeButton}
                           onPress={closePracticeModal}
                         >
-                          <Icon name="close" size={24} color="#6B7280" />
+                          <Icon name="close" size={24} color={COLORS.gray[600]} />
                         </TouchableOpacity>
                       </View>
 
@@ -847,31 +937,42 @@ export default function HomeScreen() {
                         </Text>
                       </View>
 
-                      {/* Tip */}
+                      <View style={styles.modalMeaning}>
+                        <Icon name="book" size={20} color={COLORS.primary} />
+                        <Text style={styles.modalMeaningText}>
+                          {selectedWord?.meaning || todayWord.meaning}
+                        </Text>
+                      </View>
+
+                      <View style={styles.modalExample}>
+                        <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
+                        <Text style={styles.modalExampleText}>
+                          {selectedWord?.example || todayWord.example}
+                        </Text>
+                      </View>
+
                       <View style={styles.modalTip}>
-                        <Icon name="lightbulb" size={20} color="#F59E0B" />
+                        <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
                         <Text style={styles.modalTipText}>
                           {selectedWord?.tip || todayWord.tip}
                         </Text>
                       </View>
 
-                      {/* Listen Button */}
                       <TouchableOpacity
                         style={styles.modalListenButton}
                         onPress={() => playWordPronunciation(selectedWord?.word || todayWord.word)}
                         disabled={playingAudio}
                       >
-                        <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color="#6366F1" />
+                        <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color={COLORS.white} />
                         <Text style={styles.modalListenText}>
-                          {playingAudio ? 'Playing...' : 'Listen to pronunciation'}
+                          {playingAudio ? 'Playing...' : 'Listen'}
                         </Text>
                       </TouchableOpacity>
 
-                      {/* Record Section */}
                       <View style={styles.modalRecordSection}>
                         {isProcessing ? (
                           <View style={styles.modalProcessing}>
-                            <ActivityIndicator size="large" color="#6366F1" />
+                            <ActivityIndicator size="large" color={COLORS.primary} />
                             <Text style={styles.modalProcessingText}>Analyzing...</Text>
                           </View>
                         ) : (
@@ -882,16 +983,16 @@ export default function HomeScreen() {
                                 onPress={handleRecord}
                                 activeOpacity={0.9}
                               >
-                                <LinearGradient
-                                  colors={isRecording ? ['#EF4444', '#DC2626'] : ['#6366F1', '#8B5CF6']}
-                                  style={styles.modalRecordGradient}
-                                >
+                                <View style={[
+                                  styles.modalRecordCircle,
+                                  isRecording && styles.modalRecordCircleActive
+                                ]}>
                                   <Icon 
                                     name={isRecording ? 'stop' : 'mic'} 
-                                    size={48} 
-                                    color="#FFFFFF" 
+                                    size={40} 
+                                    color={COLORS.white} 
                                   />
-                                </LinearGradient>
+                                </View>
                               </TouchableOpacity>
                             </Animated.View>
                             
@@ -900,58 +1001,71 @@ export default function HomeScreen() {
                             )}
                             
                             <Text style={styles.modalRecordHint}>
-                              {isRecording ? 'Tap to stop recording' : 'Tap to record'}
+                              {isRecording ? 'Tap to stop' : 'Tap to record'}
                             </Text>
                           </>
                         )}
                       </View>
                     </>
                   ) : (
-                    /* Result View */
                     <>
                       <View style={styles.modalHeader}>
                         <TouchableOpacity 
                           style={styles.closeButton}
                           onPress={closePracticeModal}
                         >
-                          <Icon name="close" size={24} color="#6B7280" />
+                          <Icon name="close" size={24} color={COLORS.gray[600]} />
                         </TouchableOpacity>
                       </View>
 
                       <View style={styles.resultContent}>
-                        <Icon 
-                          name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} 
-                          size={72} 
-                          color={result && result.accuracy >= 0.8 ? '#10B981' : '#F59E0B'} 
-                        />
+                        <View style={[
+                          styles.resultIconCircle,
+                          { backgroundColor: result && result.accuracy >= 0.8 ? COLORS.success : COLORS.gold }
+                        ]}>
+                          <Icon 
+                            name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} 
+                            size={64} 
+                            color={COLORS.white} 
+                          />
+                        </View>
                         
                         <Text style={styles.resultTitle}>
-                          {result && result.accuracy >= 0.9 ? 'Perfect! 🌟' :
-                           result && result.accuracy >= 0.8 ? 'Excellent! 🎉' :
-                           result && result.accuracy >= 0.7 ? 'Good! 💪' : 'Keep trying! 📚'}
+                          {result && result.accuracy >= 0.9 ? 'Perfect!' :
+                           result && result.accuracy >= 0.8 ? 'Excellent!' :
+                           result && result.accuracy >= 0.7 ? 'Good Job!' : 'Keep Trying!'}
                         </Text>
 
-                        <View style={styles.scoreCircle}>
-                          <Text style={styles.scoreText}>{result && Math.round(result.accuracy * 100)}</Text>
-                          <Text style={styles.scoreUnit}>%</Text>
+                        <View style={styles.xpEarned}>
+                          <Icon name="stars" size={24} color={COLORS.gold} />
+                          <Text style={styles.xpEarnedText}>
+                            +{result && Math.round(result.accuracy * 10)} XP
+                          </Text>
+                        </View>
+
+                        <View style={styles.scoreDisplay}>
+                          <Text style={styles.scoreText}>{result && Math.round(result.accuracy * 100)}%</Text>
+                          <Text style={styles.scoreLabel}>Accuracy</Text>
                         </View>
 
                         <View style={styles.resultStats}>
-                          <View style={styles.resultStat}>
-                            <Icon name="check" size={20} color="#10B981" />
-                            <Text style={styles.resultStatText}>
-                              {result?.correct_phonemes || 0} correct
-                            </Text>
+                          <View style={styles.resultStatItem}>
+                            <Icon name="check-circle" size={24} color={COLORS.success} />
+                            <Text style={styles.resultStatValue}>{result?.correct_phonemes || 0}</Text>
+                            <Text style={styles.resultStatLabel}>Correct</Text>
                           </View>
-                          <View style={styles.resultStat}>
-                            <Icon name="close" size={20} color="#EF4444" />
-                            <Text style={styles.resultStatText}>
-                              {result ? result.total_phonemes - result.correct_phonemes : 0} errors
+                          <View style={styles.resultStatDivider} />
+                          <View style={styles.resultStatItem}>
+                            <Icon name="cancel" size={24} color={COLORS.error} />
+                            <Text style={styles.resultStatValue}>
+                              {result ? result.total_phonemes - result.correct_phonemes : 0}
                             </Text>
+                            <Text style={styles.resultStatLabel}>Errors</Text>
                           </View>
                         </View>
 
                         <View style={styles.resultFeedback}>
+                          <Text style={styles.resultFeedbackTitle}>Feedback</Text>
                           <Text style={styles.resultFeedbackText}>{result?.feedback}</Text>
                         </View>
 
@@ -960,7 +1074,7 @@ export default function HomeScreen() {
                             style={styles.resultTryAgain}
                             onPress={() => setShowResult(false)}
                           >
-                            <Icon name="refresh" size={24} color="#6366F1" />
+                            <Icon name="refresh" size={24} color={COLORS.primary} />
                             <Text style={styles.resultTryAgainText}>Try Again</Text>
                           </TouchableOpacity>
                           
@@ -969,11 +1083,10 @@ export default function HomeScreen() {
                             onPress={closePracticeModal}
                           >
                             <LinearGradient
-                              colors={['#6366F1', '#8B5CF6']}
+                              colors={[COLORS.primary, COLORS.primaryDark]}
                               style={styles.resultContinueGradient}
                             >
                               <Text style={styles.resultContinueText}>Continue</Text>
-                              <Icon name="arrow-forward" size={20} color="#FFFFFF" />
                             </LinearGradient>
                           </TouchableOpacity>
                         </View>
@@ -993,217 +1106,279 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.white,
+  },
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  streakContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  streakText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.gold,
+  },
+  xpContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  xpText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.primary,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
     paddingBottom: 20,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  greeting: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#1F2937',
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  streakBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF3E0',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 8,
-    borderWidth: 2,
-    borderColor: '#FFE0B2',
-  },
-  streakText: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#FF6B35',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 24,
-  },
-  statBox: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-    alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#1F2937',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  section: {
-    marginBottom: 28,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 16,
-    gap: 10,
+  dailySection: {
+    padding: 20,
+    backgroundColor: COLORS.gray[50],
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '800',
-    color: '#1F2937',
-    flex: 1,
+    color: COLORS.gray[800],
+    marginBottom: 16,
   },
-  levelBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
+  dailyCard: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  dailyCardGradient: {
+    padding: 24,
+  },
+  dailyCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 20,
   },
-  levelProgress: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#6366F1',
-    backgroundColor: '#EEF2FF',
+  dailyBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
   },
-  dailyCard: {
-    marginHorizontal: 20,
-    borderRadius: 24,
-    overflow: 'hidden',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  dailyGradient: {
-    padding: 28,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  completedStar: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-  },
-  dailyWord: {
-    fontSize: 42,
+  dailyBadgeText: {
+    fontSize: 12,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: COLORS.white,
+    letterSpacing: 1,
+  },
+  dailyContent: {
+    marginBottom: 20,
+  },
+  dailyWordText: {
+    fontSize: 40,
+    fontWeight: '900',
+    color: COLORS.white,
     marginBottom: 8,
     letterSpacing: -1,
   },
   dailyPhonetic: {
     fontSize: 18,
-    color: 'rgba(255, 255, 255, 0.95)',
+    color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '600',
     fontStyle: 'italic',
     marginBottom: 16,
   },
-  dailyStats: {
+  dailyMeaning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 12,
+  },
+  dailyMeaningText: {
+    flex: 1,
+    fontSize: 15,
+    color: COLORS.white,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  dailyExample: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginBottom: 16,
+    padding: 12,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.white,
   },
-  dailyStatsText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  dailyExampleText: {
+    fontSize: 14,
+    color: COLORS.white,
+    fontStyle: 'italic',
+    fontWeight: '500',
   },
-  dailyBadge: {
-    backgroundColor: '#FFFFFF',
+  dailyFooter: {
+    alignItems: 'center',
+  },
+  dailyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
     paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 20,
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 8,
   },
-  dailyBadgeText: {
+  dailyButtonText: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#6366F1',
+    color: COLORS.primary,
   },
-  nodesScroll: {
+  pathSection: {
+    paddingTop: 32,
+  },
+  unitHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 20,
+    marginBottom: 24,
     gap: 12,
   },
-  wordNode: {
-    width: 100,
-    borderRadius: 20,
+  unitBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unitInfo: {
+    flex: 1,
+  },
+  unitTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+    marginBottom: 4,
+  },
+  unitSubtitle: {
+    fontSize: 14,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+  },
+  pathContainer: {
+    position: 'relative',
+    paddingVertical: 20,
+    minHeight: 400,
+  },
+  pathLine: {
+    position: 'absolute',
+    left: '50%',
+    top: 0,
+    width: 4,
+    height: 120,
+    backgroundColor: COLORS.gray[200],
+    marginLeft: -2,
+    zIndex: -1,
+  },
+  lessonNodeContainer: {
+    height: 120,
+    width: '100%',
+    position: 'relative',
+  },
+  lessonNode: {
+    position: 'absolute',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  nodeCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.white,
+    borderWidth: 4,
+    borderColor: COLORS.gray[300],
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
   },
-  nodeGradient: {
-    padding: 16,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 120,
-    position: 'relative',
+  nodeCompleted: {
+    borderColor: COLORS.success,
+    backgroundColor: COLORS.gray[50],
+  },
+  nodeCurrent: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.white,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3,
   },
   nodeLocked: {
-    opacity: 0.5,
+    borderColor: COLORS.gray[300],
+    backgroundColor: COLORS.gray[100],
   },
-  nodeCheckmark: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-  },
-  nodeText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textAlign: 'center',
+  nodeLabel: {
     marginTop: 8,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.gray[200],
   },
-  nodeTextLocked: {
-    color: '#9CA3AF',
+  nodeLabelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.gray[600],
   },
-  nodeAttempts: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 4,
+  nodeLabelTextActive: {
+    color: COLORS.primary,
+  },
+  checkpointContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  checkpoint: {
+    backgroundColor: COLORS.gold,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 20,
+    alignItems: 'center',
+    shadowColor: COLORS.gold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  checkpointText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.white,
+    marginTop: 8,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1216,10 +1391,10 @@ const styles = StyleSheet.create({
   modalContainer: {
     width: '90%',
     maxWidth: 440,
-    maxHeight: height * 0.85,
+    maxHeight: height * 0.9,
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 32,
     padding: 28,
     shadowColor: '#000000',
@@ -1236,7 +1411,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: COLORS.gray[100],
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1245,17 +1420,54 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   modalWord: {
-    fontSize: 48,
+    fontSize: 44,
     fontWeight: '900',
-    color: '#1F2937',
+    color: COLORS.gray[800],
     marginBottom: 8,
     letterSpacing: -1.5,
   },
   modalPhonetic: {
     fontSize: 18,
-    color: '#6B7280',
+    color: COLORS.gray[600],
     fontWeight: '600',
     fontStyle: 'italic',
+  },
+  modalMeaning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.gray[50],
+    padding: 16,
+    borderRadius: 16,
+    gap: 10,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: COLORS.gray[200],
+  },
+  modalMeaningText: {
+    flex: 1,
+    fontSize: 15,
+    color: COLORS.gray[700],
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  modalExample: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.gray[50],
+    padding: 16,
+    borderRadius: 16,
+    gap: 10,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
+  },
+  modalExampleText: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.gray[600],
+    fontStyle: 'italic',
+    fontWeight: '500',
+    lineHeight: 20,
   },
   modalTip: {
     flexDirection: 'row',
@@ -1265,7 +1477,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 10,
     marginBottom: 20,
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: '#FDE68A',
   },
   modalTipText: {
@@ -1279,18 +1491,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EEF2FF',
+    backgroundColor: COLORS.primary,
     paddingVertical: 14,
     borderRadius: 16,
     gap: 10,
     marginBottom: 24,
-    borderWidth: 1.5,
-    borderColor: '#C7D2FE',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   modalListenText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#6366F1',
+    fontWeight: '800',
+    color: COLORS.white,
   },
   modalRecordSection: {
     alignItems: 'center',
@@ -1304,101 +1519,142 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     fontWeight: '600',
-    color: '#6B7280',
+    color: COLORS.gray[600],
   },
   modalRecordButton: {
     marginBottom: 16,
   },
-  modalRecordGradient: {
+  modalRecordCircle: {
     width: 120,
     height: 120,
     borderRadius: 60,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#6366F1',
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.4,
     shadowRadius: 16,
     elevation: 8,
+  },
+  modalRecordCircleActive: {
+    backgroundColor: COLORS.error,
+    shadowColor: COLORS.error,
   },
   modalRecordingTime: {
     fontSize: 28,
     fontWeight: '900',
-    color: '#EF4444',
+    color: COLORS.error,
     marginBottom: 8,
     fontVariant: ['tabular-nums'],
   },
   modalRecordHint: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#9CA3AF',
+    color: COLORS.gray[500],
   },
   resultContent: {
     alignItems: 'center',
   },
-  resultTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#1F2937',
-    marginTop: 20,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  scoreCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: '#EEF2FF',
-    borderWidth: 8,
-    borderColor: '#6366F1',
+  resultIconCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  resultTitle: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+    marginBottom: 16,
+  },
+  xpEarned: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 8,
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: '#FDE68A',
+  },
+  xpEarnedText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#92400E',
+  },
+  scoreDisplay: {
     alignItems: 'center',
     marginBottom: 24,
   },
   scoreText: {
-    fontSize: 56,
+    fontSize: 64,
     fontWeight: '900',
-    color: '#6366F1',
+    color: COLORS.primary,
     letterSpacing: -2,
+    lineHeight: 64,
   },
-  scoreUnit: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#6366F1',
+  scoreLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.gray[600],
+    marginTop: 8,
   },
   resultStats: {
     flexDirection: 'row',
-    gap: 16,
+    width: '100%',
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 24,
-  },
-  resultStat: {
-    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 16,
-    gap: 8,
   },
-  resultStatText: {
-    fontSize: 14,
+  resultStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  resultStatValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  resultStatLabel: {
+    fontSize: 13,
     fontWeight: '700',
-    color: '#374151',
+    color: COLORS.gray[600],
+  },
+  resultStatDivider: {
+    width: 2,
+    height: 60,
+    backgroundColor: COLORS.gray[300],
   },
   resultFeedback: {
-    backgroundColor: '#EEF2FF',
-    padding: 20,
-    borderRadius: 20,
     width: '100%',
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 24,
-    borderWidth: 1.5,
-    borderColor: '#C7D2FE',
+    borderWidth: 2,
+    borderColor: COLORS.gray[200],
+  },
+  resultFeedbackTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.gray[700],
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   resultFeedbackText: {
     fontSize: 15,
-    color: '#4F46E5',
-    fontWeight: '600',
-    textAlign: 'center',
+    color: COLORS.gray[700],
+    fontWeight: '500',
     lineHeight: 22,
   },
   resultActions: {
@@ -1411,38 +1667,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: COLORS.white,
     paddingVertical: 14,
     borderRadius: 16,
     gap: 8,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
+    borderWidth: 3,
+    borderColor: COLORS.gray[300],
   },
   resultTryAgainText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#6366F1',
+    fontWeight: '800',
+    color: COLORS.primary,
   },
   resultContinue: {
     flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#6366F1',
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
   resultContinueGradient: {
-    flexDirection: 'row',
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    gap: 8,
   },
   resultContinueText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: '800',
+    color: COLORS.white,
   },
 });
