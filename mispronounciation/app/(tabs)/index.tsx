@@ -21,6 +21,7 @@ import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import * as Haptics from 'expo-haptics';
 import RNFS from 'react-native-fs';
 import axios from 'axios';
+import ProgressCircle from '../../components/ProgressCircle';
 
 const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
@@ -848,8 +849,9 @@ export default function HomeScreen() {
   };
 
   const getNextUnlockedIndex = () => {
-    const completedCount = batchWords.filter(word => wordProgress[word.id]?.completed).length;
-    return completedCount;
+    // Unlock next word after practicing current word at least once (attempts > 0)
+    const practicedCount = batchWords.filter(word => wordProgress[word.id]?.attempts > 0).length;
+    return practicedCount;
   };
 
   const getPathPositions = () => {
@@ -958,8 +960,8 @@ export default function HomeScreen() {
                 >
                   <LinearGradient
                     colors={
-                      isCompleted 
-                        ? [DIFFICULTY_COLORS[selectedDifficulty].primary, DIFFICULTY_COLORS[selectedDifficulty].primary + '80'] as const
+                      progress?.attempts > 0
+                        ? [COLORS.warning, '#D97706'] as const  // Yellow for practiced words
                         : [COLORS.gray[300], COLORS.gray[200]] as const
                     }
                     start={{ x: 0, y: 0 }}
@@ -967,7 +969,7 @@ export default function HomeScreen() {
                     style={styles.pathGradient}
                   />
                   
-                  {isCompleted && (
+                  {progress?.attempts > 0 && (
                     <View style={styles.pathDotsContainer}>
                       {[0.25, 0.5, 0.75].map((position, i) => (
                         <Animated.View
@@ -976,7 +978,7 @@ export default function HomeScreen() {
                             styles.pathDotMoving,
                             {
                               left: `${position * 100}%`,
-                              backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary,
+                              backgroundColor: COLORS.warning,
                               opacity: glowAnim,
                             }
                           ]}
@@ -1042,10 +1044,16 @@ export default function HomeScreen() {
                     }
                     style={styles.circleGradient}
                   >
-                    {isCompleted ? (
-                      <View style={styles.completedIcon}>
-                        <Icon name="check-circle" size={36} color={COLORS.white} />
-                        {progress?.bestScore && progress.bestScore >= 0.95 && (
+                    {progress?.attempts > 0 ? (
+                      // Show pie-chart progress circle for practiced words
+                      <View style={styles.progressCircleContainer}>
+                        <ProgressCircle
+                          size={70}
+                          accuracy={progress.bestScore}
+                          strokeWidth={8}
+                          showPercentage={true}
+                        />
+                        {isCompleted && progress.bestScore >= 0.95 && (
                           <View style={styles.perfectStar}>
                             <Icon name="stars" size={20} color={COLORS.gold} />
                           </View>
@@ -1064,15 +1072,15 @@ export default function HomeScreen() {
                     )}
                   </LinearGradient>
                   
-                  {progress?.bestScore && progress.bestScore > 0 && (
-                    <Animated.View style={[styles.scoreLabel, { opacity: glowAnim }]}>
+                  {progress?.attempts > 0 && !isCompleted && progress?.bestScore && progress.bestScore > 0 && (
+                    <Animated.View style={[styles.scoreLabel, { opacity: 1 }]}>
                       <LinearGradient
                         colors={['#FFFFFF', '#F8FAFC'] as const}
                         style={styles.scoreLabelGradient}
                       >
                         <Icon name="stars" size={10} color={COLORS.gold} />
                         <Text style={styles.scoreLabelText}>
-                          {Math.round(progress.bestScore * 100)}%
+                          {progress.attempts} {progress.attempts === 1 ? 'try' : 'tries'}
                         </Text>
                       </LinearGradient>
                     </Animated.View>
@@ -1888,6 +1896,11 @@ const styles = StyleSheet.create({
   },
   completedIcon: {
     position: 'relative',
+  },
+  progressCircleContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   perfectStar: {
     position: 'absolute',
