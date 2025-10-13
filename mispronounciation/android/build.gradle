@@ -1,31 +1,16 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
-  ext {
-        buildToolsVersion = findProperty('android.buildToolsVersion') ?: '35.0.0'
-        minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '24')
-        compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '35')
-        targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '34')
-        kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.24'
-        googlePlayServicesAuthVersion = "20.7.0"
-
-        // Use the latest NDK version for better C++20 support
-        ndkVersion = "26.1.10909125"
-            
-    }
   repositories {
     google()
     mavenCentral()
   }
   dependencies {
-        classpath('com.android.tools.build:gradle:7.4.2')
-        classpath('com.facebook.react:react-native-gradle-plugin')
-        classpath('org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24')
-        classpath('com.google.gms:google-services:4.4.1')
+    classpath('com.android.tools.build:gradle')
+    classpath('com.facebook.react:react-native-gradle-plugin')
+    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
   }
 }
-
-apply plugin: "com.facebook.react.rootproject"
 
 def reactNativeAndroidDir = new File(
   providers.exec {
@@ -48,3 +33,5 @@ allprojects {
   }
 }
 
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"
