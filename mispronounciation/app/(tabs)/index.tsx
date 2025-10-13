@@ -647,13 +647,19 @@ export default function HomeScreen() {
 
   const getNextUnlockedIndex = (progressArray: WordProgress[]) => {
     const firstIncomplete = progressArray.findIndex(p => !p.completed);
+    // If all completed, unlock all for review practice
     return firstIncomplete === -1 ? progressArray.length : firstIncomplete;
   };
 
-  const renderLessonNode = (word: any, progress: WordProgress, index: number, unlockedIndex: number, isLast: boolean) => {
+  const isUnitCompleted = (progressArray: WordProgress[]) => {
+    return progressArray.length > 0 && progressArray.every(p => p.completed);
+  };
+
+  const renderLessonNode = (word: any, progress: WordProgress, index: number, unlockedIndex: number, isLast: boolean, difficulty: 'easy' | 'intermediate' | 'hard') => {
     const isUnlocked = index <= unlockedIndex;
     const isCompleted = progress.completed;
     const isCurrent = index === unlockedIndex && !isCompleted;
+    const canPractice = isCompleted || isUnlocked; // Completed words can be replayed
 
     return (
       <View key={word.id} style={styles.lessonNodeContainer}>
@@ -663,8 +669,8 @@ export default function HomeScreen() {
             styles.lessonNode,
             { left: index % 2 === 0 ? 20 : width - 100 }
           ]}
-          onPress={() => isUnlocked ? openPracticeModal(word, selectedWordType, word) : null}
-          disabled={!isUnlocked}
+          onPress={() => canPractice ? openPracticeModal(word, difficulty, word) : null}
+          disabled={!canPractice}
           activeOpacity={0.8}
         >
           <View style={[
@@ -674,7 +680,14 @@ export default function HomeScreen() {
             !isUnlocked && styles.nodeLocked,
           ]}>
             {isCompleted ? (
-              <Icon name="check-circle" size={32} color={COLORS.success} />
+              <View style={styles.completedStars}>
+                <Icon name="check-circle" size={32} color={COLORS.success} />
+                {progress.bestScore >= 0.95 && (
+                  <View style={styles.perfectBadge}>
+                    <Icon name="stars" size={16} color={COLORS.gold} />
+                  </View>
+                )}
+              </View>
             ) : isCurrent ? (
               <Icon name="star" size={32} color={COLORS.gold} />
             ) : !isUnlocked ? (
@@ -683,12 +696,15 @@ export default function HomeScreen() {
               <Icon name="play-circle-filled" size={32} color={COLORS.primary} />
             )}
           </View>
-          {isUnlocked && (
+          {canPractice && (
             <View style={styles.nodeLabel}>
               <Text style={[
                 styles.nodeLabelText,
                 !isCompleted && styles.nodeLabelTextActive
               ]}>{word.word}</Text>
+              {isCompleted && progress.bestScore > 0 && (
+                <Text style={styles.nodeBestScore}>{Math.round(progress.bestScore * 100)}%</Text>
+              )}
             </View>
           )}
         </TouchableOpacity>
@@ -709,6 +725,11 @@ export default function HomeScreen() {
   const easyUnlocked = getNextUnlockedIndex(easyProgress);
   const intUnlocked = getNextUnlockedIndex(intermediateProgress);
   const hardUnlocked = getNextUnlockedIndex(hardProgress);
+
+  const easyCompleted = isUnitCompleted(easyProgress);
+  const intCompleted = isUnitCompleted(intermediateProgress);
+  const hardCompleted = isUnitCompleted(hardProgress);
+  const allUnitsCompleted = easyCompleted && intCompleted && hardCompleted;
 
   return (
     <View style={styles.container}>
@@ -789,11 +810,26 @@ export default function HomeScreen() {
         {/* Learning Path - Easy */}
         <View style={styles.pathSection}>
           <View style={styles.unitHeader}>
-            <View style={[styles.unitBadge, { backgroundColor: COLORS.gray[200] }]}>
-              <Icon name="school" size={20} color={COLORS.primary} />
+            <View style={[
+              styles.unitBadge, 
+              { backgroundColor: easyCompleted ? COLORS.gold : COLORS.gray[200] }
+            ]}>
+              <Icon 
+                name={easyCompleted ? "emoji-events" : "school"} 
+                size={20} 
+                color={easyCompleted ? COLORS.white : COLORS.primary} 
+              />
             </View>
             <View style={styles.unitInfo}>
-              <Text style={styles.unitTitle}>Unit 1 • Easy</Text>
+              <View style={styles.unitTitleRow}>
+                <Text style={styles.unitTitle}>Unit 1 • Easy</Text>
+                {easyCompleted && (
+                  <View style={styles.masteryBadge}>
+                    <Icon name="verified" size={16} color={COLORS.success} />
+                    <Text style={styles.masteryText}>MASTERED</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.unitSubtitle}>
                 {easyProgress.filter(p => p.completed).length} / {EASY_WORDS.length} completed
               </Text>
@@ -807,16 +843,25 @@ export default function HomeScreen() {
               };
               return (
                 <View key={word.id}>
-                  {renderLessonNode(word, progress, index, easyUnlocked, index === EASY_WORDS.length - 1)}
+                  {renderLessonNode(word, progress, index, easyUnlocked, index === EASY_WORDS.length - 1, 'easy')}
                 </View>
               );
             })}
             
             {/* Checkpoint */}
             <View style={styles.checkpointContainer}>
-              <View style={styles.checkpoint}>
-                <Icon name="emoji-events" size={32} color={COLORS.gold} />
-                <Text style={styles.checkpointText}>Checkpoint</Text>
+              <View style={[
+                styles.checkpoint,
+                easyCompleted && styles.checkpointCompleted
+              ]}>
+                <Icon 
+                  name={easyCompleted ? "verified" : "emoji-events"} 
+                  size={32} 
+                  color={COLORS.white} 
+                />
+                <Text style={styles.checkpointText}>
+                  {easyCompleted ? "Unit 1 Complete! 🎉" : "Checkpoint"}
+                </Text>
               </View>
             </View>
           </View>
@@ -825,11 +870,26 @@ export default function HomeScreen() {
         {/* Learning Path - Intermediate */}
         <View style={styles.pathSection}>
           <View style={styles.unitHeader}>
-            <View style={[styles.unitBadge, { backgroundColor: COLORS.gray[200] }]}>
-              <Icon name="trending-up" size={20} color={COLORS.primary} />
+            <View style={[
+              styles.unitBadge, 
+              { backgroundColor: intCompleted ? COLORS.gold : COLORS.gray[200] }
+            ]}>
+              <Icon 
+                name={intCompleted ? "emoji-events" : "trending-up"} 
+                size={20} 
+                color={intCompleted ? COLORS.white : COLORS.primary} 
+              />
             </View>
             <View style={styles.unitInfo}>
-              <Text style={styles.unitTitle}>Unit 2 • Intermediate</Text>
+              <View style={styles.unitTitleRow}>
+                <Text style={styles.unitTitle}>Unit 2 • Intermediate</Text>
+                {intCompleted && (
+                  <View style={styles.masteryBadge}>
+                    <Icon name="verified" size={16} color={COLORS.success} />
+                    <Text style={styles.masteryText}>MASTERED</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.unitSubtitle}>
                 {intermediateProgress.filter(p => p.completed).length} / {INTERMEDIATE_WORDS.length} completed
               </Text>
@@ -843,15 +903,24 @@ export default function HomeScreen() {
               };
               return (
                 <View key={word.id}>
-                  {renderLessonNode(word, progress, index, intUnlocked, index === INTERMEDIATE_WORDS.length - 1)}
+                  {renderLessonNode(word, progress, index, intUnlocked, index === INTERMEDIATE_WORDS.length - 1, 'intermediate')}
                 </View>
               );
             })}
             
             <View style={styles.checkpointContainer}>
-              <View style={styles.checkpoint}>
-                <Icon name="emoji-events" size={32} color={COLORS.gold} />
-                <Text style={styles.checkpointText}>Checkpoint</Text>
+              <View style={[
+                styles.checkpoint,
+                intCompleted && styles.checkpointCompleted
+              ]}>
+                <Icon 
+                  name={intCompleted ? "verified" : "emoji-events"} 
+                  size={32} 
+                  color={COLORS.white} 
+                />
+                <Text style={styles.checkpointText}>
+                  {intCompleted ? "Unit 2 Complete! 🎉" : "Checkpoint"}
+                </Text>
               </View>
             </View>
           </View>
@@ -860,11 +929,26 @@ export default function HomeScreen() {
         {/* Learning Path - Hard */}
         <View style={styles.pathSection}>
           <View style={styles.unitHeader}>
-            <View style={[styles.unitBadge, { backgroundColor: COLORS.gray[200] }]}>
-              <Icon name="fitness-center" size={20} color={COLORS.primary} />
+            <View style={[
+              styles.unitBadge, 
+              { backgroundColor: hardCompleted ? COLORS.gold : COLORS.gray[200] }
+            ]}>
+              <Icon 
+                name={hardCompleted ? "emoji-events" : "fitness-center"} 
+                size={20} 
+                color={hardCompleted ? COLORS.white : COLORS.primary} 
+              />
             </View>
             <View style={styles.unitInfo}>
-              <Text style={styles.unitTitle}>Unit 3 • Hard</Text>
+              <View style={styles.unitTitleRow}>
+                <Text style={styles.unitTitle}>Unit 3 • Hard</Text>
+                {hardCompleted && (
+                  <View style={styles.masteryBadge}>
+                    <Icon name="verified" size={16} color={COLORS.success} />
+                    <Text style={styles.masteryText}>MASTERED</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.unitSubtitle}>
                 {hardProgress.filter(p => p.completed).length} / {HARD_WORDS.length} completed
               </Text>
@@ -878,19 +962,61 @@ export default function HomeScreen() {
               };
               return (
                 <View key={word.id}>
-                  {renderLessonNode(word, progress, index, hardUnlocked, index === HARD_WORDS.length - 1)}
+                  {renderLessonNode(word, progress, index, hardUnlocked, index === HARD_WORDS.length - 1, 'hard')}
                 </View>
               );
             })}
             
             <View style={styles.checkpointContainer}>
-              <View style={styles.checkpoint}>
-                <Icon name="emoji-events" size={32} color={COLORS.gold} />
-                <Text style={styles.checkpointText}>Mastery Achieved!</Text>
+              <View style={[
+                styles.checkpoint,
+                hardCompleted && styles.checkpointCompleted
+              ]}>
+                <Icon 
+                  name={hardCompleted ? "military-tech" : "emoji-events"} 
+                  size={32} 
+                  color={COLORS.white} 
+                />
+                <Text style={styles.checkpointText}>
+                  {hardCompleted ? "Unit 3 Complete! 🎉" : "Checkpoint"}
+                </Text>
               </View>
             </View>
           </View>
         </View>
+
+        {/* All Units Completed Badge */}
+        {allUnitsCompleted && (
+          <View style={styles.allCompletedSection}>
+            <LinearGradient
+              colors={[COLORS.primary, COLORS.primaryDark]}
+              style={styles.allCompletedCard}
+            >
+              <Icon name="workspace-premium" size={64} color={COLORS.gold} />
+              <Text style={styles.allCompletedTitle}>🎉 Congratulations! 🎉</Text>
+              <Text style={styles.allCompletedText}>
+                You've mastered all pronunciation units!
+              </Text>
+              <Text style={styles.allCompletedSubtext}>
+                Keep practicing to maintain your skills. You can replay any word to improve your score!
+              </Text>
+              <View style={styles.allCompletedStats}>
+                <View style={styles.allCompletedStat}>
+                  <Icon name="stars" size={24} color={COLORS.gold} />
+                  <Text style={styles.allCompletedStatValue}>{stats.xp}</Text>
+                  <Text style={styles.allCompletedStatLabel}>Total XP</Text>
+                </View>
+                <View style={styles.allCompletedStat}>
+                  <Icon name="check-circle" size={24} color={COLORS.gold} />
+                  <Text style={styles.allCompletedStatValue}>
+                    {EASY_WORDS.length + INTERMEDIATE_WORDS.length + HARD_WORDS.length}
+                  </Text>
+                  <Text style={styles.allCompletedStatLabel}>Words Mastered</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        )}
 
         <View style={{ height: 60 }} />
       </ScrollView>
@@ -1272,11 +1398,31 @@ const styles = StyleSheet.create({
   unitInfo: {
     flex: 1,
   },
+  unitTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
   unitTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: COLORS.gray[800],
-    marginBottom: 4,
+  },
+  masteryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  masteryText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.success,
+    letterSpacing: 0.5,
   },
   unitSubtitle: {
     fontSize: 14,
@@ -1345,6 +1491,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: COLORS.gray[200],
+    alignItems: 'center',
   },
   nodeLabelText: {
     fontSize: 13,
@@ -1353,6 +1500,28 @@ const styles = StyleSheet.create({
   },
   nodeLabelTextActive: {
     color: COLORS.primary,
+  },
+  nodeBestScore: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.success,
+    marginTop: 2,
+  },
+  completedStars: {
+    position: 'relative',
+  },
+  perfectBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: COLORS.gold,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.white,
   },
   checkpointContainer: {
     alignItems: 'center',
@@ -1375,6 +1544,69 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.white,
     marginTop: 8,
+  },
+  checkpointCompleted: {
+    backgroundColor: COLORS.success,
+  },
+  allCompletedSection: {
+    paddingHorizontal: 20,
+    paddingTop: 32,
+  },
+  allCompletedCard: {
+    borderRadius: 32,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  allCompletedTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: COLORS.white,
+    marginTop: 20,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  allCompletedText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.white,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  allCompletedSubtext: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.9)',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  allCompletedStats: {
+    flexDirection: 'row',
+    gap: 24,
+  },
+  allCompletedStat: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 20,
+  },
+  allCompletedStatValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: COLORS.gold,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  allCompletedStatLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.white,
   },
   modalOverlay: {
     flex: 1,
