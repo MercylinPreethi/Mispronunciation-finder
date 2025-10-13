@@ -1187,51 +1187,49 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.userName}>Hi, {userName}! 👋</Text>
-        </View>
+      <View style={styles.headerContainer}>
+        <LinearGradient
+          colors={['#6366F1', '#8B5CF6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerTop}>
+            <Text style={styles.userName}>Hi, {userName}! 👋</Text>
+          </View>
 
-        <View style={styles.badgesContainer}>
+          <View style={styles.badgesContainer}>
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[0] }] }]}>
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.secondary] as const}
-              style={styles.badgeGradient}
-            >
+            <View style={styles.badgeGradient}>
               <Icon name="menu-book" size={24} color={COLORS.white} />
               <View style={styles.badgeInfo}>
                 <Text style={styles.badgeValue}>{stats.totalWords}</Text>
                 <Text style={styles.badgeLabel}>Words</Text>
               </View>
-            </LinearGradient>
+            </View>
           </Animated.View>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
-            <LinearGradient
-              colors={['#F59E0B', '#D97706'] as const}
-              style={styles.badgeGradient}
-            >
-              <Icon name="local-fire-department" size={24} color={COLORS.white} />
+            <View style={styles.badgeGradient}>
+              <Icon name="local-fire-department" size={24} color={COLORS.gold} />
               <View style={styles.badgeInfo}>
                 <Text style={styles.badgeValue}>{stats.streak}</Text>
                 <Text style={styles.badgeLabel}>Streak</Text>
               </View>
-            </LinearGradient>
+            </View>
           </Animated.View>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[2] }] }]}>
-            <LinearGradient
-              colors={[COLORS.success, '#059669'] as const}
-              style={styles.badgeGradient}
-            >
-              <Icon name="check-circle" size={24} color={COLORS.white} />
+            <View style={styles.badgeGradient}>
+              <Icon name="check-circle" size={24} color={COLORS.success} />
               <View style={styles.badgeInfo}>
                 <Text style={styles.badgeValue}>{Math.round(stats.accuracy * 100)}%</Text>
                 <Text style={styles.badgeLabel}>Accuracy</Text>
               </View>
-            </LinearGradient>
+            </View>
           </Animated.View>
         </View>
+        </LinearGradient>
       </View>
 
       <View style={styles.controls}>
@@ -1624,16 +1622,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  header: {
+  headerContainer: {
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
     paddingHorizontal: 20,
     paddingBottom: 16,
-    backgroundColor: COLORS.white,
+  },
+  headerGradient: {
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 4,
   },
@@ -1643,7 +1644,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 28,
     fontWeight: '900',
-    color: COLORS.gray[800],
+    color: COLORS.white,
     letterSpacing: -0.5,
   },
   badgesContainer: {
@@ -1654,11 +1655,12 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   badgeGradient: {
     flexDirection: 'row',
