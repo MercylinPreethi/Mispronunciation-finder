@@ -37,21 +37,21 @@ const DIFFICULTY_COLORS = {
     primary: '#10B981',
     dark: '#059669',
     light: '#34D399',
-    gradient: ['#10B981', '#059669'],
+    gradient: ['#10B981', '#059669'] as const,
   },
   intermediate: {
     primary: '#6366F1',
     dark: '#4F46E5',
     light: '#818CF8',
-    gradient: ['#6366F1', '#8B5CF6'],
+    gradient: ['#6366F1', '#8B5CF6'] as const,
   },
   hard: {
     primary: '#EC4899',
     dark: '#DB2777',
     light: '#F472B6',
-    gradient: ['#EC4899', '#DB2777'],
+    gradient: ['#EC4899', '#DB2777'] as const,
   },
-};
+} as const;
 
 const COLORS = {
   primary: '#6366F1',
