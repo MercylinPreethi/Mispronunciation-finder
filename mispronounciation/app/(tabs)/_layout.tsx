@@ -18,15 +18,23 @@ export default function TabLayout() {
         tabBarBackground: TabBarBackground,
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
+          borderTopWidth: 0,
           paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-          height: Platform.OS === 'ios' ? 88 : 64,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+          height: Platform.OS === 'ios' ? 92 : 72,
+          shadowColor: '#000000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
+          elevation: 8,
         },
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: '600',
+          fontWeight: '700',
+          marginTop: 4,
+          letterSpacing: 0.3,
+        },
+        tabBarIconStyle: {
           marginTop: 4,
         },
       }}>
@@ -75,7 +83,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
-          href: null, // Hide search tab
+          href: null, 
         }}
       />
     </Tabs>

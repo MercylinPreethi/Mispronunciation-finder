@@ -239,13 +239,13 @@ const CustomButton: FC<CustomButtonProps> = ({
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
   inline: {
     alignSelf: 'flex-start',
@@ -261,13 +261,13 @@ const styles = StyleSheet.create({
   },
   gradientBorder: {
     flex: 1,
-    padding: 3,
-    borderRadius: 16,
+    padding: 2.5,
+    borderRadius: 20,
   },
   outlineInner: {
     flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.8)',
-    borderRadius: 13,
+    backgroundColor: 'rgba(17, 24, 39, 0.05)',
+    borderRadius: 17.5,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
@@ -281,13 +281,13 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   text: {
-    fontWeight: '800',
+    fontWeight: '700',
     textAlign: 'center',
     letterSpacing: 0.5,
   },
   primaryText: {
     color: '#FFFFFF',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
@@ -295,13 +295,18 @@ const styles = StyleSheet.create({
     color: 'transparent',
   },
   secondaryButton: {
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
-    borderWidth: 2,
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    borderWidth: 1.5,
     borderColor: 'rgba(99, 102, 241, 0.3)',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
   },
   secondaryText: {
     color: '#6366F1',
-    fontWeight: '800',
+    fontWeight: '700',
   },
   ghostButton: {
     backgroundColor: 'transparent',
@@ -310,7 +315,7 @@ const styles = StyleSheet.create({
   },
   ghostText: {
     color: '#6366F1',
-    fontWeight: '700',
+    fontWeight: '600',
   },
   loadingIcon: {
     fontSize: 24,

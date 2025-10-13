@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth, database } from '../../lib/firebase';
 import { ref, get } from 'firebase/database';
 import { signOut } from 'firebase/auth';
@@ -55,8 +56,11 @@ export default function ProfileScreen() {
     practiceTime: 0,
   });
   const [weeklyData, setWeeklyData] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+  const [weeklyWordCounts, setWeeklyWordCounts] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [recentPractice, setRecentPractice] = useState<PracticeHistory[]>([]);
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -219,7 +223,7 @@ export default function ProfileScreen() {
       const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
       
       const weekData = [0, 0, 0, 0, 0, 0, 0]; // Mon-Sun
-      const dayCounts = [0, 0, 0, 0, 0, 0, 0];
+      const dayCounts = [0, 0, 0, 0, 0, 0, 0]; // Number of words practiced each day
       
       allPractices.forEach((practice) => {
         if (practice.timestamp >= sevenDaysAgo) {
@@ -239,10 +243,13 @@ export default function ProfileScreen() {
       });
 
       console.log('📊 Weekly data (from unique practices):', averagedData);
+      console.log('📊 Weekly word counts:', dayCounts);
       setWeeklyData(averagedData);
+      setWeeklyWordCounts(dayCounts);
     } catch (error) {
       console.error('Error calculating weekly progress:', error);
       setWeeklyData([0, 0, 0, 0, 0, 0, 0]);
+      setWeeklyWordCounts([0, 0, 0, 0, 0, 0, 0]);
     }
   };
 
@@ -357,14 +364,31 @@ export default function ProfileScreen() {
   const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
-      'Are you sure you want to sign out?',
+      'Do you want to clear your saved login credentials?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Sign Out',
+          text: 'Keep Credentials',
+          onPress: async () => {
+            try {
+              await signOut(auth);
+              router.replace('/(auth)/signin');
+            } catch (error) {
+              console.error('Sign out error:', error);
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            }
+          },
+        },
+        {
+          text: 'Clear & Sign Out',
           style: 'destructive',
           onPress: async () => {
             try {
+              // Clear saved credentials
+              await AsyncStorage.removeItem('rememberedEmail');
+              await AsyncStorage.removeItem('rememberedPassword');
+              await AsyncStorage.removeItem('rememberMe');
+              
               await signOut(auth);
               router.replace('/(auth)/signin');
             } catch (error) {
@@ -383,6 +407,23 @@ export default function ProfileScreen() {
       setLoading(true);
       await loadUserData(user.uid);
     }
+  };
+
+  const handleDayPress = (index: number) => {
+    if (weeklyWordCounts[index] > 0) {
+      setSelectedDayIndex(index);
+      setTooltipVisible(true);
+    }
+  };
+
+  const handleCloseTooltip = () => {
+    setTooltipVisible(false);
+    setTimeout(() => setSelectedDayIndex(null), 300);
+  };
+
+  const getDayName = (index: number): string => {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days[index];
   };
 
   if (loading) {
@@ -459,7 +500,7 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Weekly Progress</Text>
-            <Text style={styles.sectionSubtitle}>Last 7 days</Text>
+            <Text style={styles.sectionSubtitle}>Last 7 days • Tap bars for details</Text>
           </View>
           <View style={styles.card}>
             {weeklyData.every(val => val === 0) ? (
@@ -471,22 +512,91 @@ export default function ProfileScreen() {
             ) : (
               <View style={styles.chartContainer}>
                 {weeklyData.map((value, index) => (
-                  <View key={index} style={styles.barContainer}>
+                  <TouchableOpacity 
+                    key={index} 
+                    style={styles.barContainer}
+                    onPress={() => handleDayPress(index)}
+                    disabled={weeklyWordCounts[index] === 0}
+                    activeOpacity={0.7}
+                  >
+                    {/* Accuracy percentage above bar */}
+                    {value > 0 && (
+                      <Text style={[
+                        styles.barPercentage,
+                        selectedDayIndex === index && styles.barPercentageSelected
+                      ]}>
+                        {value}%
+                      </Text>
+                    )}
+                    
                     <View style={styles.barWrapper}>
                       <LinearGradient
                         colors={value > 0 ? ['#6366F1', '#8B5CF6'] : ['#E5E7EB', '#E5E7EB']}
                         style={[
                           styles.bar,
-                          { height: `${(value / maxWeeklyValue) * 100}%` }
+                          { height: `${(value / maxWeeklyValue) * 100}%` },
+                          selectedDayIndex === index && styles.barSelected
                         ]}
                       />
                     </View>
-                    <Text style={styles.barLabel}>
+                    
+                    <Text style={[
+                      styles.barLabel,
+                      selectedDayIndex === index && styles.barLabelSelected
+                    ]}>
                       {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index]}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
+            )}
+            
+            {/* Interactive Tooltip */}
+            {tooltipVisible && selectedDayIndex !== null && (
+              <TouchableOpacity 
+                style={styles.tooltipOverlay}
+                activeOpacity={1}
+                onPress={handleCloseTooltip}
+              >
+                <View style={styles.tooltipContainer}>
+                  <LinearGradient
+                    colors={['#6366F1', '#8B5CF6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.tooltipGradient}
+                  >
+                    <View style={styles.tooltipHeader}>
+                      <Text style={styles.tooltipDay}>{getDayName(selectedDayIndex)}</Text>
+                      <TouchableOpacity onPress={handleCloseTooltip} style={styles.tooltipClose}>
+                        <Icon name="close" size={20} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    <View style={styles.tooltipStats}>
+                      <View style={styles.tooltipStatItem}>
+                        <Icon name="menu-book" size={32} color="#FFFFFF" />
+                        <Text style={styles.tooltipStatValue}>{weeklyWordCounts[selectedDayIndex]}</Text>
+                        <Text style={styles.tooltipStatLabel}>
+                          {weeklyWordCounts[selectedDayIndex] === 1 ? 'Word Practiced' : 'Words Practiced'}
+                        </Text>
+                      </View>
+                      
+                      <View style={styles.tooltipDivider} />
+                      
+                      <View style={styles.tooltipStatItem}>
+                        <Icon name="trending-up" size={32} color="#FFFFFF" />
+                        <Text style={styles.tooltipStatValue}>{weeklyData[selectedDayIndex]}%</Text>
+                        <Text style={styles.tooltipStatLabel}>Accuracy Rate</Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.tooltipFooter}>
+                      <Icon name="touch-app" size={16} color="rgba(255, 255, 255, 0.7)" />
+                      <Text style={styles.tooltipFooterText}>Tap anywhere to close</Text>
+                    </View>
+                  </LinearGradient>
+                </View>
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -662,8 +772,12 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
     paddingBottom: 16,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomWidth: 0,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   headerTitle: {
     fontSize: 28,
@@ -674,9 +788,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#EEF2FF',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
   },
   scrollView: {
     flex: 1,
@@ -686,13 +802,13 @@ const styles = StyleSheet.create({
   },
   profileCard: {
     marginHorizontal: 20,
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
   },
   profileGradient: {
     padding: 28,
@@ -737,14 +853,14 @@ const styles = StyleSheet.create({
   statCard: {
     width: (width - 52) / 2,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   statValue: {
     fontSize: 28,
@@ -781,13 +897,13 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 3,
+    elevation: 4,
   },
   emptyState: {
     alignItems: 'center',
@@ -808,28 +924,143 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    height: 150,
+    height: 180,
+    paddingTop: 10,
   },
   barContainer: {
     flex: 1,
     alignItems: 'center',
+    paddingTop: 24,
+  },
+  barPercentage: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#6366F1',
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  barPercentageSelected: {
+    color: '#4F46E5',
+    fontSize: 14,
   },
   barWrapper: {
     flex: 1,
     width: '70%',
     justifyContent: 'flex-end',
     marginBottom: 8,
+    position: 'relative',
   },
   bar: {
     width: '100%',
-    borderRadius: 6,
+    borderRadius: 8,
     minHeight: 8,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  barSelected: {
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+    transform: [{ scale: 1.05 }],
   },
   barLabel: {
     fontSize: 12,
     color: '#6B7280',
     fontWeight: '600',
     marginTop: 8,
+  },
+  barLabelSelected: {
+    color: '#6366F1',
+    fontWeight: '700',
+  },
+  tooltipOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+  },
+  tooltipContainer: {
+    width: '85%',
+    maxWidth: 320,
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  tooltipGradient: {
+    padding: 24,
+  },
+  tooltipHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  tooltipDay: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  tooltipClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tooltipStats: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+  },
+  tooltipStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  tooltipDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    marginHorizontal: 16,
+  },
+  tooltipStatValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 8,
+    marginBottom: 4,
+    letterSpacing: -1,
+  },
+  tooltipStatLabel: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  tooltipFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  tooltipFooterText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: '500',
   },
   achievementsGrid: {
     flexDirection: 'row',
@@ -839,14 +1070,14 @@ const styles = StyleSheet.create({
   achievementCard: {
     width: (width - 52) / 2,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
     position: 'relative',
   },
   achievementLocked: {
@@ -920,7 +1151,8 @@ const styles = StyleSheet.create({
   accuracyBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 14,
+    borderWidth: 1,
   },
   practiceAccuracy: {
     fontSize: 15,
@@ -950,11 +1182,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 28,
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    borderRadius: 18,
     paddingVertical: 16,
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: '#FEE2E2',
     gap: 10,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
   signOutText: {
     fontSize: 16,
