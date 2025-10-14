@@ -561,6 +561,10 @@ export default function HomeScreen() {
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
   const rotateAnims = useRef<Record<string, Animated.Value>>({}).current;
   const scrollViewRef = useRef<ScrollView>(null);
+  
+  // Scroll animation tracking
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
 
   const initializeOnceRef = useRef(false);
   const loadingRef = useRef(false);
@@ -2085,13 +2089,84 @@ export default function HomeScreen() {
   });
 
   // ============================================================================
+  // SCROLL ANIMATIONS
+  // ============================================================================
+
+  // Interpolate scroll position for smooth animations
+  const controlsTranslateY = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [0, -70], // Move up by 70px
+    extrapolate: 'clamp',
+  });
+
+  const controlsScale = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [1, 0.6], // Shrink to 60%
+    extrapolate: 'clamp',
+  });
+
+  const controlsTranslateX = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [0, width * 0.25], // Move to right
+    extrapolate: 'clamp',
+  });
+
+  const progressTranslateY = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [0, -120], // Move up by 120px
+    extrapolate: 'clamp',
+  });
+
+  const progressScale = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [1, 0.5], // Shrink to 50%
+    extrapolate: 'clamp',
+  });
+
+  const progressTranslateX = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [0, width * 0.15], // Move to right
+    extrapolate: 'clamp',
+  });
+
+  const progressOpacity = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
+    outputRange: [1, 0.6, 0.3], // Fade out gradually
+    extrapolate: 'clamp',
+  });
+
+  const headerHeight = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [0, -20], // Shrink header slightly
+    extrapolate: 'clamp',
+  });
+
+  // Compact header view opacity (shows when scrolled)
+  const compactHeaderOpacity = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD * 0.7, SCROLL_THRESHOLD],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  // ============================================================================
   // MAIN RENDER
   // ============================================================================
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+      {/* Header - Animated for scroll collapse */}
+      <Animated.View 
+        style={[
+          styles.header,
+          {
+            paddingBottom: scrollY.interpolate({
+              inputRange: [0, SCROLL_THRESHOLD],
+              outputRange: [20, 10],
+              extrapolate: 'clamp',
+            }),
+          },
+        ]}
+      >
         <View style={styles.headerTop}>
           <Text style={styles.userName}>Hi, {userName}! </Text>
         </View>
@@ -2138,15 +2213,68 @@ export default function HomeScreen() {
             </LinearGradient>
           </Animated.View>
         </View>
-      </View>
+
+        {/* Compact Header Info - appears when scrolled */}
+        <Animated.View 
+          style={[
+            styles.compactHeaderInfo,
+            {
+              opacity: compactHeaderOpacity,
+              transform: [{
+                translateY: scrollY.interpolate({
+                  inputRange: [0, SCROLL_THRESHOLD],
+                  outputRange: [20, 0],
+                  extrapolate: 'clamp',
+                }),
+              }],
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <View style={styles.compactInfoRow}>
+            <View style={styles.compactBadge}>
+              <Icon name="track-changes" size={14} color={COLORS.primary} />
+              <Text style={styles.compactText}>
+                {selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1)}
+              </Text>
+            </View>
+            <View style={styles.compactBadge}>
+              <Icon name="check-circle" size={14} color={COLORS.success} />
+              <Text style={styles.compactText}>
+                {Math.round(completionPercentage)}%
+              </Text>
+            </View>
+            <View style={styles.compactBadge}>
+              <Icon name="emoji-events" size={14} color={COLORS.gold} />
+              <Text style={styles.compactText}>
+                {allWords.filter(w => {
+                  const prog = wordProgress[w.id];
+                  return prog && prog.bestScore >= 0.8;
+                }).length} mastered
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
+      </Animated.View>
 
       {/* Content Area with Background */}
       <View style={styles.contentWrapper}>
         {/* Learning Path Background - covers entire area below header */}
         <LearningPathBackground />
 
-        {/* Controls */}
-        <View style={styles.controls}>
+        {/* Controls - Animated for scroll collapse */}
+        <Animated.View 
+          style={[
+            styles.controls,
+            {
+              transform: [
+                { translateY: controlsTranslateY },
+                { translateX: controlsTranslateX },
+                { scale: controlsScale },
+              ],
+            },
+          ]}
+        >
         <View style={styles.dropdownContainer}>
           <TouchableOpacity
             style={styles.dropdownButton}
@@ -2214,11 +2342,23 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
-      </View>
+      </Animated.View>
 
-      {/* Progress Indicator */}
+      {/* Progress Indicator - Animated for scroll collapse */}
       {allWords.length > 0 && (
-        <View style={styles.progressContainer}>
+        <Animated.View 
+          style={[
+            styles.progressContainer,
+            {
+              transform: [
+                { translateY: progressTranslateY },
+                { translateX: progressTranslateX },
+                { scale: progressScale },
+              ],
+              opacity: progressOpacity,
+            },
+          ]}
+        >
           <View style={styles.progressHeader}>
             <View style={styles.progressInfo}>
               <Icon name="track-changes" size={20} color={COLORS.primary} />
@@ -2252,7 +2392,7 @@ export default function HomeScreen() {
               return prog && prog.bestScore >= 0.5 && prog.bestScore < 0.8; // Completed but not mastered
             }).length} completed · Word {currentWordIndex + 1} active
           </Text>
-        </View>
+        </Animated.View>
       )}
 
       {/* Word Path ScrollView */}
@@ -2268,6 +2408,10 @@ export default function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          )}
         >
           <View style={styles.pathContainer}>
             {renderWordPath()}
@@ -2842,6 +2986,34 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 24,
     elevation: 8,
+  },
+  compactHeaderInfo: {
+    position: 'absolute',
+    bottom: 8,
+    right: 20,
+    left: 20,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    zIndex: 20,
+  },
+  compactInfoRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  compactBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray[50],
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  compactText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.gray[700],
   },
   contentWrapper: {
     flex: 1,

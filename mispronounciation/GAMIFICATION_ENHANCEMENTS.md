@@ -261,8 +261,103 @@ import ProgressTrail from '../../components/ProgressTrail';
 />
 ```
 
+## Scroll-Linked Animations
+
+### Overview
+The Index tab features smooth, scroll-linked animations that create a dynamic, collapsing header experience. As users scroll through their learning path, UI elements smoothly transition to create a clean, compact view.
+
+### Animation Behaviors
+
+**As User Scrolls Up:**
+
+1. **Controls Section (Difficulty Dropdown & Daily Task)**
+   - Scales down to 60% of original size
+   - Translates up by 70px
+   - Moves to the right by 25% of screen width
+   - Maintains interactivity
+
+2. **Progress Indicator**
+   - Scales down to 50% of original size
+   - Translates up by 120px
+   - Moves to the right by 15% of screen width
+   - Fades from 100% to 30% opacity
+
+3. **Header**
+   - Bottom padding reduces from 20px to 10px
+   - Creates more compact appearance
+
+4. **Compact Header Info**
+   - Appears when scroll reaches 70% of threshold
+   - Fades in smoothly
+   - Shows key stats: Difficulty, Completion %, Mastered count
+   - Positioned in bottom-right of header
+
+### Implementation Details
+
+**Scroll Tracking:**
+```typescript
+const scrollY = useRef(new Animated.Value(0)).current;
+const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
+
+<ScrollView
+  onScroll={Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    { useNativeDriver: false }
+  )}
+  scrollEventThrottle={16}
+>
+```
+
+**Interpolation Examples:**
+```typescript
+// Controls scale animation
+const controlsScale = scrollY.interpolate({
+  inputRange: [0, SCROLL_THRESHOLD],
+  outputRange: [1, 0.6],
+  extrapolate: 'clamp',
+});
+
+// Progress opacity animation
+const progressOpacity = scrollY.interpolate({
+  inputRange: [0, SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
+  outputRange: [1, 0.6, 0.3],
+  extrapolate: 'clamp',
+});
+```
+
+### Performance Considerations
+
+- **Scroll throttle**: Set to 16ms for smooth 60fps animations
+- **Native driver**: Used where possible for GPU acceleration
+- **Extrapolate clamp**: Prevents animations from going beyond defined ranges
+- **Transform-based animations**: More performant than layout-based changes
+
+### User Experience Benefits
+
+1. **Space Efficiency**: More screen real estate for learning path when scrolled
+2. **Context Awareness**: Compact header info keeps users informed while scrolling
+3. **Visual Continuity**: Smooth transitions maintain orientation
+4. **Professional Polish**: Fluid animations create premium feel
+5. **Accessibility**: Key controls remain visible and accessible
+
+### Animation Parameters
+
+| Element | Scale | TranslateY | TranslateX | Opacity |
+|---------|-------|------------|------------|---------|
+| Controls | 1.0 → 0.6 | 0 → -70px | 0 → +25% | 1.0 |
+| Progress | 1.0 → 0.5 | 0 → -120px | 0 → +15% | 1.0 → 0.3 |
+| Header | - | - | - | - (padding: 20 → 10) |
+| Compact Info | - | +20 → 0 | - | 0 → 1.0 |
+
+### Customization
+
+Adjust `SCROLL_THRESHOLD` constant to control animation speed:
+- **Lower value (50-75)**: Faster collapse, more aggressive
+- **Higher value (150-200)**: Slower collapse, more gradual
+- **Current value (100)**: Balanced for optimal UX
+
 ## Conclusion
 
-These gamification enhancements transform the Index tab into an engaging, motivational learning environment. The combination of vibrant colors, smooth animations, and educational theming creates a sense of adventure and achievement that encourages users to continue their daily word practice.
+These gamification enhancements transform the Index tab into an engaging, motivational learning environment. The combination of vibrant colors, smooth animations, scroll-linked interactions, and educational theming creates a sense of adventure and achievement that encourages users to continue their daily word practice.
 
-The implementation maintains excellent performance, respects accessibility guidelines, and provides a foundation for future enhancements while keeping the main learning interface clear and functional.
+The implementation maintains excellent performance, respects accessibility guidelines, and provides a foundation for future enhancements while keeping the main learning interface clear and functional. The scroll animations add an extra layer of polish and professionalism to the user experience.
