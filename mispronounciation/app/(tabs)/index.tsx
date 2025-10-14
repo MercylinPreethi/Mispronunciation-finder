@@ -22,6 +22,7 @@ import * as Haptics from 'expo-haptics';
 import RNFS from 'react-native-fs';
 import axios from 'axios';
 import ProgressCircle from '../../components/ProgressCircle';
+import LearningPathBackground from '../../components/LearningPathBackground';
 import AudioRecorderPlayer, {
   AVEncoderAudioQualityIOSType,
   AVEncodingOption,
@@ -560,6 +561,11 @@ export default function HomeScreen() {
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
   const rotateAnims = useRef<Record<string, Animated.Value>>({}).current;
   const scrollViewRef = useRef<ScrollView>(null);
+  
+  // Scroll animation tracking
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
+  const [floatingPanelExpanded, setFloatingPanelExpanded] = useState(false);
 
   const initializeOnceRef = useRef(false);
   const loadingRef = useRef(false);
@@ -1675,24 +1681,18 @@ export default function HomeScreen() {
           // Enhanced glow colors based on state
           const getGlowColor = () => {
             if (isCompleted) {
-              return [
-                `rgba(${DIFFICULTY_COLORS[selectedDifficulty].glow.match(/\d+/g)?.slice(0, 3).join(',')}, 0)`,
-                DIFFICULTY_COLORS[selectedDifficulty].glow
-              ];
+              return DIFFICULTY_COLORS[selectedDifficulty].glow;
             }
             if (isCurrent) {
-              return ['rgba(99, 102, 241, 0)', 'rgba(99, 102, 241, 0.6)'];
+              return 'rgba(99, 102, 241, 0.6)';
             }
             if (hasAttempted && currentAccuracy >= 0.5) {
-              return ['rgba(255, 200, 0, 0)', 'rgba(255, 200, 0, 0.5)'];
+              return 'rgba(255, 200, 0, 0.5)';
             }
-            return ['rgba(99, 102, 241, 0)', 'rgba(99, 102, 241, 0.3)'];
+            return 'rgba(99, 102, 241, 0.3)';
           };
 
-          const glowColor = glowAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: getGlowColor()
-          });
+          const glowColor = getGlowColor();
 
           const scale = nodeAnim.interpolate({
             inputRange: [0, 1],
@@ -2084,13 +2084,77 @@ export default function HomeScreen() {
   });
 
   // ============================================================================
+  // SCROLL ANIMATIONS
+  // ============================================================================
+
+  // Interpolate scroll position for smooth animations
+  // Controls and progress hide when scrolled, moved to floating panel
+  const controlsOpacity = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD * 0.5],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const progressOpacity = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD * 0.5],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const controlsTranslateY = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD * 0.5],
+    outputRange: [0, -30],
+    extrapolate: 'clamp',
+  });
+
+  const progressTranslateY = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD * 0.5],
+    outputRange: [0, -30],
+    extrapolate: 'clamp',
+  });
+
+  // Floating panel appears when scrolled
+  const floatingPanelOpacity = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const floatingPanelTranslateY = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
+    outputRange: [20, 0],
+    extrapolate: 'clamp',
+  });
+
+  // Header shrinks slightly
+  const headerPaddingBottom = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [20, 10],
+    extrapolate: 'clamp',
+  });
+
+  // Path container padding reduces to 0 when scrolled - extends to header
+  const pathContainerPaddingTop = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [20, 0], // Remove padding when scrolled
+    extrapolate: 'clamp',
+  });
+
+  // ============================================================================
   // MAIN RENDER
   // ============================================================================
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+      {/* Header - Animated for scroll collapse */}
+      <Animated.View 
+        style={[
+          styles.header,
+          {
+            paddingBottom: headerPaddingBottom,
+          },
+        ]}
+      >
         <View style={styles.headerTop}>
           <Text style={styles.userName}>Hi, {userName}! </Text>
         </View>
@@ -2137,10 +2201,32 @@ export default function HomeScreen() {
             </LinearGradient>
           </Animated.View>
         </View>
-      </View>
+      </Animated.View>
 
-      {/* Controls */}
-      <View style={styles.controls}>
+      {/* Content Area with Background */}
+      <View style={styles.contentWrapper}>
+        {/* Learning Path Background - covers entire area below header */}
+        <LearningPathBackground />
+        
+        {/* Minimum top spacer - prevents path from going behind header */}
+        <View style={styles.minTopBoundary} />
+
+        {/* Controls - Fades out when scrolling */}
+        <Animated.View 
+          style={[
+            styles.controls,
+            {
+              opacity: controlsOpacity,
+              transform: [{ translateY: controlsTranslateY }],
+              height: controlsOpacity.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 70], // Collapses height when faded
+              }),
+              overflow: 'hidden', // Hide content when collapsed
+            },
+          ]}
+          pointerEvents="box-none"
+        >
         <View style={styles.dropdownContainer}>
           <TouchableOpacity
             style={styles.dropdownButton}
@@ -2208,11 +2294,20 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
-      </View>
+      </Animated.View>
 
-      {/* Progress Indicator */}
+      {/* Progress Indicator - Fades out when scrolling */}
       {allWords.length > 0 && (
-        <View style={styles.progressContainer}>
+        <Animated.View 
+          style={[
+            styles.progressContainer,
+            {
+              opacity: progressOpacity,
+              transform: [{ translateY: progressTranslateY }],
+            },
+          ]}
+          pointerEvents="box-none"
+        >
           <View style={styles.progressHeader}>
             <View style={styles.progressInfo}>
               <Icon name="track-changes" size={20} color={COLORS.primary} />
@@ -2246,8 +2341,127 @@ export default function HomeScreen() {
               return prog && prog.bestScore >= 0.5 && prog.bestScore < 0.8; // Completed but not mastered
             }).length} completed · Word {currentWordIndex + 1} active
           </Text>
-        </View>
+        </Animated.View>
       )}
+
+      {/* Floating Control Panel - appears when scrolled */}
+      <Animated.View 
+        style={[
+          styles.floatingPanel,
+          {
+            opacity: floatingPanelOpacity,
+            transform: [{ translateY: floatingPanelTranslateY }],
+          },
+        ]}
+        pointerEvents="box-none"
+      >
+        <TouchableOpacity
+          style={styles.floatingPanelToggle}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setFloatingPanelExpanded(!floatingPanelExpanded);
+          }}
+          activeOpacity={0.9}
+        >
+          <LinearGradient
+            colors={[COLORS.primary, COLORS.secondary] as const}
+            style={styles.floatingPanelToggleGradient}
+          >
+            <Icon name={floatingPanelExpanded ? "expand-less" : "expand-more"} size={20} color={COLORS.white} />
+            <View style={styles.floatingPanelCompact}>
+              <Icon name="tune" size={16} color={COLORS.white} />
+              <Text style={styles.floatingPanelText}>
+                {selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1)}
+              </Text>
+              <View style={styles.floatingDot} />
+              <Text style={styles.floatingPanelText}>{Math.round(completionPercentage)}%</Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* Expanded Panel Content */}
+        {floatingPanelExpanded && (
+          <View style={styles.floatingPanelExpanded}>
+            {/* Difficulty Selector */}
+            <View style={styles.floatingSection}>
+              <Text style={styles.floatingSectionTitle}>Difficulty Level</Text>
+              <View style={styles.floatingDifficultyButtons}>
+                {(['easy', 'intermediate', 'hard'] as DifficultyLevel[]).map((diff) => (
+                  <TouchableOpacity
+                    key={diff}
+                    style={[
+                      styles.floatingDiffButton,
+                      selectedDifficulty === diff && styles.floatingDiffButtonActive,
+                      { backgroundColor: selectedDifficulty === diff ? DIFFICULTY_COLORS[diff].primary : COLORS.white }
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      handleDifficultyChange(diff);
+                    }}
+                  >
+                    <Text style={[
+                      styles.floatingDiffButtonText,
+                      selectedDifficulty === diff && styles.floatingDiffButtonTextActive
+                    ]}>
+                      {diff.charAt(0).toUpperCase() + diff.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Progress Summary */}
+            <View style={styles.floatingSection}>
+              <Text style={styles.floatingSectionTitle}>Progress</Text>
+              <View style={styles.floatingProgressRow}>
+                <View style={styles.floatingProgressItem}>
+                  <Icon name="check-circle" size={18} color={COLORS.success} />
+                  <Text style={styles.floatingProgressValue}>{Math.round(completionPercentage)}%</Text>
+                  <Text style={styles.floatingProgressLabel}>Complete</Text>
+                </View>
+                <View style={styles.floatingProgressItem}>
+                  <Icon name="emoji-events" size={18} color={COLORS.gold} />
+                  <Text style={styles.floatingProgressValue}>
+                    {allWords.filter(w => {
+                      const prog = wordProgress[w.id];
+                      return prog && prog.bestScore >= 0.8;
+                    }).length}
+                  </Text>
+                  <Text style={styles.floatingProgressLabel}>Mastered</Text>
+                </View>
+                <View style={styles.floatingProgressItem}>
+                  <Icon name="trending-up" size={18} color={COLORS.primary} />
+                  <Text style={styles.floatingProgressValue}>{currentWordIndex + 1}</Text>
+                  <Text style={styles.floatingProgressLabel}>Active</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Daily Task Button */}
+            <TouchableOpacity
+              style={styles.floatingDailyTask}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowDailyTask(true);
+                setFloatingPanelExpanded(false);
+              }}
+            >
+              <LinearGradient
+                colors={[COLORS.gold, '#D97706'] as const}
+                style={styles.floatingDailyTaskGradient}
+              >
+                <Icon name="wb-sunny" size={20} color={COLORS.white} />
+                <Text style={styles.floatingDailyTaskText}>Today's Challenge</Text>
+                {!todayProgress?.completed && (
+                  <View style={styles.floatingDailyTaskBadge}>
+                    <Text style={styles.floatingDailyTaskBadgeText}>!</Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
+      </Animated.View>
 
       {/* Word Path ScrollView */}
       {isLoadingProgress ? (
@@ -2262,13 +2476,25 @@ export default function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          )}
         >
-          <View style={styles.pathContainer}>
+          <Animated.View 
+            style={[
+              styles.pathContainer,
+              {
+                paddingTop: pathContainerPaddingTop, // Reduces to 0 when scrolled
+              }
+            ]}
+          >
             {renderWordPath()}
-          </View>
+          </Animated.View>
           <View style={{ height: 100 }} />
         </ScrollView>
       )}
+      </View>
 
       {/* DAILY TASK MODAL */}
       {todayWord && (
@@ -2829,11 +3055,162 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
+    zIndex: 10,
     shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
     shadowRadius: 24,
     elevation: 8,
+  },
+  floatingPanel: {
+    position: 'absolute',
+    top: 20,
+    right: 16,
+    zIndex: 500,
+    maxWidth: 280,
+  },
+  floatingPanelToggle: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  floatingPanelToggleGradient: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  floatingPanelCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  floatingPanelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  floatingDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.white,
+    opacity: 0.6,
+  },
+  floatingPanelExpanded: {
+    marginTop: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  floatingSection: {
+    marginBottom: 16,
+  },
+  floatingSectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.gray[600],
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  floatingDifficultyButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  floatingDiffButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.gray[200],
+  },
+  floatingDiffButtonActive: {
+    borderColor: 'transparent',
+  },
+  floatingDiffButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.gray[700],
+  },
+  floatingDiffButtonTextActive: {
+    color: COLORS.white,
+  },
+  floatingProgressRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  floatingProgressItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  floatingProgressValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+  },
+  floatingProgressLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.gray[500],
+  },
+  floatingDailyTask: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  floatingDailyTaskGradient: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  floatingDailyTaskText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.white,
+  },
+  floatingDailyTaskBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  floatingDailyTaskBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.white,
+  },
+  contentWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
+  minTopBoundary: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 0,
+    zIndex: 9999,
+    pointerEvents: 'none',
   },
   headerTop: {
     marginBottom: 16,
@@ -2892,6 +3269,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    zIndex: 100,
   },
   dropdownContainer: {
     position: 'relative',
@@ -3002,6 +3380,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 20,
     backgroundColor: COLORS.white,
+    zIndex: 50,
     borderRadius: 24,
     padding: 20,
     shadowColor: '#6366F1',
@@ -3072,14 +3451,15 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    zIndex: 10,
   },
   scrollContent: {
-    paddingTop: 20,
+    paddingTop: 0,
   },
   pathContainer: {
     position: 'relative',
     minHeight: height * 2.5,
-    paddingTop: 40,
+    // paddingTop: animated (see pathContainerPaddingTop)
     paddingBottom: 100,
   },
   connectingPath: {
