@@ -3445,7 +3445,7 @@ const styles = StyleSheet.create({
   pathContainer: {
     position: 'relative',
     minHeight: height * 2.5,
-    paddingTop: 40,
+    paddingTop: 20, // Reduced padding - path starts closer to top
     paddingBottom: 100,
     overflow: 'visible', // Ensure paths above aren't clipped
   },
