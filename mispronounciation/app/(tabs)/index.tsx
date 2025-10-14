@@ -2133,6 +2133,13 @@ export default function HomeScreen() {
     extrapolate: 'clamp',
   });
 
+  // Path container padding reduces as user scrolls
+  const pathContainerPaddingTop = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [40, 0],
+    extrapolate: 'clamp',
+  });
+
   // ============================================================================
   // MAIN RENDER
   // ============================================================================
@@ -2466,9 +2473,16 @@ export default function HomeScreen() {
             { useNativeDriver: false }
           )}
         >
-          <View style={styles.pathContainer}>
+          <Animated.View 
+            style={[
+              styles.pathContainer,
+              {
+                paddingTop: pathContainerPaddingTop,
+              }
+            ]}
+          >
             {renderWordPath()}
-          </View>
+          </Animated.View>
           <View style={{ height: 100 }} />
         </ScrollView>
       )}
@@ -3428,7 +3442,7 @@ const styles = StyleSheet.create({
   pathContainer: {
     position: 'relative',
     minHeight: height * 2.5,
-    paddingTop: 40,
+    // paddingTop: animated, see pathContainerPaddingTop interpolation
     paddingBottom: 100,
   },
   connectingPath: {
