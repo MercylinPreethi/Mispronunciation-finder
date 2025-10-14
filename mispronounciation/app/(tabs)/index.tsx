@@ -1438,11 +1438,14 @@ export default function HomeScreen() {
           onRequestClose={() => setShowDailyTask(false)}
         >
           <View style={styles.modalOverlay}>
-            <ScrollView 
-              contentContainerStyle={styles.dailyTaskScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.dailyTaskModal}>
+            <View style={styles.dailyTaskModalContainer}>
+              <ScrollView 
+                style={styles.dailyTaskScrollView}
+                contentContainerStyle={styles.dailyTaskScrollContent}
+                showsVerticalScrollIndicator={false}
+                bounces={true}
+              >
+                <View style={styles.dailyTaskModal}>
                 <LinearGradient
                   colors={[COLORS.gold, '#D97706'] as const}
                   style={styles.dailyTaskHeader}
@@ -1590,7 +1593,8 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-            </ScrollView>
+              </ScrollView>
+            </View>
           </View>
         </Modal>
       )}
@@ -1613,7 +1617,13 @@ export default function HomeScreen() {
                 }
               ]}
             >
-              <View style={styles.modalCard}>
+              <ScrollView
+                style={styles.practiceModalScroll}
+                contentContainerStyle={styles.practiceModalScrollContent}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+              >
+                <View style={styles.modalCard}>
                 {!showResult ? (
                   <>
                     <View style={styles.modalHeader}>
@@ -1706,12 +1716,7 @@ export default function HomeScreen() {
                       </TouchableOpacity>
                     </View>
 
-                    <ScrollView 
-                      style={styles.resultScrollView}
-                      contentContainerStyle={styles.resultScrollContent}
-                      showsVerticalScrollIndicator={true}
-                    >
-                      <View style={styles.resultContent}>
+                    <View style={styles.resultContent}>
                         <LinearGradient
                           colors={result && result.accuracy >= 0.8 
                             ? [COLORS.success, '#059669'] as const
@@ -1762,12 +1767,7 @@ export default function HomeScreen() {
 
                         <View style={styles.resultFeedback}>
                           <Text style={styles.resultFeedbackTitle}>Feedback</Text>
-                          <ScrollView 
-                            style={styles.feedbackTextScroll}
-                            nestedScrollEnabled={true}
-                          >
-                            <Text style={styles.resultFeedbackText}>{result?.feedback}</Text>
-                          </ScrollView>
+                          <Text style={styles.resultFeedbackText}>{result?.feedback}</Text>
                         </View>
 
                         <View style={styles.resultActions}>
@@ -1792,10 +1792,10 @@ export default function HomeScreen() {
                           </TouchableOpacity>
                         </View>
                       </View>
-                    </ScrollView>
                   </>
                 )}
               </View>
+              </ScrollView>
             </Animated.View>
           </View>
         </Modal>
@@ -2219,10 +2219,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  dailyTaskModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  dailyTaskScrollView: {
+    flex: 1,
+    width: '100%',
+  },
   dailyTaskScrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
   dailyTaskModal: {
     width: '100%',
@@ -2502,10 +2514,17 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontStyle: 'italic',
   },
-  modalContainer: {
+  practiceModalScroll: {
     width: '100%',
     maxWidth: 440,
     maxHeight: height * 0.9,
+  },
+  practiceModalScrollContent: {
+    flexGrow: 1,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 440,
   },
   modalCard: {
     backgroundColor: COLORS.white,
@@ -2662,15 +2681,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.gray[500],
   },
-  resultScrollView: {
-    flex: 1,
-  },
-  resultScrollContent: {
-    flexGrow: 1,
-  },
   resultContent: {
     alignItems: 'center',
-    paddingBottom: 20,
   },
   resultIconCircle: {
     width: 120,
@@ -2752,7 +2764,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     borderWidth: 2,
     borderColor: COLORS.gray[200],
-    maxHeight: 200,
   },
   resultFeedbackTitle: {
     fontSize: 14,
@@ -2761,9 +2772,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  feedbackTextScroll: {
-    maxHeight: 120,
   },
   resultFeedbackText: {
     fontSize: 15,
