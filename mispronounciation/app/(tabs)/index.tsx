@@ -2134,9 +2134,10 @@ export default function HomeScreen() {
   });
 
   // Path container margin moves up as user scrolls to extend toward header
+  // Stops just below the header badges (Words, Streak, Accuracy)
   const pathContainerMarginTop = scrollY.interpolate({
     inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [0, -180], // Pull content up by 180px when scrolled
+    outputRange: [0, -100], // Pull content up to just below badges
     extrapolate: 'clamp',
   });
 
