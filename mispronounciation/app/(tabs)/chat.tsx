@@ -555,35 +555,40 @@ export default function CoachScreen() {
     <View style={styles.container}>
       {/* Animated Background */}
       <LinearGradient
-        colors={['#667EEA', '#764BA2', '#F093FB']}
+        colors={['#6366F1', '#8B5CF6', '#EC4899']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.backgroundGradient}
       />
 
       {/* Header */}
-      <BlurView intensity={95} tint="light" style={styles.headerBlur}>
-        <View style={styles.header}>
+      <View style={styles.header}>
+        <LinearGradient
+          colors={['#6366F1', '#8B5CF6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.headerGradient}
+        >
           <View style={styles.headerContent}>
             <View style={styles.coachAvatarContainer}>
               <LinearGradient
-                colors={['#667EEA', '#764BA2']}
+                colors={['#FFFFFF', '#F3F4F6']}
                 style={styles.coachAvatar}
               >
-                <Icon name="psychology" size={28} color="#FFFFFF" />
+                <Icon name="psychology" size={28} color="#6366F1" />
               </LinearGradient>
               <View style={styles.onlineIndicator} />
             </View>
             <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle}>AI Coach</Text>
+              <Text style={styles.headerTitle}>AI Pronunciation Coach</Text>
               <View style={styles.statusContainer}>
                 <View style={styles.pulsingDot} />
-                <Text style={styles.statusText}>Active now</Text>
+                <Text style={styles.statusText}>Active • Ready to help</Text>
               </View>
             </View>
           </View>
-        </View>
-      </BlurView>
+        </LinearGradient>
+      </View>
 
       {/* Chat Messages */}
       <ScrollView
@@ -625,7 +630,9 @@ export default function CoachScreen() {
                 <View style={styles.aiMessageContainer}>
                   <View style={styles.aiAvatarSmall}>
                     <LinearGradient
-                      colors={['#667EEA', '#764BA2']}
+                      colors={['#6366F1', '#8B5CF6']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
                       style={styles.aiAvatarSmallGradient}
                     >
                       <Icon name="psychology" size={16} color="#FFFFFF" />
@@ -644,7 +651,7 @@ export default function CoachScreen() {
                 <View style={styles.userMessageContainer}>
                   <View style={styles.userMessageBubbleContainer}>
                     <LinearGradient
-                      colors={['#667EEA', '#764BA2']}
+                      colors={['#6366F1', '#8B5CF6']}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
                       style={styles.userMessageBubble}
@@ -1037,7 +1044,7 @@ export default function CoachScreen() {
                     disabled={isProcessing}
                   >
                     <LinearGradient
-                      colors={isProcessing ? ['#9CA3AF', '#6B7280'] : ['#667EEA', '#764BA2']}
+                      colors={isProcessing ? ['#9CA3AF', '#6B7280'] : ['#6366F1', '#8B5CF6']}
                       style={styles.micButton}
                     >
                       {isProcessing ? (
@@ -1078,18 +1085,19 @@ const styles = StyleSheet.create({
     height: height * 0.4,
     opacity: 0.15,
   },
-  headerBlur: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-    paddingBottom: 12,
-    borderBottomWidth: 0,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
   header: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 16,
     paddingHorizontal: 20,
+  },
+  headerGradient: {
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   headerContent: {
     flexDirection: 'row',
@@ -1099,27 +1107,29 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   coachAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   onlineIndicator: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: '#10B981',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    borderColor: '#6366F1',
   },
   headerTextContainer: {
     marginLeft: 14,
@@ -1127,9 +1137,10 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '800',
-    color: '#1F2937',
+    fontWeight: '900',
+    color: '#FFFFFF',
     letterSpacing: -0.5,
+    marginBottom: 2,
   },
   statusContainer: {
     flexDirection: 'row',
@@ -1137,15 +1148,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   pulsingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: '#10B981',
     marginRight: 6,
   },
   statusText: {
-    fontSize: 13,
-    color: '#6B7280',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '600',
   },
   messagesContainer: {
@@ -1173,7 +1184,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -1206,7 +1217,7 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -1219,7 +1230,7 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 42,
-    backgroundColor: '#667EEA',
+    backgroundColor: '#6366F1',
     opacity: 0.15,
   },
   micTextContainer: {
@@ -1250,13 +1261,13 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderTopLeftRadius: 6,
     padding: 18,
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 16,
     elevation: 6,
     borderWidth: 1.5,
-    borderColor: 'rgba(102, 126, 234, 0.1)',
+    borderColor: 'rgba(99, 102, 241, 0.1)',
   },
   aiMessageText: {
     fontSize: 16,
@@ -1373,9 +1384,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     borderLeftWidth: 5,
-    borderLeftColor: '#667EEA',
+    borderLeftColor: '#6366F1',
     borderWidth: 1.5,
-    borderColor: 'rgba(102, 126, 234, 0.2)',
+    borderColor: 'rgba(99, 102, 241, 0.2)',
   },
   tipsHeader: {
     flexDirection: 'row',
@@ -1385,7 +1396,7 @@ const styles = StyleSheet.create({
   tipsTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#667EEA',
+    color: '#6366F1',
     marginLeft: 6,
     letterSpacing: -0.2,
   },
@@ -1398,7 +1409,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#667EEA',
+    backgroundColor: '#6366F1',
     marginTop: 6,
     marginRight: 10,
   },
@@ -1425,7 +1436,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderTopRightRadius: 6,
     padding: 18,
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
@@ -1512,7 +1523,7 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: '#667EEA',
+    backgroundColor: '#6366F1',
     top: '30%',
   },
   recordingInfo: {
@@ -1585,7 +1596,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.5)',
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 24,
@@ -1766,21 +1777,25 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
   },
-  practiceSectionHeaderGradient: {
-    paddingTop: 12,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+  dragHandleContainer: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
   },
   dragHandle: {
     width: 40,
     height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    backgroundColor: 'rgba(107, 114, 128, 0.3)',
     borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 16,
-    marginTop: 8,
+  },
+  practiceSectionHeaderGradient: {
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   practiceSectionHeaderRow: {
     flexDirection: 'row',
@@ -1794,20 +1809,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   practiceSectionTitle: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '900',
     color: '#FFFFFF',
+    marginBottom: 2,
     letterSpacing: -0.5,
   },
+  practiceSectionSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+  },
   closePracticeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   practiceWordsContainer: {
     padding: 16,
