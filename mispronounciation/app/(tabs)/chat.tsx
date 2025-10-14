@@ -39,7 +39,6 @@ interface Message {
   transcription?: string;
   feedback?: PronunciationFeedback;
   isVoiceMessage?: boolean;
-  showFeedback?: boolean;
 }
 
 export default function CoachScreen() {
@@ -259,7 +258,6 @@ export default function CoachScreen() {
           isVoiceMessage: true,
           transcription: transcription,
           feedback: pronunciation_feedback,
-          showFeedback: false,
         };
         
         setMessages(prev => [...prev, userMessage]);
@@ -321,12 +319,7 @@ export default function CoachScreen() {
     if (message && message.feedback) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      // Update message to show feedback
-      setMessages(prev => prev.map(m => 
-        m.id === messageId ? { ...m, showFeedback: true } : m
-      ));
-      
-      // Show feedback overlay
+      // Show feedback overlay for this specific message
       setLatestFeedback(message.feedback);
       setShowFeedbackOverlay(true);
       
@@ -337,7 +330,7 @@ export default function CoachScreen() {
         useNativeDriver: true,
       }).start();
       
-      // Auto-hide overlay after 6 seconds
+      // Auto-hide overlay after 8 seconds (longer for review)
       setTimeout(() => {
         Animated.timing(feedbackOverlayAnim, {
           toValue: 0,
@@ -347,7 +340,7 @@ export default function CoachScreen() {
           setShowFeedbackOverlay(false);
           setLatestFeedback(null);
         });
-      }, 6000);
+      }, 8000);
     }
   };
 
@@ -458,8 +451,8 @@ export default function CoachScreen() {
                       )}
                     </LinearGradient>
                     
-                    {/* Analyze Button Overlay */}
-                    {message.isVoiceMessage && message.feedback && !message.showFeedback && (
+                    {/* Analyze Button Overlay - Always visible for voice messages */}
+                    {message.isVoiceMessage && message.feedback && (
                       <TouchableOpacity
                         style={styles.analyzeButton}
                         onPress={() => handleAnalyzeClick(message.id)}
