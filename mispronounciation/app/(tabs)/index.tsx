@@ -234,8 +234,31 @@ export default function HomeScreen() {
         const words = data.words || [];
         
         setAllWords(words);
-        setCurrentWord(data.next_word);
-        setCurrentWordIndex(data.next_index);
+        
+        // Get progress data from the settled promise
+        const progressData = progressResponse.status === 'fulfilled' ? progressResponse.value : {};
+        
+        // Calculate the actual current word index based on 50% unlock threshold
+        let actualCurrentIndex = 0;
+        
+        for (let i = 0; i < words.length; i++) {
+          const word = words[i];
+          const wordProg = progressData[word.id];
+          
+          if (!wordProg || (wordProg.bestScore || 0) < 0.5) {
+            // This is the first word that hasn't reached 50%, so it's current
+            actualCurrentIndex = i;
+            break;
+          }
+          
+          // If we've gone through all words, stay at the last one
+          if (i === words.length - 1) {
+            actualCurrentIndex = i;
+          }
+        }
+        
+        setCurrentWord(words[actualCurrentIndex] || data.next_word);
+        setCurrentWordIndex(actualCurrentIndex);
         setCompletedCount(data.completed_count);
         setCompletionPercentage(data.completion_percentage);
         
@@ -295,8 +318,10 @@ export default function HomeScreen() {
       }
       
       setWordProgress(allProgress);
+      return allProgress;
     } catch (error) {
       console.error('Error loading practice progress:', error);
+      return {};
     }
   };
 
@@ -310,6 +335,7 @@ export default function HomeScreen() {
 
       const timestamp = new Date().toISOString();
       const isCompleted = accuracy >= 0.8;
+      const isUnlocked = accuracy >= 0.5; // 50% threshold to unlock next word
       const xpEarned = Math.round(accuracy * 10);
       const wordId = selectedWord.id;
       const difficulty = selectedWord.difficulty;
@@ -341,8 +367,8 @@ export default function HomeScreen() {
       const statsRef = ref(database, `users/${user.uid}/stats`);
       set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords }).catch(console.error);
 
-      // If completed, advance to next word immediately
-      if (isCompleted) {
+      // If unlocked (50%+), advance to next word if this is current word
+      if (isUnlocked && currentWordIndex === allWords.findIndex(w => w.id === wordId)) {
         // Show immediate celebration
         const nodeAnim = wordNodeAnims[wordId];
         if (nodeAnim) {
@@ -365,12 +391,16 @@ export default function HomeScreen() {
         setTimeout(async () => {
           await loadAllDataFast(difficulty);
           
+          const message = isCompleted 
+            ? `Great job! You've mastered "${selectedWord.word}". Moving to the next word...`
+            : `Good progress! You scored ${Math.round(accuracy * 100)}% on "${selectedWord.word}". Next word unlocked!`;
+          
           Alert.alert(
-            '🎉 Word Completed!',
-            `Great job! You've mastered "${selectedWord.word}". Moving to the next word...`,
+            isCompleted ? '🎉 Word Completed!' : '✨ Next Word Unlocked!',
+            message,
             [{ text: 'Continue', onPress: () => closePracticeModal() }]
           );
-        }, 1000); // Reduced delay
+        }, 1000);
       }
 
     } catch (error) {
@@ -1004,9 +1034,17 @@ export default function HomeScreen() {
           const { word, x, y } = pos;
           const progress = wordProgress[word.id];
           const isCompleted = progress?.completed || false;
+          const currentAccuracy = progress?.bestScore || 0;
+          const hasAttempted = progress?.attempts > 0;
+          
+          // Check if previous word has at least 50% accuracy to unlock
+          const previousWord = index > 0 ? allWords[index - 1] : null;
+          const previousProgress = previousWord ? wordProgress[previousWord.id] : null;
+          const isPreviousUnlocked = !previousWord || (previousProgress?.bestScore || 0) >= 0.5;
+          
           const isCurrent = currentWordIndex === index;
-          const isPastWord = index < currentWordIndex;
-          const isLocked = index > currentWordIndex;
+          const isPastWord = index < currentWordIndex || (hasAttempted && currentAccuracy >= 0.5);
+          const isLocked = index > 0 && !isPreviousUnlocked;
           
           const nodeAnim = wordNodeAnims[word.id] || new Animated.Value(1);
           const glowAnim = glowAnims[word.id] || new Animated.Value(0);
@@ -1062,7 +1100,11 @@ export default function HomeScreen() {
                 >
                   <LinearGradient
                     colors={
-                      isPastWord
+                      currentAccuracy >= 0.8
+                        ? [DIFFICULTY_COLORS[selectedDifficulty].primary, DIFFICULTY_COLORS[selectedDifficulty].primary + 'CC'] as const
+                        : currentAccuracy >= 0.5
+                        ? [COLORS.gold, '#D97706'] as const
+                        : isPastWord
                         ? [COLORS.success, '#059669'] as const
                         : [COLORS.gray[300], COLORS.gray[200]] as const
                     }
@@ -1121,6 +1163,8 @@ export default function HomeScreen() {
                     colors={
                       isCompleted 
                         ? DIFFICULTY_COLORS[selectedDifficulty].gradient
+                        : hasAttempted && currentAccuracy > 0
+                        ? [COLORS.primary + '30', COLORS.secondary + '30'] as const
                         : isCurrent 
                         ? [COLORS.primary, COLORS.secondary] as const
                         : isLocked
@@ -1129,15 +1173,15 @@ export default function HomeScreen() {
                     }
                     style={styles.circleGradient}
                   >
-                    {isCompleted ? (
+                    {hasAttempted && currentAccuracy > 0 ? (
                       <View style={styles.progressCircleContainer}>
                         <ProgressCircle
                           size={70}
-                          accuracy={progress.bestScore}
+                          accuracy={currentAccuracy}
                           strokeWidth={8}
                           showPercentage={true}
                         />
-                        {progress.bestScore >= 0.95 && (
+                        {currentAccuracy >= 0.95 && (
                           <View style={styles.perfectStar}>
                             <Icon name="stars" size={20} color={COLORS.gold} />
                           </View>
@@ -1157,13 +1201,23 @@ export default function HomeScreen() {
                   </LinearGradient>
                   
                   {/* Attempt Count Badge */}
-                  {progress?.attempts > 0 && !isCompleted && progress?.bestScore > 0 && (
+                  {progress?.attempts > 0 && (
                     <Animated.View style={[styles.scoreLabel, { opacity: 1 }]}>
                       <LinearGradient
-                        colors={['#FFFFFF', '#F8FAFC'] as const}
+                        colors={
+                          currentAccuracy >= 0.8 
+                            ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                            : currentAccuracy >= 0.5
+                            ? ['#FFFBEB', '#FEF3C7'] as const
+                            : ['#FEE2E2', '#FECACA'] as const
+                        }
                         style={styles.scoreLabelGradient}
                       >
-                        <Icon name="stars" size={10} color={COLORS.gold} />
+                        <Icon 
+                          name={currentAccuracy >= 0.8 ? "check-circle" : currentAccuracy >= 0.5 ? "stars" : "refresh"} 
+                          size={10} 
+                          color={currentAccuracy >= 0.8 ? DIFFICULTY_COLORS[selectedDifficulty].primary : currentAccuracy >= 0.5 ? COLORS.gold : COLORS.error} 
+                        />
                         <Text style={styles.scoreLabelText}>
                           {progress.attempts} {progress.attempts === 1 ? 'try' : 'tries'}
                         </Text>
@@ -1184,6 +1238,8 @@ export default function HomeScreen() {
                       colors={
                         isCompleted
                           ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                          : hasAttempted && currentAccuracy >= 0.5
+                          ? ['#FFFBEB', '#FEF3C7'] as const
                           : isCurrent
                           ? [COLORS.primary + '20', COLORS.primary + '10'] as const
                           : [COLORS.white, COLORS.gray[50]] as const
@@ -1195,14 +1251,21 @@ export default function HomeScreen() {
                         { 
                           color: isCompleted 
                             ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                            : hasAttempted && currentAccuracy >= 0.5
+                            ? COLORS.gold
                             : isCurrent
                             ? COLORS.primary
                             : COLORS.gray[800] 
                         }
                       ]}>{word.word}</Text>
-                      {isCurrent && (
+                      {isCurrent && !hasAttempted && (
                         <View style={styles.currentBadge}>
                           <Text style={styles.currentBadgeText}>CURRENT</Text>
+                        </View>
+                      )}
+                      {hasAttempted && currentAccuracy >= 0.5 && currentAccuracy < 0.8 && (
+                        <View style={[styles.currentBadge, { backgroundColor: COLORS.gold }]}>
+                          <Text style={styles.currentBadgeText}>UNLOCKED</Text>
                         </View>
                       )}
                     </LinearGradient>
@@ -1403,7 +1466,7 @@ export default function HomeScreen() {
             </Animated.View>
           </View>
           <Text style={styles.progressText}>
-            {completedCount} / {allWords.length} words completed · Word {currentWordIndex + 1} active
+            {completedCount} completed · {Object.values(wordProgress).filter(p => p.bestScore >= 0.5 && p.bestScore < 0.8).length} unlocked · Word {currentWordIndex + 1} active
           </Text>
         </View>
       )}
