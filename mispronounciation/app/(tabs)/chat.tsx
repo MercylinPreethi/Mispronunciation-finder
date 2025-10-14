@@ -17,9 +17,17 @@ import { BlurView } from 'expo-blur';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import axios from 'axios';
+import AudioRecorderPlayer, {
+  AudioEncoderAndroidType,
+  AudioSourceAndroidType,
+  AVEncoderAudioQualityIOSType,
+  AVEncodingOption
+} from 'react-native-audio-recorder-player';
+import RNFS from 'react-native-fs';
 
 const { width, height } = Dimensions.get('window');
-const API_BASE_URL = 'http://192.168.14.34:5050'; 
+const API_BASE_URL = 'http://192.168.14.34:5050';
+const audioRecorderPlayer = new AudioRecorderPlayer();
 
 interface PronunciationFeedback {
   accuracy: number;
@@ -56,12 +64,18 @@ export default function CoachScreen() {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showFeedbackOverlay, setShowFeedbackOverlay] = useState(false);
   const [latestFeedback, setLatestFeedback] = useState<PronunciationFeedback | null>(null);
+  const [playingWord, setPlayingWord] = useState<string | null>(null);
+  const [recordingWord, setRecordingWord] = useState<string | null>(null);
+  const [isWordRecording, setIsWordRecording] = useState(false);
+  const [isWordProcessing, setIsWordProcessing] = useState(false);
+  const [wordPracticeVisible, setWordPracticeVisible] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const micScaleAnim = useRef(new Animated.Value(1)).current;
   const rippleAnim = useRef(new Animated.Value(0)).current;
   const feedbackOverlayAnim = useRef(new Animated.Value(0)).current;
   const durationInterval = useRef<number | null>(null);
+  const wordRecordingPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     setupAudio();
@@ -344,6 +358,179 @@ export default function CoachScreen() {
     }
   };
 
+  const handlePracticeClick = (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (message && message.feedback) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setLatestFeedback(message.feedback);
+      setWordPracticeVisible(true);
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }
+  };
+
+  const playWordAudio = async (word: string) => {
+    try {
+      Haptics.selectionAsync();
+      
+      if (playingWord === word) {
+        await audioRecorderPlayer.stopPlayer();
+        audioRecorderPlayer.removePlayBackListener();
+        setPlayingWord(null);
+        return;
+      }
+      
+      if (playingWord) {
+        await audioRecorderPlayer.stopPlayer();
+        audioRecorderPlayer.removePlayBackListener();
+      }
+
+      setPlayingWord(word);
+      
+      const response = await axios.get(`${API_BASE_URL}/get_word_audio/${word}`, {
+        responseType: 'arraybuffer',
+        timeout: 10000
+      });
+      
+      if (response.data) {
+        const uint8Array = new Uint8Array(response.data);
+        let binary = '';
+        for (let i = 0; i < uint8Array.byteLength; i++) {
+          binary += String.fromCharCode(uint8Array[i]);
+        }
+        const base64Audio = btoa(binary);
+        
+        const tempPath = `${RNFS.DocumentDirectoryPath}/temp_word_${word}_${Date.now()}.wav`;
+        await RNFS.writeFile(tempPath, base64Audio, 'base64');
+        
+        await audioRecorderPlayer.startPlayer(tempPath);
+        
+        audioRecorderPlayer.addPlayBackListener((e) => {
+          if (e.currentPosition >= e.duration) {
+            audioRecorderPlayer.stopPlayer();
+            audioRecorderPlayer.removePlayBackListener();
+            setPlayingWord(null);
+            RNFS.unlink(tempPath).catch(err => console.warn('Could not delete temp file:', err));
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error playing word audio:', error);
+      setPlayingWord(null);
+      Alert.alert('Audio Not Available', `Pronunciation audio for "${word}" is not available.`);
+    }
+  };
+
+  const startWordRecording = async (word: string) => {
+    try {
+      setIsWordRecording(true);
+      setRecordingWord(word);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      const path = `${RNFS.DocumentDirectoryPath}/word_recording_${word}_${Date.now()}.wav`;
+      
+      const audioSet = {
+        AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
+        AudioSourceAndroid: AudioSourceAndroidType.MIC,
+        AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
+        AVNumberOfChannelsKeyIOS: 1,
+        AVFormatIDKeyIOS: AVEncodingOption.lpcm,
+      };
+      
+      await audioRecorderPlayer.startRecorder(path, audioSet);
+      wordRecordingPathRef.current = path;
+    } catch (error) {
+      console.error('Word recording error:', error);
+      Alert.alert('Error', 'Failed to start recording');
+      setIsWordRecording(false);
+      setRecordingWord(null);
+    }
+  };
+
+  const stopWordRecording = async () => {
+    try {
+      const result = await audioRecorderPlayer.stopRecorder();
+      audioRecorderPlayer.removeRecordBackListener();
+      setIsWordRecording(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      const word = recordingWord;
+      if (!word) return;
+      
+      const exists = await RNFS.exists(result);
+      if (!exists) {
+        throw new Error('Recording file was not created');
+      }
+      
+      await processWordRecording(result, word);
+      setRecordingWord(null);
+    } catch (error) {
+      console.error('Stop word recording error:', error);
+      Alert.alert('Error', 'Failed to process recording. Please try again.');
+      setIsWordRecording(false);
+      setRecordingWord(null);
+    }
+  };
+
+  const processWordRecording = async (audioPath: string, word: string) => {
+    setIsWordProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio_file', {
+        uri: Platform.OS === 'ios' ? audioPath : `file://${audioPath}`,
+        type: 'audio/wav',
+        name: `word_${word}_recording.wav`,
+      } as any);
+      
+      formData.append('reference_text', word);
+      formData.append('use_llm_judge', 'true');
+      formData.append('generate_audio', 'false');
+      
+      console.log(`Analyzing word "${word}" pronunciation...`);
+      
+      const response = await axios.post(`${API_BASE_URL}/analyze_with_llm_judge`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000,
+      });
+      
+      if (response.data.success) {
+        const analysisResult = response.data.analysis;
+        const accuracy = analysisResult.accuracy;
+        const accuracyPercent = (accuracy * 100).toFixed(1);
+        
+        const status = accuracy >= 0.8 ? '✅ Great!' : accuracy >= 0.6 ? '⚠️ Good try!' : '❌ Keep practicing!';
+        
+        Alert.alert(
+          `Word: "${word}"`,
+          `${status}\nAccuracy: ${accuracyPercent}%\n\nKeep practicing to improve!`,
+          [{ text: 'OK' }]
+        );
+        
+        Haptics.notificationAsync(
+          accuracy >= 0.8 
+            ? Haptics.NotificationFeedbackType.Success 
+            : Haptics.NotificationFeedbackType.Warning
+        );
+      } else {
+        throw new Error(response.data.error || 'Word analysis failed');
+      }
+    } catch (error: any) {
+      console.error(`Word "${word}" processing error:`, error);
+      Alert.alert('Analysis Error', 'Failed to analyze word pronunciation.');
+    } finally {
+      setIsWordProcessing(false);
+    }
+  };
+
+  const handleWordRecord = (word: string) => {
+    if (isWordRecording && recordingWord === word) {
+      stopWordRecording();
+    } else if (!isWordRecording) {
+      startWordRecording(word);
+    } else {
+      Alert.alert('Recording in Progress', `Please finish recording "${recordingWord}" first`);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Animated Background */}
@@ -451,21 +638,39 @@ export default function CoachScreen() {
                       )}
                     </LinearGradient>
                     
-                    {/* Analyze Button Overlay - Always visible for voice messages */}
+                    {/* Action Buttons - Always visible for voice messages */}
                     {message.isVoiceMessage && message.feedback && (
-                      <TouchableOpacity
-                        style={styles.analyzeButton}
-                        onPress={() => handleAnalyzeClick(message.id)}
-                        activeOpacity={0.9}
-                      >
-                        <LinearGradient
-                          colors={['#F59E0B', '#D97706']}
-                          style={styles.analyzeButtonGradient}
+                      <View style={styles.actionButtonsContainer}>
+                        <TouchableOpacity
+                          style={styles.analyzeButton}
+                          onPress={() => handleAnalyzeClick(message.id)}
+                          activeOpacity={0.9}
                         >
-                          <Icon name="analytics" size={18} color="#FFFFFF" />
-                          <Text style={styles.analyzeButtonText}>Analyze</Text>
-                        </LinearGradient>
-                      </TouchableOpacity>
+                          <LinearGradient
+                            colors={['#F59E0B', '#D97706']}
+                            style={styles.analyzeButtonGradient}
+                          >
+                            <Icon name="analytics" size={16} color="#FFFFFF" />
+                            <Text style={styles.analyzeButtonText}>Analyze</Text>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                        
+                        {(message.feedback.mispronounced_words.length > 0 || message.feedback.partial_words.length > 0) && (
+                          <TouchableOpacity
+                            style={styles.practiceButton}
+                            onPress={() => handlePracticeClick(message.id)}
+                            activeOpacity={0.9}
+                          >
+                            <LinearGradient
+                              colors={['#8B5CF6', '#7C3AED']}
+                              style={styles.practiceButtonGradient}
+                            >
+                              <Icon name="fitness-center" size={16} color="#FFFFFF" />
+                              <Text style={styles.practiceButtonText}>Practice</Text>
+                            </LinearGradient>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     )}
                     
                     <Text style={styles.timestampUser}>
@@ -484,6 +689,107 @@ export default function CoachScreen() {
               <View style={styles.typingDot} />
               <View style={[styles.typingDot, styles.typingDotDelay1]} />
               <View style={[styles.typingDot, styles.typingDotDelay2]} />
+            </View>
+          </View>
+        )}
+
+        {/* Word Practice Section */}
+        {wordPracticeVisible && latestFeedback && (
+          <View style={styles.wordPracticeSection}>
+            <View style={styles.practiceSectionHeader}>
+              <LinearGradient
+                colors={['#8B5CF6', '#7C3AED']}
+                style={styles.practiceSectionHeaderGradient}
+              >
+                <View style={styles.practiceSectionHeaderContent}>
+                  <Icon name="fitness-center" size={24} color="#FFFFFF" />
+                  <Text style={styles.practiceSectionTitle}>Practice Words</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setWordPracticeVisible(false)}
+                  style={styles.closePracticeButton}
+                >
+                  <Icon name="close" size={20} color="rgba(255,255,255,0.9)" />
+                </TouchableOpacity>
+              </LinearGradient>
+            </View>
+
+            <View style={styles.practiceWordsContainer}>
+              {[...latestFeedback.mispronounced_words, ...latestFeedback.partial_words].map((word, index) => {
+                const isRecordingThis = isWordRecording && recordingWord === word;
+                const isPlayingThis = playingWord === word;
+                
+                return (
+                  <View key={`${word}-${index}`} style={styles.practiceWordCard}>
+                    <View style={styles.practiceWordHeader}>
+                      <Text style={styles.practiceWordText}>{word}</Text>
+                      {latestFeedback.mispronounced_words.includes(word) ? (
+                        <View style={styles.practiceWordBadgeMispronounced}>
+                          <Text style={styles.practiceWordBadgeText}>Need Practice</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.practiceWordBadgePartial}>
+                          <Text style={styles.practiceWordBadgeText}>Improve</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={styles.practiceWordActions}>
+                      <TouchableOpacity
+                        style={[
+                          styles.practiceWordButton,
+                          isPlayingThis && styles.practiceWordButtonActive
+                        ]}
+                        onPress={() => playWordAudio(word)}
+                        disabled={isWordRecording || isWordProcessing}
+                      >
+                        <LinearGradient
+                          colors={isPlayingThis ? ['#10B981', '#059669'] : ['#667EEA', '#764BA2']}
+                          style={styles.practiceWordButtonGradient}
+                        >
+                          <Icon name={isPlayingThis ? 'pause' : 'volume-up'} size={20} color="#FFFFFF" />
+                          <Text style={styles.practiceWordButtonText}>
+                            {isPlayingThis ? 'Playing' : 'Listen'}
+                          </Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.practiceWordButton,
+                          isRecordingThis && styles.practiceWordButtonRecording
+                        ]}
+                        onPress={() => handleWordRecord(word)}
+                        disabled={isWordProcessing || (isWordRecording && !isRecordingThis)}
+                      >
+                        <LinearGradient
+                          colors={isRecordingThis ? ['#EF4444', '#DC2626'] : ['#F59E0B', '#D97706']}
+                          style={styles.practiceWordButtonGradient}
+                        >
+                          <Icon name={isRecordingThis ? 'stop' : 'mic'} size={20} color="#FFFFFF" />
+                          <Text style={styles.practiceWordButtonText}>
+                            {isRecordingThis ? 'Stop' : 'Record'}
+                          </Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            {isWordProcessing && (
+              <View style={styles.practiceProcessingOverlay}>
+                <ActivityIndicator size="large" color="#8B5CF6" />
+                <Text style={styles.practiceProcessingText}>Analyzing your pronunciation...</Text>
+              </View>
+            )}
+
+            <View style={styles.practiceInstructions}>
+              <Icon name="lightbulb-outline" size={18} color="#8B5CF6" />
+              <Text style={styles.practiceInstructionsText}>
+                Tap "Listen" to hear the correct pronunciation, then "Record" to practice
+              </Text>
             </View>
           </View>
         )}
@@ -1300,11 +1606,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  analyzeButton: {
+  actionButtonsContainer: {
     position: 'absolute',
     bottom: 8,
     right: 8,
-    borderRadius: 14,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  analyzeButton: {
+    borderRadius: 12,
     overflow: 'hidden',
     shadowColor: '#F59E0B',
     shadowOffset: { width: 0, height: 3 },
@@ -1315,15 +1625,192 @@ const styles = StyleSheet.create({
   analyzeButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
   },
   analyzeButtonText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.3,
     textTransform: 'uppercase',
+  },
+  practiceButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  practiceButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  practiceButtonText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  wordPracticeSection: {
+    marginTop: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(139, 92, 246, 0.15)',
+  },
+  practiceSectionHeader: {
+    overflow: 'hidden',
+  },
+  practiceSectionHeaderGradient: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  practiceSectionHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  practiceSectionTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  closePracticeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  practiceWordsContainer: {
+    padding: 16,
+    gap: 12,
+  },
+  practiceWordCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+  },
+  practiceWordHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  practiceWordText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1F2937',
+    letterSpacing: -0.3,
+  },
+  practiceWordBadgeMispronounced: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  practiceWordBadgePartial: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  practiceWordBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1F2937',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  practiceWordActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  practiceWordButton: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  practiceWordButtonActive: {
+    transform: [{ scale: 0.98 }],
+  },
+  practiceWordButtonRecording: {
+    transform: [{ scale: 1.02 }],
+  },
+  practiceWordButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  practiceWordButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  practiceProcessingOverlay: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  practiceProcessingText: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  practiceInstructions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F0F4FF',
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  practiceInstructionsText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#5B21B6',
+    fontWeight: '600',
+    lineHeight: 18,
   },
 });
