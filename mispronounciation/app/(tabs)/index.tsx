@@ -298,7 +298,7 @@ export default function HomeScreen() {
       if (!user || !selectedWord) return;
 
       const timestamp = new Date().toISOString();
-      const isCompleted = accuracy >= 0.8;
+      const isCompleted = accuracy >= 0.5; // Changed from 0.8 to 0.5 (50% threshold)
       const xpEarned = Math.round(accuracy * 10);
       const wordId = selectedWord.id;
       const difficulty = selectedWord.difficulty;
@@ -355,8 +355,8 @@ export default function HomeScreen() {
           await loadAllDataFast(difficulty);
           
           Alert.alert(
-            '🎉 Word Completed!',
-            `Great job! You've mastered "${selectedWord.word}". Moving to the next word...`,
+            '🎉 Word Unlocked!',
+            `Good job! You scored ${Math.round(accuracy * 100)}% on "${selectedWord.word}". Next word unlocked!`,
             [{ text: 'Continue', onPress: () => closePracticeModal() }]
           );
         }, 1000); // Reduced delay
@@ -952,7 +952,7 @@ export default function HomeScreen() {
                 >
                   <LinearGradient
                     colors={
-                      isCompleted 
+                      (isCompleted || (progress?.bestScore > 0 && !isCurrent))
                         ? DIFFICULTY_COLORS[selectedDifficulty].gradient
                         : isCurrent 
                         ? [COLORS.primary, COLORS.secondary] as const
@@ -962,7 +962,7 @@ export default function HomeScreen() {
                     }
                     style={styles.circleGradient}
                   >
-                    {isCompleted ? (
+                    {(progress?.bestScore > 0) ? (
                       <View style={styles.progressCircleContainer}>
                         <ProgressCircle
                           size={70}
@@ -973,6 +973,11 @@ export default function HomeScreen() {
                         {progress.bestScore >= 0.95 && (
                           <View style={styles.perfectStar}>
                             <Icon name="stars" size={20} color={COLORS.gold} />
+                          </View>
+                        )}
+                        {isCurrent && !isCompleted && (
+                          <View style={styles.currentPlayOverlay}>
+                            <Icon name="play-circle-filled" size={32} color={COLORS.white} />
                           </View>
                         )}
                       </View>
@@ -1016,18 +1021,18 @@ export default function HomeScreen() {
                     <View style={[
                       styles.wordLabelCard,
                       {
-                        backgroundColor: isCompleted
-                          ? COLORS.white
-                          : isCurrent
-                          ? COLORS.white
-                          : COLORS.white,
+                        backgroundColor: COLORS.white,
                         borderColor: isCompleted
                           ? DIFFICULTY_COLORS[selectedDifficulty].primary
+                          : (progress?.bestScore > 0 && progress?.bestScore < 0.5)
+                          ? COLORS.warning
                           : isCurrent
                           ? COLORS.primary
                           : COLORS.gray[200],
                         shadowColor: isCompleted
                           ? DIFFICULTY_COLORS[selectedDifficulty].primary
+                          : (progress?.bestScore > 0 && progress?.bestScore < 0.5)
+                          ? COLORS.warning
                           : isCurrent
                           ? COLORS.primary
                           : '#000000',
@@ -1039,6 +1044,8 @@ export default function HomeScreen() {
                           { 
                             color: isCompleted 
                               ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                              : (progress?.bestScore > 0 && progress?.bestScore < 0.5)
+                              ? COLORS.warning
                               : isCurrent
                               ? COLORS.primary
                               : COLORS.gray[700] 
@@ -1054,8 +1061,13 @@ export default function HomeScreen() {
                             <Icon name="check" size={12} color={COLORS.white} />
                           </View>
                         )}
+                        {progress?.bestScore > 0 && progress?.bestScore < 0.5 && !isCurrent && (
+                          <View style={[styles.attemptedIndicator, { backgroundColor: COLORS.warning }]}>
+                            <Icon name="refresh" size={12} color={COLORS.white} />
+                          </View>
+                        )}
                       </View>
-                      {progress?.bestScore > 0 && !isCurrent && (
+                      {progress?.bestScore > 0 && (
                         <View style={styles.scoreIndicator}>
                           <Icon name="stars" size={10} color={COLORS.gold} />
                           <Text style={styles.scoreIndicatorText}>{Math.round(progress.bestScore * 100)}%</Text>
@@ -1853,6 +1865,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  currentPlayOverlay: {
+    position: 'absolute',
+    width: 70,
+    height: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(99, 102, 241, 0.3)',
+    borderRadius: 35,
+  },
   wordPreview: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -1928,6 +1949,18 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  attemptedIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.warning,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
