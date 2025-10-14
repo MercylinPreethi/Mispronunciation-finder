@@ -196,6 +196,41 @@ export default function ProfileScreen() {
         console.log(`✅ Loaded ${Object.keys(referencesData).length} practice sessions`);
       }
 
+      // 3. Load Practice Words from Batch System
+      console.log('📚 Loading batch practice words...');
+      for (const difficulty of ['easy', 'intermediate', 'hard']) {
+        const practiceRef = ref(database, `users/${userId}/practiceWords/${difficulty}`);
+        const practiceSnapshot = await get(practiceRef);
+        
+        if (practiceSnapshot.exists()) {
+          const practiceData = practiceSnapshot.val();
+          
+          Object.entries(practiceData).forEach(([wordId, wordData]: [string, any]) => {
+            if (wordData.attempts > 0) {
+              const word = (wordData.word || '').toLowerCase(); // Use lowercase as key
+              const displayWord = wordData.word || 'Unknown';
+              
+              const practice: PracticeHistory = {
+                word: ` ${displayWord}`,
+                accuracy: Math.round((wordData.bestScore || 0) * 100),
+                timestamp: new Date(wordData.lastAttempted || Date.now()).getTime(),
+                date: formatDate(new Date(wordData.lastAttempted || Date.now()).getTime()),
+                type: 'word_practice',
+                practiceType: 'word_practice',
+                attemptCount: wordData.attempts,
+              };
+
+              // Only keep the most recent attempt for each word
+              const existingPractice = practiceMap.get(word);
+              if (!existingPractice || practice.timestamp > existingPractice.timestamp) {
+                practiceMap.set(word, practice);
+              }
+            }
+          });
+          console.log(`✅ Loaded ${Object.keys(practiceData).length} ${difficulty} practice words`);
+        }
+      }
+
       // Convert map to array
       const uniquePractices = Array.from(practiceMap.values());
 

@@ -1,4 +1,5 @@
-// app/(tabs)/index.tsx - Updated with Batch System
+// app/(tabs)/index.tsx - OPTIMIZED with Fast Sequential Word Progression
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -17,10 +18,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { ref, onValue, set, get } from 'firebase/database';
 import { auth, database } from '../../lib/firebase';
-import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import * as Haptics from 'expo-haptics';
 import RNFS from 'react-native-fs';
 import axios from 'axios';
+import ProgressCircle from '../../components/ProgressCircle';
+import AudioRecorderPlayer, {
+  AVEncoderAudioQualityIOSType,
+  AVEncodingOption,
+  AudioEncoderAndroidType,
+  AudioSourceAndroidType,
+} from 'react-native-audio-recorder-player';
 
 const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
@@ -69,15 +76,6 @@ interface Word {
   difficulty: 'easy' | 'intermediate' | 'hard';
 }
 
-interface WordBatch {
-  batchNumber: number;
-  difficulty: string;
-  words: Word[];
-  generatedAt: string;
-  wordCount: number;
-  status: string;
-}
-
 interface WordProgress {
   wordId: string;
   word: string;
@@ -110,50 +108,18 @@ interface AnalysisResult {
   feedback: string;
 }
 
-type DifficultyLevel = 'easy' | 'intermediate' | 'hard';
-
-// Add missing type declarations for audio recorder
-interface AudioSet {
-  AudioEncoderAndroid?: any;
-  AudioSourceAndroid?: any;
-  AVEncoderAudioQualityKeyIOS?: any;
-  AVNumberOfChannelsKeyIOS?: number;
-  AVFormatIDKeyIOS?: any;
+interface UserProgressResponse {
+  success: boolean;
+  difficulty: string;
+  next_word: Word | null;
+  next_index: number;
+  total_words: number;
+  completed_count: number;
+  completion_percentage: number;
+  all_completed: boolean;
 }
 
-const AudioEncoderAndroidType = {
-  AAC: 3,
-  AMR_NB: 1,
-  AMR_WB: 2,
-  DEFAULT: 0,
-  HE_AAC: 4,
-  OPUS: 5,
-} as const;
-
-const AudioSourceAndroidType = {
-  DEFAULT: 0,
-  MIC: 1,
-  VOICE_UPLINK: 2,
-  VOICE_DOWNLINK: 3,
-  VOICE_CALL: 4,
-  CAMCORDER: 5,
-  VOICE_RECOGNITION: 6,
-  VOICE_COMMUNICATION: 7,
-  UNPROCESSED: 8,
-} as const;
-
-const AVEncoderAudioQualityIOSType = {
-  min: 0,
-  low: 32,
-  medium: 64,
-  high: 96,
-  max: 127,
-} as const;
-
-const AVEncodingOption = {
-  lpcm: 'lpcm',
-  aac: 'aac',
-} as const;
+type DifficultyLevel = 'easy' | 'intermediate' | 'hard';
 
 export default function HomeScreen() {
   const [userName, setUserName] = useState('');
@@ -170,12 +136,14 @@ export default function HomeScreen() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel>('easy');
   const [wordProgress, setWordProgress] = useState<{ [key: string]: WordProgress }>({});
   
-  // BATCH SYSTEM STATES
-  const [currentBatch, setCurrentBatch] = useState<WordBatch | null>(null);
-  const [currentBatchNumber, setCurrentBatchNumber] = useState(0);
-  const [batchWords, setBatchWords] = useState<Word[]>([]);
-  const [isLoadingBatch, setIsLoadingBatch] = useState(false);
-  const [batchCompletionPercent, setBatchCompletionPercent] = useState(0);
+  // **OPTIMIZED: Sequential Progression States**
+  const [allWords, setAllWords] = useState<Word[]>([]);
+  const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [currentWord, setCurrentWord] = useState<Word | null>(null);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [completionPercentage, setCompletionPercentage] = useState(0);
+  const [isLoadingProgress, setIsLoadingProgress] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDailyTask, setShowDailyTask] = useState(false);
@@ -195,7 +163,6 @@ export default function HomeScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const modalAnim = useRef(new Animated.Value(0)).current;
   
-  // FIXED: Properly typed animation refs
   const badgeAnims = useRef([
     new Animated.Value(0),
     new Animated.Value(0),
@@ -203,12 +170,20 @@ export default function HomeScreen() {
   ] as Animated.Value[]).current;
 
   const dailyTaskPulse = useRef(new Animated.Value(1)).current;
-  
-  // FIXED: Properly typed animation objects
   const wordNodeAnims = useRef<Record<string, Animated.Value>>({}).current;
   const glowAnims = useRef<Record<string, Animated.Value>>({}).current;
-  
   const scrollViewRef = useRef<ScrollView>(null);
+
+  const initializeOnceRef = useRef(false);
+  const loadingRef = useRef(false);
+  const lastDifficultyRef = useRef<DifficultyLevel>('easy');
+  const cacheRef = useRef<{
+    words: { [key: string]: Word[] };
+    progress: { [key: string]: any };
+  }>({
+    words: {},
+    progress: {}
+  });
 
   const getTodayDateString = () => {
     const today = new Date();
@@ -216,66 +191,58 @@ export default function HomeScreen() {
   };
 
   // ============================================================================
-  // BATCH SYSTEM FUNCTIONS
+  // OPTIMIZED SEQUENTIAL WORD PROGRESSION FUNCTIONS
   // ============================================================================
 
   /**
-   * Fetch a specific batch from backend
+   * Fast load all data in parallel
    */
-  const fetchBatch = async (difficulty: DifficultyLevel, batchNumber: number): Promise<WordBatch | null> => {
-    try {
-      setIsLoadingBatch(true);
-      
-      const response = await axios.get(
-        `${API_BASE_URL}/api/batches/${difficulty}/${batchNumber}`
-      );
-      
-      if (response.data.success) {
-        return response.data.batch;
-      }
-      
-      return null;
-    } catch (error: any) {
-      console.error('Error fetching batch:', error);
-      
-      if (error.response?.status === 404) {
-        Alert.alert('No More Batches', 'You\'ve completed all available batches for this level!');
-      } else {
-        Alert.alert('Error', 'Failed to load word batch');
-      }
-      
-      return null;
-    } finally {
-      setIsLoadingBatch(false);
-    }
-  };
-
-  /**
-   * Load current batch for selected difficulty
-   */
-  const loadCurrentBatch = async (difficulty: DifficultyLevel) => {
+  const loadAllDataFast = async (difficulty: DifficultyLevel) => {
+    if (loadingRef.current) return null;
+    
+    loadingRef.current = true;
+    setIsLoadingProgress(true);
+    
     try {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) return null;
 
-      // Get user's current batch number from Firebase
-      const batchProgressRef = ref(database, `users/${user.uid}/batchProgress/${difficulty}`);
-      const snapshot = await get(batchProgressRef);
-      
-      const userBatchNumber = snapshot.exists() ? snapshot.val().currentBatch || 0 : 0;
-      setCurrentBatchNumber(userBatchNumber);
+      // Clear cache for fresh data
+      delete cacheRef.current.words[difficulty];
+      delete cacheRef.current.progress[`${user.uid}-${difficulty}`];
 
-      // Fetch batch from backend
-      const batch = await fetchBatch(difficulty, userBatchNumber);
-      
-      if (batch) {
-        setCurrentBatch(batch);
-        setBatchWords(batch.words);
+      // Load words and progress in parallel
+      const [wordsResponse, progressResponse] = await Promise.allSettled([
+        axios.get(`${API_BASE_URL}/api/user-data/${user.uid}/${difficulty}`),
+        loadPracticeProgress(user.uid)
+      ]);
+
+      // Handle words response
+      if (wordsResponse.status === 'fulfilled' && wordsResponse.value.data.success) {
+        const data = wordsResponse.value.data;
+        const words = data.words || [];
         
-        // Initialize animations for words
-        batch.words.forEach((word: Word, index: number) => {
+        setAllWords(words);
+        setCurrentWord(data.next_word);
+        setCurrentWordIndex(data.next_index);
+        setCompletedCount(data.completed_count);
+        setCompletionPercentage(data.completion_percentage);
+        
+        cacheRef.current.words[difficulty] = words;
+        cacheRef.current.progress[`${user.uid}-${difficulty}`] = {
+          data: {
+            next_word: data.next_word,
+            next_index: data.next_index,
+            completed_count: data.completed_count,
+            completion_percentage: data.completion_percentage
+          },
+          timestamp: Date.now()
+        };
+
+        // Initialize animations
+        words.forEach((word: Word, index: number) => {
           if (!wordNodeAnims[word.id]) {
-            wordNodeAnims[word.id] = new Animated.Value(0);
+            wordNodeAnims[word.id] = new Animated.Value(1); // Start at 1 for instant appearance
             glowAnims[word.id] = new Animated.Value(0);
           }
           
@@ -283,112 +250,141 @@ export default function HomeScreen() {
             toValue: 1,
             tension: 50,
             friction: 7,
-            delay: index * 80,
+            delay: index * 30, // Reduced delay for faster loading
             useNativeDriver: true,
           }).start();
         });
-
-        // Calculate completion percentage
-        calculateBatchCompletion(batch.words);
       }
+
+      return wordsResponse.status === 'fulfilled' ? wordsResponse.value.data : null;
     } catch (error) {
-      console.error('Error loading batch:', error);
+      console.error('Fast load error:', error);
+      return null;
+    } finally {
+      loadingRef.current = false;
+      setIsLoadingProgress(false);
     }
   };
 
   /**
-   * Calculate batch completion percentage
+   * Load practice progress from Firebase
    */
-  const calculateBatchCompletion = (words: Word[]) => {
-    const completedCount = words.filter(word => 
-      wordProgress[word.id]?.completed
-    ).length;
-    
-    const percent = (completedCount / words.length) * 100;
-    setBatchCompletionPercent(Math.round(percent));
-
-    // Auto-advance to next batch if current is 100% complete
-    if (percent === 100) {
-      checkAndAdvanceBatch();
-    }
-  };
-
-  /**
-   * Check if batch is complete and advance to next
-   */
-  const checkAndAdvanceBatch = async () => {
+  const loadPracticeProgress = async (userId: string) => {
     try {
-      const user = auth.currentUser;
-      if (!user || !currentBatch) return;
-
-      const allCompleted = batchWords.every(word => wordProgress[word.id]?.completed);
-
-      if (allCompleted) {
-        // Show celebration
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const allProgress: { [key: string]: WordProgress } = {};
+      
+      for (const difficulty of ['easy', 'intermediate', 'hard']) {
+        const diffRef = ref(database, `users/${userId}/practiceWords/${difficulty}`);
+        const snapshot = await get(diffRef);
         
-        Alert.alert(
-          '🎉 Batch Complete!',
-          `Congratulations! You've mastered all ${batchWords.length} words in this batch. Ready for the next challenge?`,
-          [
-            {
-              text: 'Continue',
-              onPress: () => advanceToNextBatch(),
-            },
-          ]
-        );
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          Object.assign(allProgress, data);
+        }
       }
+      
+      setWordProgress(allProgress);
     } catch (error) {
-      console.error('Error checking batch completion:', error);
+      console.error('Error loading practice progress:', error);
     }
   };
 
   /**
-   * Advance to next batch
+   * Optimized user progress update
    */
-  const advanceToNextBatch = async () => {
+  const updateWordProgressFast = async (accuracy: number) => {
     try {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user || !selectedWord) return;
 
-      const nextBatchNumber = currentBatchNumber + 1;
+      const timestamp = new Date().toISOString();
+      const isCompleted = accuracy >= 0.8;
+      const xpEarned = Math.round(accuracy * 10);
+      const wordId = selectedWord.id;
+      const difficulty = selectedWord.difficulty;
 
-      // Update user's current batch in Firebase
-      const batchProgressRef = ref(database, `users/${user.uid}/batchProgress/${selectedDifficulty}`);
-      await set(batchProgressRef, {
-        currentBatch: nextBatchNumber,
-        completedBatches: currentBatchNumber + 1,
-        lastUpdated: new Date().toISOString(),
-      });
+      // Update local state immediately for instant feedback
+      const newProgress: WordProgress = {
+        wordId: wordId,
+        word: selectedWord.word,
+        completed: isCompleted,
+        attempts: (wordProgress[wordId]?.attempts || 0) + 1,
+        bestScore: Math.max(wordProgress[wordId]?.bestScore || 0, accuracy),
+        lastAttempted: timestamp,
+      };
 
-      // Load next batch
-      setCurrentBatchNumber(nextBatchNumber);
-      await loadCurrentBatch(selectedDifficulty);
+      setWordProgress(prev => ({ ...prev, [wordId]: newProgress }));
 
-      // Scroll to top
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      // Update Firebase in background (don't wait for it)
+      const wordRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}`);
+      set(wordRef, newProgress).catch(console.error);
+
+      // Update stats optimistically
+      const newXP = stats.xp + xpEarned;
+      const isFirstAttempt = newProgress.attempts === 1;
+      const newTotalWords = isFirstAttempt ? stats.totalWords + 1 : stats.totalWords;
+      
+      setStats(prev => ({ ...prev, xp: newXP, totalWords: newTotalWords }));
+
+      // Update Firebase stats in background
+      const statsRef = ref(database, `users/${user.uid}/stats`);
+      set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords }).catch(console.error);
+
+      // If completed, advance to next word immediately
+      if (isCompleted) {
+        // Show immediate celebration
+        const nodeAnim = wordNodeAnims[wordId];
+        if (nodeAnim) {
+          Animated.sequence([
+            Animated.timing(nodeAnim, {
+              toValue: 1.3,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+            Animated.spring(nodeAnim, {
+              toValue: 1,
+              tension: 100,
+              friction: 5,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }
+
+        // Load next word in background
+        setTimeout(async () => {
+          await loadAllDataFast(difficulty);
+          
+          Alert.alert(
+            '🎉 Word Completed!',
+            `Great job! You've mastered "${selectedWord.word}". Moving to the next word...`,
+            [{ text: 'Continue', onPress: () => closePracticeModal() }]
+          );
+        }, 1000); // Reduced delay
+      }
+
     } catch (error) {
-      console.error('Error advancing batch:', error);
-      Alert.alert('Error', 'Failed to load next batch');
+      console.error('Error updating progress:', error);
     }
   };
 
   // ============================================================================
-  // EXISTING FUNCTIONS (Updated)
+  // DAILY WORD FUNCTIONS
   // ============================================================================
 
   const fetchDailyWord = async () => {
     try {
-      // Use persistent daily word endpoint
-      const response = await axios.get(`${API_BASE_URL}/api/daily-word-persistent`);
+      const response = await axios.get(`${API_BASE_URL}/api/daily-word-consistent`);
       if (response.data.success) {
         setTodayWord(response.data.word);
       }
     } catch (error) {
       console.error('Error fetching daily word:', error);
-      Alert.alert('Error', 'Failed to load daily word');
     }
   };
+
+  // ============================================================================
+  // STATS CALCULATION
+  // ============================================================================
 
   const calculateStatsFromHistory = useCallback(async (allDailyWords: any, userId: string) => {
     try {
@@ -399,6 +395,7 @@ export default function HomeScreen() {
       let currentStreak = 0;
       let totalXP = 0;
 
+      // Count daily words
       dates.forEach(date => {
         const dayData = allDailyWords[date];
         if (dayData && dayData.attempts > 0) {
@@ -411,7 +408,29 @@ export default function HomeScreen() {
         }
       });
 
+      // Count practice words
+      for (const difficulty of ['easy', 'intermediate', 'hard']) {
+        const diffRef = ref(database, `users/${userId}/practiceWords/${difficulty}`);
+        const snapshot = await get(diffRef);
+        
+        if (snapshot.exists()) {
+          const practiceWords = snapshot.val();
+          Object.values(practiceWords).forEach((wordData: any) => {
+            if (wordData.attempts > 0) {
+              wordsAttempted++;
+              if (wordData.bestScore && wordData.bestScore > 0) {
+                totalAccuracy += wordData.bestScore;
+                accuracyCount++;
+                totalXP += Math.round(wordData.bestScore * 10);
+              }
+            }
+          });
+        }
+      }
+
       const averageAccuracy = accuracyCount > 0 ? totalAccuracy / accuracyCount : 0;
+      
+      // Calculate streak
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -443,21 +462,41 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const loadUserData = useCallback(async (userId: string) => {
-    try {
-      const statsRef = ref(database, `users/${userId}/stats`);
-      onValue(statsRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-          setStats({
-            streak: data.streak || 0,
-            totalWords: data.totalWords || 0,
-            accuracy: data.accuracy || 0,
-            xp: data.xp || 0,
-          });
-        }
-      });
+  // ============================================================================
+  // OPTIMIZED INITIALIZATION
+  // ============================================================================
 
+  const loadUserDataFast = useCallback(async (userId: string) => {
+    if (initializeOnceRef.current) return;
+    initializeOnceRef.current = true;
+
+    try {
+      // Load everything in parallel
+      const [statsPromise, dailyWordPromise, progressPromise] = await Promise.allSettled([
+        // Stats
+        (async () => {
+          const statsRef = ref(database, `users/${userId}/stats`);
+          onValue(statsRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+              setStats({
+                streak: data.streak || 0,
+                totalWords: data.totalWords || 0,
+                accuracy: data.accuracy || 0,
+                xp: data.xp || 0,
+              });
+            }
+          });
+        })(),
+        
+        // Daily word
+        fetchDailyWord(),
+        
+        // Initial progress for current difficulty
+        loadAllDataFast(selectedDifficulty)
+      ]);
+
+      // Set up daily words listener (non-blocking)
       const dailyWordsRef = ref(database, `users/${userId}/dailyWords`);
       onValue(dailyWordsRef, (snapshot) => {
         if (snapshot.exists()) {
@@ -466,72 +505,29 @@ export default function HomeScreen() {
         }
       });
 
-      // Fetch persistent daily word
-      await fetchDailyWord();
-
-      // Load daily word progress
-      const todayDate = getTodayDateString();
-      const progressRef = ref(database, `users/${userId}/dailyWords/${todayDate}`);
-      const snapshot = await get(progressRef);
-      
-      if (snapshot.exists()) {
-        setTodayProgress(snapshot.val());
-      } else if (todayWord) {
-        const newProgress: DailyWordProgress = {
-          word: todayWord.word,
-          date: todayDate,
-          completed: false,
-          accuracy: 0,
-          attempts: 0,
-          bestScore: 0,
-        };
-        setTodayProgress(newProgress);
-        await set(progressRef, newProgress);
-      }
-
-      await loadPracticeProgress(userId);
     } catch (error) {
-      console.error('Error loading user data:', error);
+      console.error('Error in fast initialization:', error);
     }
-  }, [calculateStatsFromHistory, todayWord]);
+  }, [selectedDifficulty]);
 
-  const loadPracticeProgress = async (userId: string) => {
-    try {
-      const allProgress: { [key: string]: WordProgress } = {};
-      
-      for (const difficulty of ['easy', 'intermediate', 'hard']) {
-        const diffRef = ref(database, `users/${userId}/practiceWords/${difficulty}`);
-        const snapshot = await get(diffRef);
-        
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          Object.assign(allProgress, data);
-        }
-      }
-      
-      setWordProgress(allProgress);
-      
-      // Load current batch for selected difficulty
-      await loadCurrentBatch(selectedDifficulty);
-    } catch (error) {
-      console.error('Error loading practice progress:', error);
-    }
-  };
+  // ============================================================================
+  // OPTIMIZED USE EFFECTS
+  // ============================================================================
 
   useEffect(() => {
     const user = auth.currentUser;
     if (user) {
       setUserName(user.displayName || 'User');
-      loadUserData(user.uid);
+      loadUserDataFast(user.uid);
     }
 
-    // Badge animations - FIXED: No .current needed since we're using .current in the declaration
+    // Fast badge animations
     badgeAnims.forEach((anim, index) => {
       Animated.spring(anim, {
         toValue: 1,
-        tension: 50,
-        friction: 7,
-        delay: index * 100,
+        tension: 60, // Increased tension for faster animation
+        friction: 5, // Reduced friction for faster animation
+        delay: index * 80, // Reduced delay
         useNativeDriver: true,
       }).start();
     });
@@ -553,10 +549,33 @@ export default function HomeScreen() {
     ).start();
   }, []);
 
+  // Fast difficulty change
   useEffect(() => {
-    // Load new batch when difficulty changes
-    loadCurrentBatch(selectedDifficulty);
+    if (lastDifficultyRef.current === selectedDifficulty) return;
+    
+    lastDifficultyRef.current = selectedDifficulty;
+    const user = auth.currentUser;
+    
+    if (user && !loadingRef.current) {
+      console.log(`🚀 Fast loading ${selectedDifficulty} words`);
+      loadAllDataFast(selectedDifficulty);
+    }
   }, [selectedDifficulty]);
+
+  // Pre-load animations when words are loaded
+  useEffect(() => {
+    if (allWords.length > 0 && !isInitialized) {
+      setIsInitialized(true);
+      
+      // Pre-warm animations for better performance
+      allWords.forEach((word, index) => {
+        if (!wordNodeAnims[word.id]) {
+          wordNodeAnims[word.id] = new Animated.Value(1); // Start at 1 instead of 0
+          glowAnims[word.id] = new Animated.Value(0);
+        }
+      });
+    }
+  }, [allWords]);
 
   useEffect(() => {
     if (isRecording) {
@@ -579,12 +598,9 @@ export default function HomeScreen() {
     }
   }, [isRecording]);
 
-  useEffect(() => {
-    // Recalculate batch completion when progress changes
-    if (batchWords.length > 0) {
-      calculateBatchCompletion(batchWords);
-    }
-  }, [wordProgress, batchWords]);
+  // ============================================================================
+  // OPTIMIZED UI HANDLERS
+  // ============================================================================
 
   const handleDifficultyChange = (difficulty: DifficultyLevel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -592,15 +608,17 @@ export default function HomeScreen() {
     setShowDropdown(false);
   };
 
-  const openPracticeModal = (word: Word, isDaily: boolean = false) => {
+  const openPracticeModalFast = (word: Word, isDaily: boolean = false) => {
     setSelectedWord(word);
     setShowPracticeModal(true);
     setShowResult(false);
     setResult(null);
+    
+    // Faster animation
     Animated.spring(modalAnim, {
       toValue: 1,
-      tension: 50,
-      friction: 7,
+      tension: 70,
+      friction: 5, // Reduced friction for faster animation
       useNativeDriver: true,
     }).start();
   };
@@ -620,13 +638,17 @@ export default function HomeScreen() {
     });
   };
 
+  // ============================================================================
+  // RECORDING & ANALYSIS
+  // ============================================================================
+
   const startRecording = async () => {
     try {
       setIsRecording(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
       const path = `${RNFS.DocumentDirectoryPath}/word_${Date.now()}.wav`;
-      const audioSet: AudioSet = {
+      const audioSet = {
         AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
         AudioSourceAndroid: AudioSourceAndroidType.MIC,
         AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
@@ -690,7 +712,7 @@ export default function HomeScreen() {
         name: 'word_recording.wav',
       } as any);
       
-      const wordToAnalyze = selectedWord?.word || todayWord?.word || '';
+      const wordToAnalyze = selectedWord?.word || '';
       formData.append('reference_text', wordToAnalyze);
       formData.append('use_llm_judge', 'true');
       formData.append('generate_audio', 'false');
@@ -712,7 +734,10 @@ export default function HomeScreen() {
         
         setResult(resultData);
         setShowResult(true);
-        await updateWordProgress(resultData.accuracy);
+        
+        // Use fast progress update
+        await updateWordProgressFast(resultData.accuracy);
+        
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
         throw new Error(response.data.error || 'Analysis failed');
@@ -722,90 +747,6 @@ export default function HomeScreen() {
       Alert.alert('Analysis Error', 'Failed to analyze pronunciation.');
     } finally {
       setIsProcessing(false);
-    }
-  };
-
-  const updateWordProgress = async (accuracy: number) => {
-    try {
-      const user = auth.currentUser;
-      if (!user || !selectedWord) return;
-
-      const timestamp = new Date().toISOString();
-      const isCompleted = accuracy >= 0.8;
-      const xpEarned = Math.round(accuracy * 10);
-
-      const wordId = selectedWord.id;
-      const difficulty = selectedWord.difficulty;
-      const currentProgress = wordProgress[wordId];
-
-      const newAttempts = (currentProgress?.attempts || 0) + 1;
-      const newBestScore = Math.max(currentProgress?.bestScore || 0, accuracy);
-
-      const updatedProgress: WordProgress = {
-        wordId: wordId,
-        word: selectedWord.word,
-        completed: isCompleted || (currentProgress?.completed || false),
-        attempts: newAttempts,
-        bestScore: newBestScore,
-        lastAttempted: timestamp,
-      };
-
-      const wordRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}`);
-      await set(wordRef, updatedProgress);
-
-      setWordProgress(prev => ({ ...prev, [wordId]: updatedProgress }));
-
-      // Celebrate completion with animation
-      if (isCompleted && !currentProgress?.completed) {
-        const nodeAnim = wordNodeAnims[wordId];
-        if (nodeAnim) {
-          Animated.sequence([
-            Animated.timing(nodeAnim, {
-              toValue: 1.3,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-            Animated.spring(nodeAnim, {
-              toValue: 1,
-              tension: 100,
-              friction: 5,
-              useNativeDriver: true,
-            }),
-          ]).start();
-
-          const glowAnim = glowAnims[wordId];
-          if (glowAnim) {
-            Animated.loop(
-              Animated.sequence([
-                Animated.timing(glowAnim, {
-                  toValue: 1,
-                  duration: 1500,
-                  useNativeDriver: false,
-                }),
-                Animated.timing(glowAnim, {
-                  toValue: 0,
-                  duration: 1500,
-                  useNativeDriver: false,
-                }),
-              ])
-            ).start();
-          }
-        }
-      }
-
-      // Update stats
-      const newXP = stats.xp + xpEarned;
-      const newTotalWords = isCompleted ? stats.totalWords + 1 : stats.totalWords;
-      setStats(prev => ({ ...prev, xp: newXP, totalWords: newTotalWords }));
-      const statsRef = ref(database, `users/${user.uid}/stats`);
-      await set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords });
-
-      // Check if batch is complete
-      if (isCompleted) {
-        calculateBatchCompletion(batchWords);
-      }
-    } catch (error) {
-      console.error('Error updating progress:', error);
     }
   };
 
@@ -847,64 +788,36 @@ export default function HomeScreen() {
     }
   };
 
-  const getNextUnlockedIndex = () => {
-    const completedCount = batchWords.filter(word => wordProgress[word.id]?.completed).length;
-    return completedCount;
-  };
+  // ============================================================================
+  // OPTIMIZED RENDERING HELPERS
+  // ============================================================================
 
-  const getPathPositions = () => {
-    const positions: { x: number; y: number; word: Word; index: number; }[] = [];
+  /**
+   * **OPTIMIZED: Render sequential word path with current word highlighted**
+   */
+  const renderWordPath = useCallback(() => {
+    const pathPositions: { x: number; y: number; word: Word; index: number; }[] = [];
     const pathWidth = width - 100;
     const centerX = width / 2;
     const verticalSpacing = 140;
     
-    batchWords.forEach((word, index) => {
+    allWords.forEach((word, index) => {
       const wave = Math.sin(index * 0.8) * (pathWidth * 0.35);
-      
       let x = centerX + wave + (Math.random() * 20 - 10);
       const y = 80 + (index * verticalSpacing);
-      
       x = Math.max(60, Math.min(width - 60, x));
-      
-      positions.push({ x, y, word, index });
+      pathPositions.push({ x, y, word, index });
     });
-    
-    return positions;
-  };
-
-  const shouldShowMilestone = (index: number) => {
-    return (index + 1) % 5 === 0 && index > 0;
-  };
-
-  const getProgressStats = (upToIndex: number) => {
-    let completed = 0;
-    let totalScore = 0;
-    
-    for (let i = 0; i <= upToIndex; i++) {
-      const word = batchWords[i];
-      const progress = wordProgress[word?.id];
-      if (progress?.completed) {
-        completed++;
-        totalScore += progress.bestScore || 0;
-      }
-    }
-    
-    const accuracy = completed > 0 ? Math.round((totalScore / completed) * 100) : 0;
-    return { completed, total: upToIndex + 1, accuracy };
-  };
-
-  const renderWordChain = () => {
-    const unlockedIndex = getNextUnlockedIndex();
-    const positions = getPathPositions();
 
     return (
       <>
-        {positions.map((pos, index) => {
+        {pathPositions.map((pos, index) => {
           const { word, x, y } = pos;
           const progress = wordProgress[word.id];
-          const isUnlocked = index <= unlockedIndex;
           const isCompleted = progress?.completed || false;
-          const isCurrent = index === unlockedIndex && !isCompleted;
+          const isCurrent = currentWordIndex === index;
+          const isPastWord = index < currentWordIndex;
+          const isLocked = index > currentWordIndex;
           
           const nodeAnim = wordNodeAnims[word.id] || new Animated.Value(1);
           const glowAnim = glowAnims[word.id] || new Animated.Value(0);
@@ -921,7 +834,8 @@ export default function HomeScreen() {
 
           const opacity = nodeAnim;
 
-          const nextPos = positions[index + 1];
+          // Render connecting path to next word
+          const nextPos = pathPositions[index + 1];
           let pathPoints = null;
           if (nextPos) {
             const deltaX = nextPos.x - x;
@@ -939,6 +853,7 @@ export default function HomeScreen() {
 
           return (
             <View key={word.id}>
+              {/* Connecting Path */}
               {pathPoints && (
                 <View
                   style={[
@@ -958,35 +873,18 @@ export default function HomeScreen() {
                 >
                   <LinearGradient
                     colors={
-                      isCompleted 
-                        ? [DIFFICULTY_COLORS[selectedDifficulty].primary, DIFFICULTY_COLORS[selectedDifficulty].primary + '80'] as const
+                      isPastWord
+                        ? [COLORS.success, '#059669'] as const
                         : [COLORS.gray[300], COLORS.gray[200]] as const
                     }
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.pathGradient}
                   />
-                  
-                  {isCompleted && (
-                    <View style={styles.pathDotsContainer}>
-                      {[0.25, 0.5, 0.75].map((position, i) => (
-                        <Animated.View
-                          key={i}
-                          style={[
-                            styles.pathDotMoving,
-                            {
-                              left: `${position * 100}%`,
-                              backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary,
-                              opacity: glowAnim,
-                            }
-                          ]}
-                        />
-                      ))}
-                    </View>
-                  )}
                 </View>
               )}
 
+              {/* Word Node */}
               <Animated.View 
                 style={[
                   styles.wordNode,
@@ -1010,7 +908,7 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={styles.wordCircleButton}
                   onPress={() => {
-                    if (isUnlocked) {
+                    if (!isLocked) {
                       Animated.sequence([
                         Animated.timing(nodeAnim, {
                           toValue: 0.9,
@@ -1024,10 +922,10 @@ export default function HomeScreen() {
                           useNativeDriver: true,
                         }),
                       ]).start();
-                      openPracticeModal(word);
+                      openPracticeModalFast(word);
                     }
                   }}
-                  disabled={!isUnlocked}
+                  disabled={isLocked}
                   activeOpacity={0.8}
                 >
                   <LinearGradient
@@ -1036,16 +934,21 @@ export default function HomeScreen() {
                         ? DIFFICULTY_COLORS[selectedDifficulty].gradient
                         : isCurrent 
                         ? [COLORS.primary, COLORS.secondary] as const
-                        : isUnlocked
-                        ? [COLORS.white, COLORS.gray[50]] as const
-                        : [COLORS.gray[200], COLORS.gray[300]] as const
+                        : isLocked
+                        ? [COLORS.gray[200], COLORS.gray[300]] as const
+                        : [COLORS.white, COLORS.gray[50]] as const
                     }
                     style={styles.circleGradient}
                   >
                     {isCompleted ? (
-                      <View style={styles.completedIcon}>
-                        <Icon name="check-circle" size={36} color={COLORS.white} />
-                        {progress?.bestScore && progress.bestScore >= 0.95 && (
+                      <View style={styles.progressCircleContainer}>
+                        <ProgressCircle
+                          size={70}
+                          accuracy={progress.bestScore}
+                          strokeWidth={8}
+                          showPercentage={true}
+                        />
+                        {progress.bestScore >= 0.95 && (
                           <View style={styles.perfectStar}>
                             <Icon name="stars" size={20} color={COLORS.gold} />
                           </View>
@@ -1053,33 +956,35 @@ export default function HomeScreen() {
                       </View>
                     ) : isCurrent ? (
                       <Animated.View style={{ transform: [{ rotate: '0deg' }] }}>
-                        <Icon name="star" size={36} color={COLORS.white} />
+                        <Icon name="play-circle-filled" size={42} color={COLORS.white} />
                       </Animated.View>
-                    ) : !isUnlocked ? (
+                    ) : isLocked ? (
                       <Icon name="lock" size={28} color={COLORS.gray[400]} />
                     ) : (
                       <View style={styles.wordPreview}>
-                        <Icon name="play-circle-filled" size={32} color={COLORS.primary} />
+                        <Icon name="play-circle-outline" size={32} color={COLORS.primary} />
                       </View>
                     )}
                   </LinearGradient>
                   
-                  {progress?.bestScore && progress.bestScore > 0 && (
-                    <Animated.View style={[styles.scoreLabel, { opacity: glowAnim }]}>
+                  {/* Attempt Count Badge */}
+                  {progress?.attempts > 0 && !isCompleted && progress?.bestScore > 0 && (
+                    <Animated.View style={[styles.scoreLabel, { opacity: 1 }]}>
                       <LinearGradient
                         colors={['#FFFFFF', '#F8FAFC'] as const}
                         style={styles.scoreLabelGradient}
                       >
                         <Icon name="stars" size={10} color={COLORS.gold} />
                         <Text style={styles.scoreLabelText}>
-                          {Math.round(progress.bestScore * 100)}%
+                          {progress.attempts} {progress.attempts === 1 ? 'try' : 'tries'}
                         </Text>
                       </LinearGradient>
                     </Animated.View>
                   )}
                 </TouchableOpacity>
 
-                {isUnlocked && (
+                {/* Word Label */}
+                {!isLocked && (
                   <Animated.View 
                     style={[
                       styles.wordLabelBelow,
@@ -1090,17 +995,25 @@ export default function HomeScreen() {
                       colors={
                         isCompleted
                           ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                          : isCurrent
+                          ? [COLORS.primary + '20', COLORS.primary + '10'] as const
                           : [COLORS.white, COLORS.gray[50]] as const
                       }
                       style={styles.wordLabelGradient}
                     >
                       <Text style={[
                         styles.wordLabelText,
-                        { color: isCompleted ? DIFFICULTY_COLORS[selectedDifficulty].primary : COLORS.gray[800] }
+                        { 
+                          color: isCompleted 
+                            ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                            : isCurrent
+                            ? COLORS.primary
+                            : COLORS.gray[800] 
+                        }
                       ]}>{word.word}</Text>
                       {isCurrent && (
                         <View style={styles.currentBadge}>
-                          <Text style={styles.currentBadgeText}>NEW</Text>
+                          <Text style={styles.currentBadgeText}>CURRENT</Text>
                         </View>
                       )}
                     </LinearGradient>
@@ -1108,7 +1021,8 @@ export default function HomeScreen() {
                 )}
               </Animated.View>
 
-              {shouldShowMilestone(index) && isUnlocked && (
+              {/* Milestone Markers */}
+              {(index + 1) % 5 === 0 && index > 0 && !isLocked && (
                 <Animated.View
                   style={[
                     styles.milestoneMarker,
@@ -1129,16 +1043,8 @@ export default function HomeScreen() {
                     <View style={styles.milestoneInfo}>
                       <Text style={styles.milestoneTitle}>Milestone!</Text>
                       <Text style={styles.milestoneText}>
-                        {getProgressStats(index).completed}/{getProgressStats(index).total} completed
+                        {completedCount}/{allWords.length} words
                       </Text>
-                      {getProgressStats(index).accuracy > 0 && (
-                        <View style={styles.milestoneAccuracy}>
-                          <Icon name="show-chart" size={14} color={COLORS.white} />
-                          <Text style={styles.milestoneAccuracyText}>
-                            {getProgressStats(index).accuracy}% avg
-                          </Text>
-                        </View>
-                      )}
                     </View>
                   </LinearGradient>
                 </Animated.View>
@@ -1148,15 +1054,20 @@ export default function HomeScreen() {
         })}
       </>
     );
-  };
+  }, [allWords, wordProgress, currentWordIndex, selectedDifficulty, completedCount]);
 
   const modalScale = modalAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0.8, 1],
   });
 
+  // ============================================================================
+  // MAIN RENDER
+  // ============================================================================
+
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <Text style={styles.userName}>Hi, {userName}! 👋</Text>
@@ -1204,6 +1115,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* Controls */}
       <View style={styles.controls}>
         <View style={styles.dropdownContainer}>
           <TouchableOpacity
@@ -1250,6 +1162,7 @@ export default function HomeScreen() {
           )}
         </View>
 
+        {/* Daily Task Button */}
         <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
           <TouchableOpacity
             style={styles.dailyTaskButton}
@@ -1273,41 +1186,44 @@ export default function HomeScreen() {
         </Animated.View>
       </View>
 
-      {/* BATCH PROGRESS INDICATOR */}
-      {currentBatch && (
-        <View style={styles.batchProgressContainer}>
-          <View style={styles.batchProgressHeader}>
-            <View style={styles.batchInfo}>
-              <Icon name="collections-bookmark" size={20} color={COLORS.primary} />
-              <Text style={styles.batchTitle}>Batch {currentBatchNumber + 1}</Text>
+      {/* Progress Indicator */}
+      {allWords.length > 0 && (
+        <View style={styles.progressContainer}>
+          <View style={styles.progressHeader}>
+            <View style={styles.progressInfo}>
+              <Icon name="track-changes" size={20} color={COLORS.primary} />
+              <Text style={styles.progressTitle}>
+                {selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1)} Level
+              </Text>
             </View>
-            <Text style={styles.batchCompletion}>{batchCompletionPercent}%</Text>
+            <Text style={styles.progressPercentage}>{Math.round(completionPercentage)}%</Text>
           </View>
-          <View style={styles.batchProgressBar}>
+          <View style={styles.progressBar}>
             <Animated.View 
               style={[
-                styles.batchProgressFill,
-                { width: `${batchCompletionPercent}%` }
+                styles.progressFill,
+                { width: `${completionPercentage}%` }
               ]}
             >
               <LinearGradient
                 colors={DIFFICULTY_COLORS[selectedDifficulty].gradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
-                style={styles.batchProgressGradient}
+                style={styles.progressGradient}
               />
             </Animated.View>
           </View>
-          <Text style={styles.batchProgressText}>
-            {batchWords.filter(w => wordProgress[w.id]?.completed).length} / {batchWords.length} words completed
+          <Text style={styles.progressText}>
+            {completedCount} / {allWords.length} words completed · Word {currentWordIndex + 1} active
           </Text>
         </View>
       )}
 
-      {isLoadingBatch ? (
+      {/* Word Path ScrollView */}
+      {isLoadingProgress ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading batch...</Text>
+          <Text style={styles.loadingText}>Loading your progress...</Text>
         </View>
       ) : (
         <ScrollView 
@@ -1318,9 +1234,8 @@ export default function HomeScreen() {
           scrollEventThrottle={16}
         >
           <View style={styles.pathContainer}>
-            {renderWordChain()}
+            {renderWordPath()}
           </View>
-
           <View style={{ height: 100 }} />
         </ScrollView>
       )}
@@ -1372,7 +1287,7 @@ export default function HomeScreen() {
                   style={styles.startDailyButton}
                   onPress={() => {
                     setShowDailyTask(false);
-                    openPracticeModal(todayWord, true);
+                    openPracticeModalFast(todayWord, true);
                   }}
                 >
                   <LinearGradient
@@ -1492,6 +1407,7 @@ export default function HomeScreen() {
                   </>
                 ) : (
                   <>
+                    {/* Result Screen */}
                     <View style={styles.modalHeader}>
                       <TouchableOpacity 
                         style={styles.closeButton}
@@ -1588,7 +1504,6 @@ export default function HomeScreen() {
   );
 }
 
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1646,7 +1561,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   badgeLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
     color: 'rgba(255, 255, 255, 0.9)',
     textTransform: 'uppercase',
@@ -1755,8 +1670,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: COLORS.white,
   },
-  // NEW: Batch Progress Styles
-  batchProgressContainer: {
+  progressContainer: {
     marginHorizontal: 20,
     marginBottom: 16,
     backgroundColor: COLORS.white,
@@ -1768,42 +1682,42 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  batchProgressHeader: {
+  progressHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  batchInfo: {
+  progressInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  batchTitle: {
+  progressTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: COLORS.gray[800],
   },
-  batchCompletion: {
+  progressPercentage: {
     fontSize: 20,
     fontWeight: '900',
     color: COLORS.primary,
   },
-  batchProgressBar: {
+  progressBar: {
     height: 12,
     backgroundColor: COLORS.gray[200],
     borderRadius: 6,
     overflow: 'hidden',
     marginBottom: 8,
   },
-  batchProgressFill: {
+  progressFill: {
     height: '100%',
     borderRadius: 6,
   },
-  batchProgressGradient: {
+  progressGradient: {
     flex: 1,
   },
-  batchProgressText: {
+  progressText: {
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.gray[600],
@@ -1840,20 +1754,6 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 4,
   },
-  pathDotsContainer: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pathDotMoving: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginLeft: -4,
-  },
   wordNode: {
     position: 'absolute',
     width: 80,
@@ -1886,8 +1786,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 40,
   },
-  completedIcon: {
+  progressCircleContainer: {
     position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   perfectStar: {
     position: 'absolute',
@@ -2009,21 +1911,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'rgba(255, 255, 255, 0.9)',
     marginBottom: 4,
-  },
-  milestoneAccuracy: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-  milestoneAccuracyText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.white,
   },
   modalOverlay: {
     flex: 1,
