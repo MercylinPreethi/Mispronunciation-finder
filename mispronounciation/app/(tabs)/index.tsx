@@ -229,6 +229,7 @@ export default function HomeScreen() {
   ] as Animated.Value[]).current;
 
   const dailyTaskPulse = useRef(new Animated.Value(1)).current;
+  const streakCalendarAnim = useRef(new Animated.Value(0)).current;
   const wordNodeAnims = useRef<Record<string, Animated.Value>>({}).current;
   const glowAnims = useRef<Record<string, Animated.Value>>({}).current;
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
