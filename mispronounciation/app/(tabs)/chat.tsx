@@ -54,10 +54,13 @@ export default function CoachScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showFeedbackOverlay, setShowFeedbackOverlay] = useState(false);
+  const [latestFeedback, setLatestFeedback] = useState<PronunciationFeedback | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const micScaleAnim = useRef(new Animated.Value(1)).current;
   const rippleAnim = useRef(new Animated.Value(0)).current;
+  const feedbackOverlayAnim = useRef(new Animated.Value(0)).current;
   const durationInterval = useRef<number | null>(null);
 
   useEffect(() => {
@@ -272,6 +275,31 @@ export default function CoachScreen() {
           setMessages(prev => [...prev, aiMessage]);
           scrollViewRef.current?.scrollToEnd({ animated: true });
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          
+          // Show feedback overlay
+          if (pronunciation_feedback) {
+            setLatestFeedback(pronunciation_feedback);
+            setShowFeedbackOverlay(true);
+            
+            Animated.spring(feedbackOverlayAnim, {
+              toValue: 1,
+              tension: 60,
+              friction: 8,
+              useNativeDriver: true,
+            }).start();
+            
+            // Auto-hide after 6 seconds
+            setTimeout(() => {
+              Animated.timing(feedbackOverlayAnim, {
+                toValue: 0,
+                duration: 300,
+                useNativeDriver: true,
+              }).start(() => {
+                setShowFeedbackOverlay(false);
+                setLatestFeedback(null);
+              });
+            }, 6000);
+          }
         }, 600);
         
       } else {
@@ -544,6 +572,104 @@ export default function CoachScreen() {
         <View style={{ height: 20 }} />
       </ScrollView>
 
+      {/* Feedback Overlay */}
+      {showFeedbackOverlay && latestFeedback && (
+        <Animated.View
+          style={[
+            styles.feedbackOverlay,
+            {
+              opacity: feedbackOverlayAnim,
+              transform: [{
+                translateY: feedbackOverlayAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [100, 0],
+                }),
+              }],
+            }
+          ]}
+        >
+          <BlurView intensity={95} tint="light" style={styles.feedbackOverlayBlur}>
+            <TouchableOpacity
+              style={styles.feedbackOverlayContent}
+              onPress={() => {
+                Animated.timing(feedbackOverlayAnim, {
+                  toValue: 0,
+                  duration: 250,
+                  useNativeDriver: true,
+                }).start(() => {
+                  setShowFeedbackOverlay(false);
+                  setLatestFeedback(null);
+                });
+              }}
+              activeOpacity={0.95}
+            >
+              <View style={styles.feedbackOverlayHeader}>
+                <LinearGradient
+                  colors={
+                    latestFeedback.accuracy >= 85
+                      ? ['#10B981', '#059669'] as const
+                      : latestFeedback.accuracy >= 70
+                      ? ['#F59E0B', '#D97706'] as const
+                      : ['#EF4444', '#DC2626'] as const
+                  }
+                  style={styles.feedbackOverlayScoreBadge}
+                >
+                  <Icon name="stars" size={16} color="#FFFFFF" />
+                  <Text style={styles.feedbackOverlayScoreText}>
+                    {latestFeedback.accuracy.toFixed(0)}%
+                  </Text>
+                </LinearGradient>
+                <Text style={styles.feedbackOverlayTitle}>Quick Analysis</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    Animated.timing(feedbackOverlayAnim, {
+                      toValue: 0,
+                      duration: 250,
+                      useNativeDriver: true,
+                    }).start(() => {
+                      setShowFeedbackOverlay(false);
+                      setLatestFeedback(null);
+                    });
+                  }}
+                  style={styles.feedbackOverlayClose}
+                >
+                  <Icon name="close" size={20} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.feedbackOverlayStats}>
+                <View style={styles.feedbackOverlayStat}>
+                  <Icon name="check-circle" size={18} color="#10B981" />
+                  <Text style={styles.feedbackOverlayStatText}>
+                    {latestFeedback.correct_words.length} correct
+                  </Text>
+                </View>
+                {latestFeedback.mispronounced_words.length > 0 && (
+                  <View style={styles.feedbackOverlayStat}>
+                    <Icon name="warning" size={18} color="#EF4444" />
+                    <Text style={styles.feedbackOverlayStatText}>
+                      {latestFeedback.mispronounced_words.length} to practice
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {latestFeedback.mispronounced_words.length > 0 && (
+                <View style={styles.feedbackOverlayWords}>
+                  {latestFeedback.mispronounced_words.slice(0, 3).map((word, idx) => (
+                    <View key={idx} style={styles.feedbackOverlayWordChip}>
+                      <Text style={styles.feedbackOverlayWordText}>{word}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <Text style={styles.feedbackOverlayHint}>Tap to dismiss</Text>
+            </TouchableOpacity>
+          </BlurView>
+        </Animated.View>
+      )}
+
       {/* Input Area with Glassmorphism */}
       <BlurView intensity={100} tint="light" style={styles.inputBlur}>
         <View style={styles.inputContainer}>
@@ -777,37 +903,37 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   micButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#667EEA',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 10,
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   micPulse: {
     position: 'absolute',
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: '#667EEA',
-    opacity: 0.2,
+    opacity: 0.15,
   },
   micTextContainer: {
     flexDirection: 'column',
     justifyContent: 'center',
   },
   micMainText: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '900',
     color: '#1F2937',
-    letterSpacing: -0.5,
-    marginBottom: 4,
+    letterSpacing: -0.3,
+    textTransform: 'uppercase',
   },
   micSubText: {
     fontSize: 13,
@@ -824,19 +950,22 @@ const styles = StyleSheet.create({
   aiMessageBubble: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    borderTopLeftRadius: 8,
-    padding: 16,
-    shadowColor: '#000000',
+    borderTopLeftRadius: 6,
+    padding: 18,
+    shadowColor: '#667EEA',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(102, 126, 234, 0.1)',
   },
   aiMessageText: {
-    fontSize: 15,
+    fontSize: 16,
     color: '#1F2937',
-    lineHeight: 22,
-    fontWeight: '500',
+    lineHeight: 24,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
   feedbackContainer: {
     marginTop: 16,
@@ -851,32 +980,34 @@ const styles = StyleSheet.create({
   },
   scoreCardWrapper: {
     flex: 1,
-    borderRadius: 18,
+    borderRadius: 20,
     overflow: 'hidden',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   scoreCardGradient: {
-    padding: 14,
+    padding: 16,
     alignItems: 'center',
   },
   scoreCardValue: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '900',
     color: '#FFFFFF',
-    marginTop: 6,
-    marginBottom: 2,
-    letterSpacing: -1,
+    marginTop: 8,
+    marginBottom: 4,
+    letterSpacing: -1.5,
   },
   scoreCardLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.9)',
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.95)',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   wordsSection: {
     marginBottom: 14,
@@ -901,46 +1032,52 @@ const styles = StyleSheet.create({
   wordChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
     gap: 6,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+    borderWidth: 1.5,
   },
   wordChipError: {
     backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
   },
   wordChipTextError: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: '#DC2626',
   },
   wordChipWarning: {
     backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
   },
   wordChipTextWarning: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: '#D97706',
   },
   wordChipSuccess: {
     backgroundColor: '#D1FAE5',
+    borderColor: '#6EE7B7',
   },
   wordChipTextSuccess: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: '#059669',
   },
   tipsContainer: {
     backgroundColor: '#F0F4FF',
-    borderRadius: 14,
-    padding: 14,
-    borderLeftWidth: 4,
+    borderRadius: 16,
+    padding: 16,
+    borderLeftWidth: 5,
     borderLeftColor: '#667EEA',
+    borderWidth: 1.5,
+    borderColor: 'rgba(102, 126, 234, 0.2)',
   },
   tipsHeader: {
     flexDirection: 'row',
@@ -988,19 +1125,22 @@ const styles = StyleSheet.create({
   },
   userMessageBubble: {
     borderRadius: 24,
-    borderTopRightRadius: 8,
-    padding: 16,
+    borderTopRightRadius: 6,
+    padding: 18,
     shadowColor: '#667EEA',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   userMessageText: {
-    fontSize: 15,
+    fontSize: 16,
     color: '#FFFFFF',
-    lineHeight: 22,
-    fontWeight: '500',
+    lineHeight: 24,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
   voiceIndicator: {
     flexDirection: 'row',
@@ -1121,18 +1261,124 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   stopButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   recordingHint: {
     fontSize: 14,
     color: '#6B7280',
     fontWeight: '700',
     letterSpacing: 0.3,
+  },
+  feedbackOverlay: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 140 : 120,
+    left: 20,
+    right: 20,
+    zIndex: 1000,
+  },
+  feedbackOverlayBlur: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    shadowColor: '#667EEA',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  feedbackOverlayContent: {
+    padding: 20,
+  },
+  feedbackOverlayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  feedbackOverlayScoreBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  feedbackOverlayScoreText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  feedbackOverlayTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#1F2937',
+    letterSpacing: -0.3,
+  },
+  feedbackOverlayClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(107, 114, 128, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  feedbackOverlayStats: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 14,
+  },
+  feedbackOverlayStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(249, 250, 251, 0.8)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  feedbackOverlayStatText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  feedbackOverlayWords: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  feedbackOverlayWordChip: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  feedbackOverlayWordText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  feedbackOverlayHint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '600',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

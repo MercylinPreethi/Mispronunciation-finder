@@ -797,15 +797,17 @@ export default function HomeScreen() {
    */
   const renderWordPath = useCallback(() => {
     const pathPositions: { x: number; y: number; word: Word; index: number; }[] = [];
-    const pathWidth = width - 100;
+    const pathWidth = width - 120;
     const centerX = width / 2;
-    const verticalSpacing = 140;
+    const verticalSpacing = 150;
     
     allWords.forEach((word, index) => {
-      const wave = Math.sin(index * 0.8) * (pathWidth * 0.35);
-      let x = centerX + wave + (Math.random() * 20 - 10);
-      const y = 80 + (index * verticalSpacing);
-      x = Math.max(60, Math.min(width - 60, x));
+      // Create a smoother, more dynamic wave pattern
+      const wave = Math.sin(index * 0.6) * (pathWidth * 0.38);
+      const secondaryWave = Math.cos(index * 0.4) * 15;
+      let x = centerX + wave + secondaryWave;
+      const y = 100 + (index * verticalSpacing);
+      x = Math.max(70, Math.min(width - 70, x));
       pathPositions.push({ x, y, word, index });
     });
 
@@ -863,9 +865,9 @@ export default function HomeScreen() {
                       left: pathPoints.startX,
                       top: pathPoints.startY,
                       width: pathPoints.width,
-                      height: 8,
+                      height: 6,
                       transform: [
-                        { translateY: -4 },
+                        { translateY: -3 },
                         { rotate: `${pathPoints.angle}deg` }
                       ],
                     }
@@ -874,8 +876,10 @@ export default function HomeScreen() {
                   <LinearGradient
                     colors={
                       isPastWord
-                        ? [COLORS.success, '#059669'] as const
-                        : [COLORS.gray[300], COLORS.gray[200]] as const
+                        ? [COLORS.success, '#34D399', '#059669'] as const
+                        : isCurrent
+                        ? [COLORS.primary, COLORS.primaryLight] as const
+                        : [COLORS.gray[200], COLORS.gray[300]] as const
                     }
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
@@ -909,24 +913,42 @@ export default function HomeScreen() {
                   style={styles.wordCircleButton}
                   onPress={() => {
                     if (!isLocked) {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       Animated.sequence([
                         Animated.timing(nodeAnim, {
-                          toValue: 0.9,
-                          duration: 100,
+                          toValue: 0.85,
+                          duration: 80,
                           useNativeDriver: true,
                         }),
                         Animated.spring(nodeAnim, {
                           toValue: 1,
-                          tension: 100,
-                          friction: 3,
+                          tension: 120,
+                          friction: 4,
                           useNativeDriver: true,
                         }),
                       ]).start();
+                      
+                      // Add glow effect on tap
+                      if (glowAnim) {
+                        Animated.sequence([
+                          Animated.timing(glowAnim, {
+                            toValue: 1,
+                            duration: 150,
+                            useNativeDriver: false,
+                          }),
+                          Animated.timing(glowAnim, {
+                            toValue: 0,
+                            duration: 300,
+                            useNativeDriver: false,
+                          }),
+                        ]).start();
+                      }
+                      
                       openPracticeModalFast(word);
                     }
                   }}
                   disabled={isLocked}
-                  activeOpacity={0.8}
+                  activeOpacity={0.75}
                 >
                   <LinearGradient
                     colors={
@@ -1672,15 +1694,17 @@ const styles = StyleSheet.create({
   },
   progressContainer: {
     marginHorizontal: 20,
-    marginBottom: 16,
+    marginBottom: 20,
     backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: COLORS.gray[100],
   },
   progressHeader: {
     flexDirection: 'row',
@@ -1704,11 +1728,13 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   progressBar: {
-    height: 12,
-    backgroundColor: COLORS.gray[200],
-    borderRadius: 6,
+    height: 14,
+    backgroundColor: COLORS.gray[100],
+    borderRadius: 7,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.gray[200],
   },
   progressFill: {
     height: '100%',
@@ -1762,21 +1788,21 @@ const styles = StyleSheet.create({
   },
   wordGlow: {
     position: 'absolute',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    left: -10,
-    top: -10,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    left: -20,
+    top: -20,
   },
   wordCircleButton: {
     width: 80,
     height: 80,
     borderRadius: 40,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
     overflow: 'hidden',
   },
   circleGradient: {
@@ -1785,6 +1811,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 40,
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   progressCircleContainer: {
     position: 'relative',
@@ -1831,30 +1859,32 @@ const styles = StyleSheet.create({
   },
   wordLabelBelow: {
     position: 'absolute',
-    top: 90,
+    top: 95,
     left: '50%',
     transform: [{ translateX: -60 }],
-    borderRadius: 14,
+    borderRadius: 16,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
     overflow: 'hidden',
     minWidth: 120,
   },
   wordLabelGradient: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   wordLabelText: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.4,
   },
   currentBadge: {
     backgroundColor: COLORS.primary,
@@ -1870,20 +1900,22 @@ const styles = StyleSheet.create({
   },
   milestoneMarker: {
     position: 'absolute',
-    width: 140,
-    borderRadius: 16,
+    width: 150,
+    borderRadius: 18,
     overflow: 'hidden',
     shadowColor: COLORS.tertiary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   milestoneGradient: {
-    padding: 12,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   milestoneIcon: {
     width: 44,
