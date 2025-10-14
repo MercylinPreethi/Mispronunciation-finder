@@ -305,10 +305,15 @@ export default function HomeScreen() {
           }
         }
         
+        // Calculate accurate counts for current difficulty only
+        const currentDifficultyProgress = words.map(w => progressData[w.id]).filter(Boolean);
+        const accurateCompletedCount = currentDifficultyProgress.filter(p => (p.bestScore || 0) >= 0.8).length;
+        const accurateCompletionPercentage = words.length > 0 ? (accurateCompletedCount / words.length) * 100 : 0;
+        
         setCurrentWord(words[actualCurrentIndex] || data.next_word);
         setCurrentWordIndex(actualCurrentIndex);
-        setCompletedCount(data.completed_count);
-        setCompletionPercentage(data.completion_percentage);
+        setCompletedCount(accurateCompletedCount);
+        setCompletionPercentage(accurateCompletionPercentage);
         
         cacheRef.current.words[difficulty] = words;
         cacheRef.current.progress[`${user.uid}-${difficulty}`] = {
@@ -476,7 +481,7 @@ export default function HomeScreen() {
           ]).start();
         }
 
-        // Load next word in background
+        // Load next word in background (counts will auto-update via useEffect)
         setTimeout(async () => {
           await loadAllDataFast(difficulty);
           
@@ -799,6 +804,36 @@ export default function HomeScreen() {
   // ============================================================================
   // OPTIMIZED USE EFFECTS
   // ============================================================================
+
+  // Recalculate counts when word progress changes
+  useEffect(() => {
+    if (allWords.length > 0) {
+      // Only count progress for words in current difficulty level
+      const completedInDifficulty = allWords.filter(w => {
+        const prog = wordProgress[w.id];
+        return prog && prog.bestScore >= 0.8;
+      }).length;
+      
+      const completionPerc = (completedInDifficulty / allWords.length) * 100;
+      
+      setCompletedCount(completedInDifficulty);
+      setCompletionPercentage(completionPerc);
+      
+      // Also update current word index
+      let newCurrentIndex = 0;
+      for (let i = 0; i < allWords.length; i++) {
+        const prog = wordProgress[allWords[i].id];
+        if (!prog || (prog.bestScore || 0) < 0.5) {
+          newCurrentIndex = i;
+          break;
+        }
+        if (i === allWords.length - 1) {
+          newCurrentIndex = i;
+        }
+      }
+      setCurrentWordIndex(newCurrentIndex);
+    }
+  }, [wordProgress, allWords]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -1601,13 +1636,13 @@ export default function HomeScreen() {
                     <View style={styles.milestoneInfo}>
                       <Text style={styles.milestoneTitle}>🎉 Milestone Reached!</Text>
                       <Text style={styles.milestoneText}>
-                        Level {index + 1} • {Math.round((completedCount / allWords.length) * 100)}% Complete
+                        Level {index + 1} • {Math.round(completionPercentage)}% Complete
                       </Text>
                       <View style={styles.milestoneProgressContainer}>
                         <View style={styles.milestoneProgress}>
                           <View style={[
                             styles.milestoneProgressFill,
-                            { width: `${(completedCount / allWords.length) * 100}%` }
+                            { width: `${completionPercentage}%` }
                           ]} />
                         </View>
                       </View>
@@ -1780,7 +1815,10 @@ export default function HomeScreen() {
             </Animated.View>
           </View>
           <Text style={styles.progressText}>
-            {completedCount} completed · {Object.values(wordProgress).filter(p => p.bestScore >= 0.5 && p.bestScore < 0.8).length} unlocked · Word {currentWordIndex + 1} active
+            {completedCount} completed · {allWords.filter(w => {
+              const prog = wordProgress[w.id];
+              return prog && prog.bestScore >= 0.5 && prog.bestScore < 0.8;
+            }).length} unlocked · Word {currentWordIndex + 1} active
           </Text>
         </View>
       )}
