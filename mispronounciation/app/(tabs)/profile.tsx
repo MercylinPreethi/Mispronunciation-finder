@@ -9,10 +9,13 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Animated,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import { auth, database } from '../../lib/firebase';
 import { ref, get } from 'firebase/database';
 import { signOut } from 'firebase/auth';
@@ -61,6 +64,9 @@ export default function ProfileScreen() {
   const [recentPractice, setRecentPractice] = useState<PracticeHistory[]>([]);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [showStreakCalendar, setShowStreakCalendar] = useState(false);
+  const [streakDays, setStreakDays] = useState<string[]>([]);
+  const streakCalendarAnim = new Animated.Value(0);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -108,9 +114,45 @@ export default function ProfileScreen() {
           practiceTime: Math.round((data.totalPracticeTime || data.practiceTime || 0) / 60),
         });
       }
+
+      // Load streak days for calendar
+      const dailyWordsRef = ref(database, `users/${userId}/dailyWords`);
+      const dailySnapshot = await get(dailyWordsRef);
+      if (dailySnapshot.exists()) {
+        const allDailyWords = dailySnapshot.val();
+        await calculateStreakDays(allDailyWords, userId);
+      }
     } catch (error) {
       console.error('Error loading stats:', error);
     }
+  };
+
+  const calculateStreakDays = async (allDailyWords: any, userId: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const streakDates: string[] = [];
+    
+    // Get practice tracking data
+    const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
+    const trackingSnapshot = await get(practiceTrackingRef);
+    const practiceTracking = trackingSnapshot.exists() ? trackingSnapshot.val() : {};
+    
+    // Check last 365 days for active streak days (any practice activity)
+    for (let daysAgo = 0; daysAgo < 365; daysAgo++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(checkDate.getDate() - daysAgo);
+      const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+      
+      // Check both daily words and practice tracking
+      const dailyData = allDailyWords[checkDateStr];
+      const trackingData = practiceTracking[checkDateStr];
+      
+      if ((dailyData && dailyData.attempts > 0) || (trackingData && trackingData.practiced)) {
+        streakDates.push(checkDateStr);
+      }
+    }
+    
+    setStreakDays(streakDates);
   };
 
   const loadAllPracticeHistory = async (userId: string) => {
@@ -461,6 +503,27 @@ export default function ProfileScreen() {
     return days[index];
   };
 
+  const openStreakCalendar = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowStreakCalendar(true);
+    Animated.spring(streakCalendarAnim, {
+      toValue: 1,
+      tension: 60,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeStreakCalendar = () => {
+    Animated.timing(streakCalendarAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowStreakCalendar(false);
+    });
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -519,11 +582,11 @@ export default function ProfileScreen() {
             <Text style={styles.statValue}>{stats.accuracy}%</Text>
             <Text style={styles.statLabel}>Avg Accuracy</Text>
           </View>
-          <View style={styles.statCard}>
+          <TouchableOpacity style={styles.statCard} onPress={openStreakCalendar} activeOpacity={0.8}>
             <Icon name="local-fire-department" size={28} color="#F59E0B" />
             <Text style={styles.statValue}>{stats.streak}</Text>
             <Text style={styles.statLabel}>Day Streak</Text>
-          </View>
+          </TouchableOpacity>
           <View style={styles.statCard}>
             <Icon name="timer" size={28} color="#EC4899" />
             <Text style={styles.statValue}>{stats.practiceTime}</Text>
@@ -779,6 +842,116 @@ export default function ProfileScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* STREAK CALENDAR MODAL */}
+      <Modal
+        visible={showStreakCalendar}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeStreakCalendar}
+      >
+        <View style={styles.modalOverlay}>
+          <Animated.View
+            style={[
+              styles.streakCalendarContainer,
+              {
+                opacity: streakCalendarAnim,
+                transform: [{
+                  scale: streakCalendarAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.9, 1],
+                  }),
+                }],
+              }
+            ]}
+          >
+            <LinearGradient
+              colors={['#F59E0B', '#D97706', '#EA580C']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.streakCalendarHeader}
+            >
+              <View style={styles.streakHeaderTop}>
+                <View style={styles.streakFireIcon}>
+                  <Icon name="local-fire-department" size={40} color="#FFFFFF" />
+                </View>
+                <TouchableOpacity
+                  onPress={closeStreakCalendar}
+                  style={styles.streakCloseButton}
+                >
+                  <Icon name="close" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.streakCalendarTitle}>🔥 Streak Calendar</Text>
+              <View style={styles.streakStatsRow}>
+                <View style={styles.streakStatBox}>
+                  <Text style={styles.streakStatValue}>{stats.streak}</Text>
+                  <Text style={styles.streakStatLabel}>Current Streak</Text>
+                </View>
+                <View style={styles.streakStatDivider} />
+                <View style={styles.streakStatBox}>
+                  <Text style={styles.streakStatValue}>{streakDays.length}</Text>
+                  <Text style={styles.streakStatLabel}>Total Days</Text>
+                </View>
+              </View>
+            </LinearGradient>
+
+            <ScrollView
+              style={styles.streakCalendarContent}
+              contentContainerStyle={styles.streakCalendarScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.streakCalendarSubtitle}>
+                Keep practicing daily to maintain your streak! 🌟
+              </Text>
+              
+              <View style={styles.calendarGrid}>
+                {Array.from({ length: 12 }, (_, monthIndex) => {
+                  const currentDate = new Date();
+                  const targetMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - monthIndex, 1);
+                  return (
+                    <View key={monthIndex} style={styles.monthContainer}>
+                      <Text style={styles.monthTitle}>
+                        {targetMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                      </Text>
+                      <View style={styles.monthGrid}>
+                        {Array.from({ length: 31 }, (_, dayIndex) => {
+                          const day = dayIndex + 1;
+                          const dateCheck = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), day);
+                          
+                          // Check if day exists in this month
+                          if (dateCheck.getMonth() !== targetMonth.getMonth()) return null;
+                          
+                          const dateStr = `${dateCheck.getFullYear()}-${String(dateCheck.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                          const isStreakDay = streakDays.includes(dateStr);
+                          const isToday = dateCheck.toDateString() === new Date().toDateString();
+                          
+                          return (
+                            <View
+                              key={dayIndex}
+                              style={[
+                                styles.dayCell,
+                                isStreakDay && styles.dayCellActive,
+                                isToday && styles.dayCellToday,
+                              ]}
+                            >
+                              {isStreakDay ? (
+                                <Text style={styles.fireEmoji}>🔥</Text>
+                              ) : (
+                                <Text style={styles.dayNumber}>{day}</Text>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1232,5 +1405,228 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  streakCalendarContainer: {
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 15,
+  },
+  streakCalendarHeader: {
+    padding: 24,
+    paddingTop: 28,
+  },
+  streakHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  streakFireIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  streakCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  streakCalendarTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginBottom: 20,
+    letterSpacing: -0.5,
+  },
+  streakStatsRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  streakStatBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  streakStatValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginBottom: 4,
+    letterSpacing: -1,
+  },
+  streakStatLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.95)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  streakStatDivider: {
+    width: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    marginHorizontal: 16,
+  },
+  streakCalendarContent: {
+    flex: 1,
+  },
+  streakCalendarScrollContent: {
+    padding: 20,
+  },
+  streakCalendarSubtitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  calendarGrid: {
+    gap: 20,
+  },
+  monthContainer: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  monthTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#1F2937',
+    marginBottom: 12,
+    letterSpacing: -0.3,
+  },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dayCell: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+  },
+  dayCellActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 2,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  dayCellToday: {
+    borderColor: '#6366F1',
+    borderWidth: 2.5,
+  },
+  dayNumber: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  fireEmoji: {
+    fontSize: 20,
+  },
+  motivationalBanner: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 20,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  motivationalGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  motivationalText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  calendarLegend: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+  },
+  legendItem: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+  },
+  legendActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 2,
+  },
+  legendToday: {
+    borderColor: '#6366F1',
+    borderWidth: 2.5,
+  },
+  legendText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  legendNumber: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  fireEmojiSmall: {
+    fontSize: 16,
   },
 });

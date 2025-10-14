@@ -59,12 +59,13 @@ const ProgressCircle: React.FC<ProgressCircleProps> = ({
   return (
     <View style={[styles.container, { width: size, height: size }]}>
       <Svg width={size} height={size}>
-        {/* Background circle */}
+        {/* Background circle with subtle gradient effect */}
         <Circle
           cx={center}
           cy={center}
           r={pieRadius}
           fill={backgroundColor}
+          opacity={0.3}
         />
         
         {/* Progress pie slice */}
@@ -72,21 +73,23 @@ const ProgressCircle: React.FC<ProgressCircleProps> = ({
           <Path
             d={piePath}
             fill={finalProgressColor}
+            opacity={0.95}
           />
         )}
         
-        {/* Inner white circle to create ring effect */}
+        {/* Inner white circle to create ring effect with slight shadow */}
         <Circle
           cx={center}
           cy={center}
-          r={pieRadius * 0.65}
+          r={pieRadius * 0.68}
           fill="white"
+          opacity={1}
         />
       </Svg>
       
       {showPercentage && (
         <View style={styles.percentageContainer}>
-          <Text style={[styles.percentageText, { color: finalProgressColor, fontSize: size * 0.22 }]}>
+          <Text style={[styles.percentageText, { color: finalProgressColor, fontSize: size * 0.24 }]}>
             {percentage}%
           </Text>
         </View>
@@ -108,7 +111,10 @@ const styles = StyleSheet.create({
   },
   percentageText: {
     fontWeight: '900',
-    letterSpacing: -0.5,
+    letterSpacing: -1,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
 });
 
