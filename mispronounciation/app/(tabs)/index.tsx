@@ -85,6 +85,15 @@ interface WordProgress {
   lastAttempted: string;
 }
 
+interface AttemptRecord {
+  timestamp: string;
+  accuracy: number;
+  feedback: string;
+  correctPhonemes: number;
+  totalPhonemes: number;
+  attemptNumber: number;
+}
+
 interface DailyWordProgress {
   word: string;
   date: string;
@@ -156,12 +165,18 @@ export default function HomeScreen() {
   const [showResult, setShowResult] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [playingAudio, setPlayingAudio] = useState(false);
+  const [showStreakCalendar, setShowStreakCalendar] = useState(false);
+  const [streakDays, setStreakDays] = useState<string[]>([]);
+  const [previousAttempts, setPreviousAttempts] = useState<AttemptRecord[]>([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
 
   const recordSecsRef = useRef(0);
   const recordTimeRef = useRef('00:00');
   const recordingPathRef = useRef<string | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const modalAnim = useRef(new Animated.Value(0)).current;
+  const streakCalendarAnim = useRef(new Animated.Value(0)).current;
+  const streakBadgePulse = useRef(new Animated.Value(1)).current;
   
   const badgeAnims = useRef([
     new Animated.Value(0),
@@ -290,38 +305,86 @@ export default function HomeScreen() {
   };
 
   /**
-   * Optimized user progress update
+   * Update daily practice tracking and streak
+   */
+  const updateDailyPracticeTracking = async (userId: string) => {
+    try {
+      const today = getTodayDateString();
+      const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking/${today}`);
+      const snapshot = await get(practiceTrackingRef);
+      
+      if (!snapshot.exists()) {
+        // First practice of the day - update streak
+        await set(practiceTrackingRef, {
+          date: today,
+          practiced: true,
+          timestamp: new Date().toISOString(),
+        });
+        
+        // Update streak in stats
+        const statsRef = ref(database, `users/${userId}/stats`);
+        const statsSnapshot = await get(statsRef);
+        if (statsSnapshot.exists()) {
+          const currentStats = statsSnapshot.val();
+          const newStreak = (currentStats.streak || 0) + 1;
+          await set(statsRef, { ...currentStats, streak: newStreak });
+          setStats(prev => ({ ...prev, streak: newStreak }));
+        }
+      }
+    } catch (error) {
+      console.error('Error updating daily practice tracking:', error);
+    }
+  };
+
+  /**
+   * Optimized user progress update with detailed attempt tracking
    */
   const updateWordProgressFast = async (accuracy: number) => {
     try {
       const user = auth.currentUser;
-      if (!user || !selectedWord) return;
+      if (!user || !selectedWord || !result) return;
 
       const timestamp = new Date().toISOString();
-      const isCompleted = accuracy >= 0.8;
+      const isCompleted = accuracy >= 0.5; // Changed from 0.8 to 0.5 (50% threshold)
       const xpEarned = Math.round(accuracy * 10);
       const wordId = selectedWord.id;
       const difficulty = selectedWord.difficulty;
+      const attemptNumber = (wordProgress[wordId]?.attempts || 0) + 1;
 
       // Update local state immediately for instant feedback
       const newProgress: WordProgress = {
         wordId: wordId,
         word: selectedWord.word,
         completed: isCompleted,
-        attempts: (wordProgress[wordId]?.attempts || 0) + 1,
+        attempts: attemptNumber,
         bestScore: Math.max(wordProgress[wordId]?.bestScore || 0, accuracy),
         lastAttempted: timestamp,
       };
 
       setWordProgress(prev => ({ ...prev, [wordId]: newProgress }));
 
-      // Update Firebase in background (don't wait for it)
+      // Save detailed attempt record
+      const attemptRecord: AttemptRecord = {
+        timestamp: timestamp,
+        accuracy: accuracy,
+        feedback: result.feedback,
+        correctPhonemes: result.correct_phonemes,
+        totalPhonemes: result.total_phonemes,
+        attemptNumber: attemptNumber,
+      };
+
+      // Update Firebase with progress and attempt history
       const wordRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}`);
-      set(wordRef, newProgress).catch(console.error);
+      const attemptRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}/attempts/${timestamp}`);
+      
+      await Promise.all([
+        set(wordRef, newProgress),
+        set(attemptRef, attemptRecord),
+      ]);
 
       // Update stats optimistically
       const newXP = stats.xp + xpEarned;
-      const isFirstAttempt = newProgress.attempts === 1;
+      const isFirstAttempt = attemptNumber === 1;
       const newTotalWords = isFirstAttempt ? stats.totalWords + 1 : stats.totalWords;
       
       setStats(prev => ({ ...prev, xp: newXP, totalWords: newTotalWords }));
@@ -329,6 +392,9 @@ export default function HomeScreen() {
       // Update Firebase stats in background
       const statsRef = ref(database, `users/${user.uid}/stats`);
       set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords }).catch(console.error);
+
+      // Update daily practice tracking (increments streak once per day)
+      await updateDailyPracticeTracking(user.uid);
 
       // If completed, advance to next word immediately
       if (isCompleted) {
@@ -355,8 +421,8 @@ export default function HomeScreen() {
           await loadAllDataFast(difficulty);
           
           Alert.alert(
-            '🎉 Word Completed!',
-            `Great job! You've mastered "${selectedWord.word}". Moving to the next word...`,
+            '🎉 Word Unlocked!',
+            `Good job! You scored ${Math.round(accuracy * 100)}% on "${selectedWord.word}". Next word unlocked!`,
             [{ text: 'Continue', onPress: () => closePracticeModal() }]
           );
         }, 1000); // Reduced delay
@@ -386,6 +452,34 @@ export default function HomeScreen() {
   // STATS CALCULATION
   // ============================================================================
 
+  const calculateStreakDays = useCallback(async (allDailyWords: any, userId: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const streakDates: string[] = [];
+    
+    // Get practice tracking data
+    const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
+    const trackingSnapshot = await get(practiceTrackingRef);
+    const practiceTracking = trackingSnapshot.exists() ? trackingSnapshot.val() : {};
+    
+    // Check last 365 days for active streak days (any practice activity)
+    for (let daysAgo = 0; daysAgo < 365; daysAgo++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(checkDate.getDate() - daysAgo);
+      const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+      
+      // Check both daily words and practice tracking
+      const dailyData = allDailyWords[checkDateStr];
+      const trackingData = practiceTracking[checkDateStr];
+      
+      if ((dailyData && dailyData.attempts > 0) || (trackingData && trackingData.practiced)) {
+        streakDates.push(checkDateStr);
+      }
+    }
+    
+    setStreakDays(streakDates);
+  }, []);
+
   const calculateStatsFromHistory = useCallback(async (allDailyWords: any, userId: string) => {
     try {
       const dates = Object.keys(allDailyWords);
@@ -394,6 +488,9 @@ export default function HomeScreen() {
       let accuracyCount = 0;
       let currentStreak = 0;
       let totalXP = 0;
+      
+      // Calculate streak days for calendar (includes practice tracking)
+      await calculateStreakDays(allDailyWords, userId);
 
       // Count daily words
       dates.forEach(date => {
@@ -430,7 +527,11 @@ export default function HomeScreen() {
 
       const averageAccuracy = accuracyCount > 0 ? totalAccuracy / accuracyCount : 0;
       
-      // Calculate streak
+      // Calculate streak from practice tracking (includes all practice types)
+      const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
+      const trackingSnapshot = await get(practiceTrackingRef);
+      const practiceTracking = trackingSnapshot.exists() ? trackingSnapshot.val() : {};
+      
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -439,11 +540,14 @@ export default function HomeScreen() {
         checkDate.setDate(checkDate.getDate() - daysAgo);
         const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
         
-        const dayData = allDailyWords[checkDateStr];
-        if (dayData && dayData.attempts > 0) {
+        // Check both daily words and practice tracking
+        const dailyData = allDailyWords[checkDateStr];
+        const trackingData = practiceTracking[checkDateStr];
+        
+        if ((dailyData && dailyData.attempts > 0) || (trackingData && trackingData.practiced)) {
           currentStreak++;
         } else {
-          if (daysAgo > 0) break;
+          if (daysAgo > 0) break; // Stop counting if we hit a gap (but allow today to be missed)
         }
       }
 
@@ -547,7 +651,25 @@ export default function HomeScreen() {
         }),
       ])
     ).start();
-  }, []);
+
+    // Streak badge pulse (if streak > 0)
+    if (stats.streak > 0) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(streakBadgePulse, {
+            toValue: 1.08,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(streakBadgePulse, {
+            toValue: 1,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    }
+  }, [stats.streak]);
 
   // Fast difficulty change
   useEffect(() => {
@@ -608,11 +730,55 @@ export default function HomeScreen() {
     setShowDropdown(false);
   };
 
+  /**
+   * Load previous attempts for a word
+   */
+  const loadPreviousAttempts = async (word: Word) => {
+    setLoadingAttempts(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const difficulty = word.difficulty;
+      const wordId = word.id;
+      const attemptsRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}/attempts`);
+      const snapshot = await get(attemptsRef);
+
+      if (snapshot.exists()) {
+        const attemptsData = snapshot.val();
+        const attempts: AttemptRecord[] = Object.entries(attemptsData)
+          .map(([timestamp, data]: [string, any]) => ({
+            timestamp,
+            accuracy: data.accuracy,
+            feedback: data.feedback,
+            correctPhonemes: data.correctPhonemes,
+            totalPhonemes: data.totalPhonemes,
+            attemptNumber: data.attemptNumber,
+          }))
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 3); // Show last 3 attempts
+        
+        setPreviousAttempts(attempts);
+      } else {
+        setPreviousAttempts([]);
+      }
+    } catch (error) {
+      console.error('Error loading previous attempts:', error);
+      setPreviousAttempts([]);
+    } finally {
+      setLoadingAttempts(false);
+    }
+  };
+
   const openPracticeModalFast = (word: Word, isDaily: boolean = false) => {
     setSelectedWord(word);
     setShowPracticeModal(true);
     setShowResult(false);
     setResult(null);
+    setPreviousAttempts([]);
+    
+    // Load previous attempts for this word
+    loadPreviousAttempts(word);
     
     // Faster animation
     Animated.spring(modalAnim, {
@@ -635,6 +801,27 @@ export default function HomeScreen() {
       setResult(null);
       setIsRecording(false);
       setIsProcessing(false);
+    });
+  };
+
+  const openStreakCalendar = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowStreakCalendar(true);
+    Animated.spring(streakCalendarAnim, {
+      toValue: 1,
+      tension: 60,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeStreakCalendar = () => {
+    Animated.timing(streakCalendarAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowStreakCalendar(false);
     });
   };
 
@@ -797,15 +984,17 @@ export default function HomeScreen() {
    */
   const renderWordPath = useCallback(() => {
     const pathPositions: { x: number; y: number; word: Word; index: number; }[] = [];
-    const pathWidth = width - 100;
+    const pathWidth = width - 120;
     const centerX = width / 2;
-    const verticalSpacing = 140;
+    const verticalSpacing = 150;
     
     allWords.forEach((word, index) => {
-      const wave = Math.sin(index * 0.8) * (pathWidth * 0.35);
-      let x = centerX + wave + (Math.random() * 20 - 10);
-      const y = 80 + (index * verticalSpacing);
-      x = Math.max(60, Math.min(width - 60, x));
+      // Create a smoother, more dynamic wave pattern
+      const wave = Math.sin(index * 0.6) * (pathWidth * 0.38);
+      const secondaryWave = Math.cos(index * 0.4) * 15;
+      let x = centerX + wave + secondaryWave;
+      const y = 100 + (index * verticalSpacing);
+      x = Math.max(70, Math.min(width - 70, x));
       pathPositions.push({ x, y, word, index });
     });
 
@@ -863,9 +1052,9 @@ export default function HomeScreen() {
                       left: pathPoints.startX,
                       top: pathPoints.startY,
                       width: pathPoints.width,
-                      height: 8,
+                      height: 6,
                       transform: [
-                        { translateY: -4 },
+                        { translateY: -3 },
                         { rotate: `${pathPoints.angle}deg` }
                       ],
                     }
@@ -874,8 +1063,10 @@ export default function HomeScreen() {
                   <LinearGradient
                     colors={
                       isPastWord
-                        ? [COLORS.success, '#059669'] as const
-                        : [COLORS.gray[300], COLORS.gray[200]] as const
+                        ? [COLORS.success, '#34D399', '#059669'] as const
+                        : isCurrent
+                        ? [COLORS.primary, COLORS.primaryLight] as const
+                        : [COLORS.gray[200], COLORS.gray[300]] as const
                     }
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
@@ -909,28 +1100,46 @@ export default function HomeScreen() {
                   style={styles.wordCircleButton}
                   onPress={() => {
                     if (!isLocked) {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       Animated.sequence([
                         Animated.timing(nodeAnim, {
-                          toValue: 0.9,
-                          duration: 100,
+                          toValue: 0.85,
+                          duration: 80,
                           useNativeDriver: true,
                         }),
                         Animated.spring(nodeAnim, {
                           toValue: 1,
-                          tension: 100,
-                          friction: 3,
+                          tension: 120,
+                          friction: 4,
                           useNativeDriver: true,
                         }),
                       ]).start();
+                      
+                      // Add glow effect on tap
+                      if (glowAnim) {
+                        Animated.sequence([
+                          Animated.timing(glowAnim, {
+                            toValue: 1,
+                            duration: 150,
+                            useNativeDriver: false,
+                          }),
+                          Animated.timing(glowAnim, {
+                            toValue: 0,
+                            duration: 300,
+                            useNativeDriver: false,
+                          }),
+                        ]).start();
+                      }
+                      
                       openPracticeModalFast(word);
                     }
                   }}
                   disabled={isLocked}
-                  activeOpacity={0.8}
+                  activeOpacity={0.75}
                 >
                   <LinearGradient
                     colors={
-                      isCompleted 
+                      (isCompleted || (progress?.bestScore > 0 && !isCurrent))
                         ? DIFFICULTY_COLORS[selectedDifficulty].gradient
                         : isCurrent 
                         ? [COLORS.primary, COLORS.secondary] as const
@@ -940,7 +1149,7 @@ export default function HomeScreen() {
                     }
                     style={styles.circleGradient}
                   >
-                    {isCompleted ? (
+                    {(progress?.bestScore > 0) ? (
                       <View style={styles.progressCircleContainer}>
                         <ProgressCircle
                           size={70}
@@ -951,6 +1160,11 @@ export default function HomeScreen() {
                         {progress.bestScore >= 0.95 && (
                           <View style={styles.perfectStar}>
                             <Icon name="stars" size={20} color={COLORS.gold} />
+                          </View>
+                        )}
+                        {isCurrent && !isCompleted && (
+                          <View style={styles.currentPlayOverlay}>
+                            <Icon name="play-circle-filled" size={32} color={COLORS.white} />
                           </View>
                         )}
                       </View>
@@ -991,32 +1205,62 @@ export default function HomeScreen() {
                       { opacity: nodeAnim }
                     ]}
                   >
-                    <LinearGradient
-                      colors={
-                        isCompleted
-                          ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                    <View style={[
+                      styles.wordLabelCard,
+                      {
+                        backgroundColor: COLORS.white,
+                        borderColor: isCompleted
+                          ? DIFFICULTY_COLORS[selectedDifficulty].primary
+                          : (progress?.bestScore > 0 && progress?.bestScore < 0.5)
+                          ? COLORS.warning
                           : isCurrent
-                          ? [COLORS.primary + '20', COLORS.primary + '10'] as const
-                          : [COLORS.white, COLORS.gray[50]] as const
+                          ? COLORS.primary
+                          : COLORS.gray[200],
+                        shadowColor: isCompleted
+                          ? DIFFICULTY_COLORS[selectedDifficulty].primary
+                          : (progress?.bestScore > 0 && progress?.bestScore < 0.5)
+                          ? COLORS.warning
+                          : isCurrent
+                          ? COLORS.primary
+                          : '#000000',
                       }
-                      style={styles.wordLabelGradient}
-                    >
-                      <Text style={[
-                        styles.wordLabelText,
-                        { 
-                          color: isCompleted 
-                            ? DIFFICULTY_COLORS[selectedDifficulty].primary 
-                            : isCurrent
-                            ? COLORS.primary
-                            : COLORS.gray[800] 
-                        }
-                      ]}>{word.word}</Text>
-                      {isCurrent && (
-                        <View style={styles.currentBadge}>
-                          <Text style={styles.currentBadgeText}>CURRENT</Text>
+                    ]}>
+                      <View style={styles.wordLabelContent}>
+                        <Text style={[
+                          styles.wordLabelText,
+                          { 
+                            color: isCompleted 
+                              ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                              : (progress?.bestScore > 0 && progress?.bestScore < 0.5)
+                              ? COLORS.warning
+                              : isCurrent
+                              ? COLORS.primary
+                              : COLORS.gray[700] 
+                          }
+                        ]}>{word.word}</Text>
+                        {isCurrent && (
+                          <View style={[styles.currentIndicator, { backgroundColor: COLORS.primary }]}>
+                            <Icon name="play-arrow" size={12} color={COLORS.white} />
+                          </View>
+                        )}
+                        {isCompleted && (
+                          <View style={[styles.completedIndicator, { backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary }]}>
+                            <Icon name="check" size={12} color={COLORS.white} />
+                          </View>
+                        )}
+                        {progress?.bestScore > 0 && progress?.bestScore < 0.5 && !isCurrent && (
+                          <View style={[styles.attemptedIndicator, { backgroundColor: COLORS.warning }]}>
+                            <Icon name="refresh" size={12} color={COLORS.white} />
+                          </View>
+                        )}
+                      </View>
+                      {progress?.bestScore > 0 && (
+                        <View style={styles.scoreIndicator}>
+                          <Icon name="stars" size={10} color={COLORS.gold} />
+                          <Text style={styles.scoreIndicatorText}>{Math.round(progress.bestScore * 100)}%</Text>
                         </View>
                       )}
-                    </LinearGradient>
+                    </View>
                   </Animated.View>
                 )}
               </Animated.View>
@@ -1087,17 +1331,23 @@ export default function HomeScreen() {
             </LinearGradient>
           </Animated.View>
 
-          <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
-            <LinearGradient
-              colors={['#F59E0B', '#D97706'] as const}
-              style={styles.badgeGradient}
+          <Animated.View style={[styles.badge, { transform: [{ scale: Animated.multiply(badgeAnims[1], streakBadgePulse) }] }]}>
+            <TouchableOpacity
+              onPress={openStreakCalendar}
+              activeOpacity={0.8}
+              style={{ flex: 1 }}
             >
-              <Icon name="local-fire-department" size={24} color={COLORS.white} />
-              <View style={styles.badgeInfo}>
-                <Text style={styles.badgeValue}>{stats.streak}</Text>
-                <Text style={styles.badgeLabel}>Streak</Text>
-              </View>
-            </LinearGradient>
+              <LinearGradient
+                colors={['#F59E0B', '#D97706'] as const}
+                style={styles.badgeGradient}
+              >
+                <Icon name="local-fire-department" size={24} color={COLORS.white} />
+                <View style={styles.badgeInfo}>
+                  <Text style={styles.badgeValue}>{stats.streak}</Text>
+                  <Text style={styles.badgeLabel}>Streak</Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
           </Animated.View>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[2] }] }]}>
@@ -1306,6 +1556,164 @@ export default function HomeScreen() {
         </Modal>
       )}
 
+      {/* STREAK CALENDAR MODAL */}
+      <Modal
+        visible={showStreakCalendar}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeStreakCalendar}
+      >
+        <View style={styles.modalOverlay}>
+          <Animated.View
+            style={[
+              styles.streakCalendarContainer,
+              {
+                opacity: streakCalendarAnim,
+                transform: [{
+                  scale: streakCalendarAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.9, 1],
+                  }),
+                }],
+              }
+            ]}
+          >
+            <LinearGradient
+              colors={['#F59E0B', '#D97706', '#EA580C'] as const}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.streakCalendarHeader}
+            >
+              <View style={styles.streakHeaderTop}>
+                <View style={styles.streakFireIcon}>
+                  <Icon name="local-fire-department" size={40} color="#FFFFFF" />
+                </View>
+                <TouchableOpacity
+                  onPress={closeStreakCalendar}
+                  style={styles.streakCloseButton}
+                >
+                  <Icon name="close" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.streakCalendarTitle}>🔥 Streak Calendar</Text>
+              <View style={styles.streakStatsRow}>
+                <View style={styles.streakStatBox}>
+                  <Text style={styles.streakStatValue}>{stats.streak}</Text>
+                  <Text style={styles.streakStatLabel}>Current Streak</Text>
+                </View>
+                <View style={styles.streakStatDivider} />
+                <View style={styles.streakStatBox}>
+                  <Text style={styles.streakStatValue}>{streakDays.length}</Text>
+                  <Text style={styles.streakStatLabel}>Total Days</Text>
+                </View>
+              </View>
+            </LinearGradient>
+
+            <ScrollView
+              style={styles.streakCalendarContent}
+              contentContainerStyle={styles.streakCalendarScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Motivational Banner */}
+              <View style={styles.motivationalBanner}>
+                <LinearGradient
+                  colors={
+                    stats.streak >= 30 
+                      ? ['#EF4444', '#DC2626'] as const
+                      : stats.streak >= 7
+                      ? ['#F59E0B', '#D97706'] as const
+                      : ['#6366F1', '#8B5CF6'] as const
+                  }
+                  style={styles.motivationalGradient}
+                >
+                  <Icon 
+                    name={
+                      stats.streak >= 30 ? 'whatshot' 
+                      : stats.streak >= 7 ? 'local-fire-department' 
+                      : 'emoji-events'
+                    } 
+                    size={24} 
+                    color={COLORS.white} 
+                  />
+                  <Text style={styles.motivationalText}>
+                    {stats.streak >= 30 ? 'You\'re on fire! 🔥🔥🔥' 
+                    : stats.streak >= 7 ? 'Great momentum! Keep it up! 🚀'
+                    : stats.streak > 0 ? 'Keep the streak going! 💪'
+                    : 'Start your streak today! 🌟'}
+                  </Text>
+                </LinearGradient>
+              </View>
+
+              {/* Calendar Legend */}
+              <View style={styles.calendarLegend}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendBox, styles.legendActive]}>
+                    <Text style={styles.fireEmojiSmall}>🔥</Text>
+                  </View>
+                  <Text style={styles.legendText}>Practiced</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendBox, styles.legendToday]}>
+                    <Text style={styles.legendNumber}>1</Text>
+                  </View>
+                  <Text style={styles.legendText}>Today</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={styles.legendBox}>
+                    <Text style={styles.legendNumber}>1</Text>
+                  </View>
+                  <Text style={styles.legendText}>Inactive</Text>
+                </View>
+              </View>
+              
+              <View style={styles.calendarGrid}>
+                {Array.from({ length: 12 }, (_, monthIndex) => {
+                  const currentDate = new Date();
+                  const targetMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - monthIndex, 1);
+                  return (
+                    <View key={monthIndex} style={styles.monthContainer}>
+                      <Text style={styles.monthTitle}>
+                        {targetMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                      </Text>
+                      <View style={styles.monthGrid}>
+                        {Array.from({ length: 31 }, (_, dayIndex) => {
+                          const day = dayIndex + 1;
+                          const dateCheck = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), day);
+                          
+                          // Check if day exists in this month
+                          if (dateCheck.getMonth() !== targetMonth.getMonth()) return null;
+                          
+                          const dateStr = `${dateCheck.getFullYear()}-${String(dateCheck.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                          const isStreakDay = streakDays.includes(dateStr);
+                          const isToday = dateCheck.toDateString() === new Date().toDateString();
+                          
+                          return (
+                            <View
+                              key={dayIndex}
+                              style={[
+                                styles.dayCell,
+                                isStreakDay && styles.dayCellActive,
+                                isToday && styles.dayCellToday,
+                              ]}
+                            >
+                              {isStreakDay ? (
+                                <Text style={styles.fireEmoji}>🔥</Text>
+                              ) : (
+                                <Text style={styles.dayNumber}>{day}</Text>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+
       {/* PRACTICE MODAL */}
       {selectedWord && (
         <Modal
@@ -1355,6 +1763,71 @@ export default function HomeScreen() {
                       <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
                       <Text style={styles.modalTipText}>{selectedWord.tip}</Text>
                     </View>
+
+                    {/* Previous Attempts Section */}
+                    {previousAttempts.length > 0 && (
+                      <View style={styles.previousAttemptsSection}>
+                        <View style={styles.previousAttemptsHeader}>
+                          <Icon name="history" size={20} color={COLORS.primary} />
+                          <Text style={styles.previousAttemptsTitle}>Your Recent Progress</Text>
+                        </View>
+                        {loadingAttempts ? (
+                          <ActivityIndicator size="small" color={COLORS.primary} />
+                        ) : (
+                          previousAttempts.map((attempt, index) => (
+                            <View key={attempt.timestamp} style={styles.attemptCard}>
+                              <View style={styles.attemptHeader}>
+                                <View style={styles.attemptNumberBadge}>
+                                  <Text style={styles.attemptNumberText}>#{attempt.attemptNumber}</Text>
+                                </View>
+                                <Text style={styles.attemptDate}>
+                                  {new Date(attempt.timestamp).toLocaleDateString('en-US', { 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </Text>
+                              </View>
+                              <View style={styles.attemptStats}>
+                                <View style={[
+                                  styles.attemptAccuracyBadge,
+                                  {
+                                    backgroundColor: attempt.accuracy >= 0.8 ? '#ECFDF5'
+                                      : attempt.accuracy >= 0.5 ? '#FEF3C7'
+                                      : '#FEE2E2'
+                                  }
+                                ]}>
+                                  <Icon 
+                                    name={attempt.accuracy >= 0.8 ? 'check-circle' : attempt.accuracy >= 0.5 ? 'pending' : 'error'} 
+                                    size={16} 
+                                    color={attempt.accuracy >= 0.8 ? '#10B981' : attempt.accuracy >= 0.5 ? '#F59E0B' : '#EF4444'} 
+                                  />
+                                  <Text style={[
+                                    styles.attemptAccuracy,
+                                    {
+                                      color: attempt.accuracy >= 0.8 ? '#10B981'
+                                        : attempt.accuracy >= 0.5 ? '#F59E0B'
+                                        : '#EF4444'
+                                    }
+                                  ]}>
+                                    {Math.round(attempt.accuracy * 100)}%
+                                  </Text>
+                                </View>
+                                <Text style={styles.attemptPhonemes}>
+                                  {attempt.correctPhonemes}/{attempt.totalPhonemes} phonemes
+                                </Text>
+                              </View>
+                              {index === 0 && (
+                                <View style={styles.latestBadge}>
+                                  <Text style={styles.latestBadgeText}>Latest</Text>
+                                </View>
+                              )}
+                            </View>
+                          ))
+                        )}
+                      </View>
+                    )}
 
                     <TouchableOpacity
                       style={styles.modalListenButton}
@@ -1672,15 +2145,17 @@ const styles = StyleSheet.create({
   },
   progressContainer: {
     marginHorizontal: 20,
-    marginBottom: 16,
+    marginBottom: 20,
     backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: COLORS.gray[100],
   },
   progressHeader: {
     flexDirection: 'row',
@@ -1704,11 +2179,13 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   progressBar: {
-    height: 12,
-    backgroundColor: COLORS.gray[200],
-    borderRadius: 6,
+    height: 14,
+    backgroundColor: COLORS.gray[100],
+    borderRadius: 7,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.gray[200],
   },
   progressFill: {
     height: '100%',
@@ -1762,21 +2239,21 @@ const styles = StyleSheet.create({
   },
   wordGlow: {
     position: 'absolute',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    left: -10,
-    top: -10,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    left: -20,
+    top: -20,
   },
   wordCircleButton: {
     width: 80,
     height: 80,
     borderRadius: 40,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
     overflow: 'hidden',
   },
   circleGradient: {
@@ -1785,6 +2262,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 40,
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   progressCircleContainer: {
     position: 'relative',
@@ -1801,6 +2280,15 @@ const styles = StyleSheet.create({
     height: 24,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  currentPlayOverlay: {
+    position: 'absolute',
+    width: 70,
+    height: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(99, 102, 241, 0.3)',
+    borderRadius: 35,
   },
   wordPreview: {
     justifyContent: 'center',
@@ -1831,59 +2319,103 @@ const styles = StyleSheet.create({
   },
   wordLabelBelow: {
     position: 'absolute',
-    top: 90,
+    top: 95,
     left: '50%',
-    transform: [{ translateX: -60 }],
-    borderRadius: 14,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 4,
-    overflow: 'hidden',
-    minWidth: 120,
+    transform: [{ translateX: -65 }],
+    minWidth: 130,
   },
-  wordLabelGradient: {
+  wordLabelCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 18,
+    borderWidth: 2,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  wordLabelContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     justifyContent: 'center',
+    gap: 6,
   },
   wordLabelText: {
     fontSize: 15,
     fontWeight: '800',
-    letterSpacing: -0.3,
+    letterSpacing: 0.3,
+    textAlign: 'center',
   },
-  currentBadge: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+  currentIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  currentBadgeText: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: COLORS.white,
-    letterSpacing: 0.5,
+  completedIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  attemptedIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.warning,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  scoreIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[100],
+  },
+  scoreIndicatorText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.gray[600],
+    letterSpacing: 0.2,
   },
   milestoneMarker: {
     position: 'absolute',
-    width: 140,
-    borderRadius: 16,
+    width: 150,
+    borderRadius: 18,
     overflow: 'hidden',
     shadowColor: COLORS.tertiary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   milestoneGradient: {
-    padding: 12,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   milestoneIcon: {
     width: 44,
@@ -2344,5 +2876,341 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: COLORS.white,
+  },
+  streakCalendarContainer: {
+    width: '92%',
+    maxWidth: 480,
+    maxHeight: height * 0.85,
+    backgroundColor: COLORS.white,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 15,
+  },
+  streakCalendarHeader: {
+    padding: 24,
+    paddingTop: 28,
+  },
+  streakHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  streakFireIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  streakCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  streakCalendarTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: COLORS.white,
+    marginBottom: 20,
+    letterSpacing: -0.5,
+  },
+  streakStatsRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  streakStatBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  streakStatValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: COLORS.white,
+    marginBottom: 4,
+    letterSpacing: -1,
+  },
+  streakStatLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.95)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  streakStatDivider: {
+    width: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    marginHorizontal: 16,
+  },
+  streakCalendarContent: {
+    flex: 1,
+  },
+  streakCalendarScrollContent: {
+    padding: 20,
+  },
+  streakCalendarSubtitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  calendarGrid: {
+    gap: 20,
+  },
+  monthContainer: {
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+  },
+  monthTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+    marginBottom: 12,
+    letterSpacing: -0.3,
+  },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dayCell: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: COLORS.gray[200],
+  },
+  dayCellActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 2,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  dayCellToday: {
+    borderColor: COLORS.primary,
+    borderWidth: 2.5,
+  },
+  dayNumber: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.gray[500],
+  },
+  fireEmoji: {
+    fontSize: 20,
+  },
+  motivationalBanner: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 20,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  motivationalGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  motivationalText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.white,
+    letterSpacing: -0.2,
+  },
+  calendarLegend: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: COLORS.gray[200],
+  },
+  legendItem: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: COLORS.gray[200],
+  },
+  legendActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 2,
+  },
+  legendToday: {
+    borderColor: COLORS.primary,
+    borderWidth: 2.5,
+  },
+  legendText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.gray[600],
+  },
+  legendNumber: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.gray[500],
+  },
+  fireEmojiSmall: {
+    fontSize: 16,
+  },
+  previousAttemptsSection: {
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: COLORS.gray[200],
+  },
+  previousAttemptsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  previousAttemptsTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+    letterSpacing: -0.2,
+  },
+  attemptCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.gray[200],
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    position: 'relative',
+  },
+  attemptHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  attemptNumberBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  attemptNumberText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.white,
+    letterSpacing: 0.3,
+  },
+  attemptDate: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+  },
+  attemptStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  attemptAccuracyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  attemptAccuracy: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  attemptPhonemes: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+  },
+  latestBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: COLORS.gold,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  latestBadgeText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: 0.5,
+  },
+  streakBanner: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  streakBannerGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  streakBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.white,
+    letterSpacing: -0.1,
   },
 });
