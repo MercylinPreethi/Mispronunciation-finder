@@ -2209,13 +2209,14 @@ export default function HomeScreen() {
         {/* Learning Path Background - covers entire area below header */}
         <LearningPathBackground />
 
-        {/* Controls - Fades out when scrolling */}
+        {/* Controls - Fades out when scrolling but maintains space */}
         <Animated.View 
           style={[
             styles.controls,
             {
               opacity: controlsOpacity,
               transform: [{ translateY: controlsTranslateY }],
+              minHeight: 70, // Maintains space even when invisible
             },
           ]}
           pointerEvents="box-none"
@@ -3436,18 +3437,15 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     zIndex: 10,
-    overflow: 'visible', // Allow content to extend beyond bounds
   },
   scrollContent: {
-    paddingTop: 0, // Path extends to header when scrolled
-    overflow: 'visible', // Ensure nothing is clipped
+    paddingTop: 0,
   },
   pathContainer: {
     position: 'relative',
     minHeight: height * 2.5,
-    paddingTop: 20, // Reduced padding - path starts closer to top
+    paddingTop: 20,
     paddingBottom: 100,
-    overflow: 'visible', // Ensure paths above aren't clipped
   },
   connectingPath: {
     position: 'absolute',
