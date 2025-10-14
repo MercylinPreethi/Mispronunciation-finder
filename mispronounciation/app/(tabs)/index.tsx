@@ -83,6 +83,15 @@ interface WordProgress {
   attempts: number;
   bestScore: number;
   lastAttempted: string;
+  attemptHistory?: PracticeWordAttempt[];
+}
+
+interface PracticeWordAttempt {
+  timestamp: string;
+  accuracy: number;
+  feedback: string;
+  correct_phonemes: number;
+  total_phonemes: number;
 }
 
 interface DailyWordProgress {
@@ -167,6 +176,8 @@ export default function HomeScreen() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [playingAudio, setPlayingAudio] = useState(false);
   const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
+  const [showPracticeWordFeedback, setShowPracticeWordFeedback] = useState(false);
+  const [selectedWordProgress, setSelectedWordProgress] = useState<WordProgress | null>(null);
 
   const recordSecsRef = useRef(0);
   const recordTimeRef = useRef('00:00');
@@ -331,7 +342,7 @@ export default function HomeScreen() {
   const updateWordProgressFast = async (accuracy: number) => {
     try {
       const user = auth.currentUser;
-      if (!user || !selectedWord) return;
+      if (!user || !selectedWord || !result) return;
 
       const timestamp = new Date().toISOString();
       const isCompleted = accuracy >= 0.8;
@@ -339,6 +350,20 @@ export default function HomeScreen() {
       const xpEarned = Math.round(accuracy * 10);
       const wordId = selectedWord.id;
       const difficulty = selectedWord.difficulty;
+
+      // Create new attempt record
+      const newAttempt: PracticeWordAttempt = {
+        timestamp,
+        accuracy,
+        feedback: result.feedback,
+        correct_phonemes: result.correct_phonemes,
+        total_phonemes: result.total_phonemes,
+      };
+
+      // Get existing progress and add new attempt to history
+      const existingProgress = wordProgress[wordId];
+      const attemptHistory = existingProgress?.attemptHistory || [];
+      attemptHistory.push(newAttempt);
 
       // Update local state immediately for instant feedback
       const newProgress: WordProgress = {
@@ -348,6 +373,7 @@ export default function HomeScreen() {
         attempts: (wordProgress[wordId]?.attempts || 0) + 1,
         bestScore: Math.max(wordProgress[wordId]?.bestScore || 0, accuracy),
         lastAttempted: timestamp,
+        attemptHistory: attemptHistory,
       };
 
       setWordProgress(prev => ({ ...prev, [wordId]: newProgress }));
@@ -806,20 +832,73 @@ export default function HomeScreen() {
   };
 
   const openPracticeModalFast = (word: Word, isDaily: boolean = false) => {
-    setSelectedWord(word);
-    setIsPracticingDaily(isDaily);
-    setShowPracticeModal(true);
-    setShowResult(false);
-    setResult(null);
-    setShowFeedbackHistory(false);
+    const progress = wordProgress[word.id];
     
-    // Faster animation
-    Animated.spring(modalAnim, {
-      toValue: 1,
-      tension: 70,
-      friction: 5, // Reduced friction for faster animation
+    // If word has been practiced before, show feedback modal first
+    if (!isDaily && progress && progress.attempts > 0) {
+      setSelectedWord(word);
+      setSelectedWordProgress(progress);
+      setShowPracticeWordFeedback(true);
+      setShowFeedbackHistory(false);
+      
+      Animated.spring(modalAnim, {
+        toValue: 1,
+        tension: 70,
+        friction: 5,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      // First time practicing or daily word - go straight to practice
+      setSelectedWord(word);
+      setIsPracticingDaily(isDaily);
+      setShowPracticeModal(true);
+      setShowResult(false);
+      setResult(null);
+      setShowFeedbackHistory(false);
+      
+      Animated.spring(modalAnim, {
+        toValue: 1,
+        tension: 70,
+        friction: 5,
+        useNativeDriver: true,
+      }).start();
+    }
+  };
+
+  const openPracticeFromFeedback = () => {
+    // Smooth transition from feedback to practice
+    Animated.timing(modalAnim, {
+      toValue: 0,
+      duration: 150,
       useNativeDriver: true,
-    }).start();
+    }).start(() => {
+      setShowPracticeWordFeedback(false);
+      setShowPracticeModal(true);
+      setShowResult(false);
+      setResult(null);
+      setIsPracticingDaily(false);
+      
+      // Animate back in
+      Animated.spring(modalAnim, {
+        toValue: 1,
+        tension: 70,
+        friction: 5,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  const closePracticeWordFeedback = () => {
+    Animated.timing(modalAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowPracticeWordFeedback(false);
+      setSelectedWord(null);
+      setSelectedWordProgress(null);
+      setShowFeedbackHistory(false);
+    });
   };
 
   const closePracticeModal = () => {
@@ -830,6 +909,7 @@ export default function HomeScreen() {
     }).start(() => {
       setShowPracticeModal(false);
       setSelectedWord(null);
+      setSelectedWordProgress(null);
       setIsPracticingDaily(false);
       setShowResult(false);
       setResult(null);
@@ -1656,6 +1736,171 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* PRACTICE WORD FEEDBACK MODAL */}
+      {selectedWord && selectedWordProgress && (
+        <Modal
+          visible={showPracticeWordFeedback}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={closePracticeWordFeedback}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.dailyTaskModalContainer}>
+              <ScrollView 
+                style={styles.dailyTaskScrollView}
+                contentContainerStyle={styles.dailyTaskScrollContent}
+                showsVerticalScrollIndicator={false}
+                bounces={true}
+              >
+                <View style={styles.dailyTaskModal}>
+                  <LinearGradient
+                    colors={DIFFICULTY_COLORS[selectedWord.difficulty].gradient}
+                    style={styles.dailyTaskHeader}
+                  >
+                    <Icon name="school" size={32} color={COLORS.white} />
+                    <Text style={styles.dailyTaskTitle}>Practice Progress</Text>
+                    <TouchableOpacity 
+                      style={styles.dailyTaskClose}
+                      onPress={closePracticeWordFeedback}
+                    >
+                      <Icon name="close" size={24} color={COLORS.white} />
+                    </TouchableOpacity>
+                  </LinearGradient>
+
+                  <View style={styles.dailyTaskContent}>
+                    <Text style={styles.dailyWordText}>{selectedWord.word}</Text>
+                    <Text style={styles.dailyPhonetic}>{selectedWord.phonetic}</Text>
+                    
+                    {/* Show Latest Attempt Feedback */}
+                    <View style={styles.latestAttemptSection}>
+                      <View style={styles.latestAttemptHeader}>
+                        <Icon name="history" size={20} color={COLORS.primary} />
+                        <Text style={styles.latestAttemptTitle}>Latest Attempt</Text>
+                        {selectedWordProgress.completed && (
+                          <View style={styles.completedBadge}>
+                            <Icon name="check-circle" size={16} color={COLORS.success} />
+                            <Text style={styles.completedBadgeText}>Completed</Text>
+                          </View>
+                        )}
+                      </View>
+                      
+                      <View style={styles.latestAttemptCard}>
+                        <View style={styles.attemptScoreRow}>
+                          <View style={styles.attemptScoreItem}>
+                            <Text style={styles.attemptScoreValue}>
+                              {Math.round(selectedWordProgress.bestScore * 100)}%
+                            </Text>
+                            <Text style={styles.attemptScoreLabel}>Accuracy</Text>
+                          </View>
+                          <View style={styles.attemptScoreDivider} />
+                          <View style={styles.attemptScoreItem}>
+                            <Text style={styles.attemptScoreValue}>{selectedWordProgress.attempts}</Text>
+                            <Text style={styles.attemptScoreLabel}>Attempts</Text>
+                          </View>
+                          <View style={styles.attemptScoreDivider} />
+                          <View style={styles.attemptScoreItem}>
+                            <Text style={styles.attemptScoreValue}>
+                              {Math.round(selectedWordProgress.bestScore * 100)}%
+                            </Text>
+                            <Text style={styles.attemptScoreLabel}>Best</Text>
+                          </View>
+                        </View>
+                        
+                        {selectedWordProgress.attemptHistory && selectedWordProgress.attemptHistory.length > 0 && (
+                          <View style={styles.latestFeedback}>
+                            <Text style={styles.latestFeedbackLabel}>Feedback:</Text>
+                            <Text style={styles.latestFeedbackText}>
+                              {selectedWordProgress.attemptHistory[selectedWordProgress.attemptHistory.length - 1].feedback}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* View All Attempts Button */}
+                      {selectedWordProgress.attemptHistory && selectedWordProgress.attemptHistory.length > 1 && (
+                        <TouchableOpacity
+                          style={styles.viewHistoryButton}
+                          onPress={() => setShowFeedbackHistory(!showFeedbackHistory)}
+                        >
+                          <Icon name={showFeedbackHistory ? "expand-less" : "expand-more"} size={20} color={COLORS.primary} />
+                          <Text style={styles.viewHistoryText}>
+                            {showFeedbackHistory ? 'Hide' : 'View All'} {selectedWordProgress.attemptHistory.length} Attempts
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* Feedback History - Scrollable */}
+                      {showFeedbackHistory && selectedWordProgress.attemptHistory && (
+                        <ScrollView 
+                          style={styles.feedbackHistoryScroll}
+                          nestedScrollEnabled={true}
+                        >
+                          {selectedWordProgress.attemptHistory.map((attempt, index) => (
+                            <View key={index} style={styles.historyAttemptCard}>
+                              <View style={styles.historyAttemptHeader}>
+                                <Text style={styles.historyAttemptNumber}>Attempt #{index + 1}</Text>
+                                <Text style={styles.historyAttemptTime}>
+                                  {new Date(attempt.timestamp).toLocaleTimeString()}
+                                </Text>
+                              </View>
+                              
+                              <View style={styles.historyAttemptStats}>
+                                <View style={styles.historyStatItem}>
+                                  <Icon name="percent" size={16} color={COLORS.primary} />
+                                  <Text style={styles.historyStatText}>
+                                    {Math.round(attempt.accuracy * 100)}%
+                                  </Text>
+                                </View>
+                                <View style={styles.historyStatItem}>
+                                  <Icon name="check" size={16} color={COLORS.success} />
+                                  <Text style={styles.historyStatText}>
+                                    {attempt.correct_phonemes}/{attempt.total_phonemes}
+                                  </Text>
+                                </View>
+                              </View>
+                              
+                              <Text style={styles.historyFeedbackText}>{attempt.feedback}</Text>
+                            </View>
+                          )).reverse()}
+                        </ScrollView>
+                      )}
+                    </View>
+                    
+                    <View style={styles.dailyMeaning}>
+                      <Icon name="info-outline" size={20} color={COLORS.primary} />
+                      <Text style={styles.dailyMeaningText}>{selectedWord.meaning}</Text>
+                    </View>
+
+                    <View style={styles.dailyExample}>
+                      <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
+                      <Text style={styles.dailyExampleText}>"{selectedWord.example}"</Text>
+                    </View>
+
+                    <View style={styles.dailyTip}>
+                      <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
+                      <Text style={styles.dailyTipText}>{selectedWord.tip}</Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.startDailyButton}
+                      onPress={openPracticeFromFeedback}
+                    >
+                      <LinearGradient
+                        colors={[COLORS.primary, COLORS.secondary] as const}
+                        style={styles.startDailyGradient}
+                      >
+                        <Text style={styles.startDailyText}>Try Again</Text>
+                        <Icon name="refresh" size={20} color={COLORS.white} />
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </ScrollView>
             </View>
           </View>
