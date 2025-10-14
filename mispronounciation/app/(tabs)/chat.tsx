@@ -39,6 +39,7 @@ interface Message {
   transcription?: string;
   feedback?: PronunciationFeedback;
   isVoiceMessage?: boolean;
+  showFeedback?: boolean;
 }
 
 export default function CoachScreen() {
@@ -249,7 +250,7 @@ export default function CoachScreen() {
         
         const { transcription, ai_response, pronunciation_feedback } = response.data;
         
-        // Add user message
+        // Add user message with feedback attached
         const userMessage: Message = {
           id: Date.now().toString(),
           text: transcription,
@@ -257,49 +258,25 @@ export default function CoachScreen() {
           timestamp: new Date(),
           isVoiceMessage: true,
           transcription: transcription,
+          feedback: pronunciation_feedback,
+          showFeedback: false,
         };
         
         setMessages(prev => [...prev, userMessage]);
         scrollViewRef.current?.scrollToEnd({ animated: true });
 
-        // Add AI response with feedback after delay
+        // Add AI response WITHOUT feedback display
         setTimeout(() => {
           const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
             text: ai_response,
             sender: 'ai',
             timestamp: new Date(),
-            feedback: pronunciation_feedback,
           };
           
           setMessages(prev => [...prev, aiMessage]);
           scrollViewRef.current?.scrollToEnd({ animated: true });
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          
-          // Show feedback overlay
-          if (pronunciation_feedback) {
-            setLatestFeedback(pronunciation_feedback);
-            setShowFeedbackOverlay(true);
-            
-            Animated.spring(feedbackOverlayAnim, {
-              toValue: 1,
-              tension: 60,
-              friction: 8,
-              useNativeDriver: true,
-            }).start();
-            
-            // Auto-hide after 6 seconds
-            setTimeout(() => {
-              Animated.timing(feedbackOverlayAnim, {
-                toValue: 0,
-                duration: 300,
-                useNativeDriver: true,
-              }).start(() => {
-                setShowFeedbackOverlay(false);
-                setLatestFeedback(null);
-              });
-            }, 6000);
-          }
         }, 600);
         
       } else {
@@ -337,6 +314,41 @@ export default function CoachScreen() {
     if (score >= 85) return ['#10B981', '#059669'] as const;
     if (score >= 70) return ['#F59E0B', '#D97706'] as const;
     return ['#EF4444', '#DC2626'] as const;
+  };
+
+  const handleAnalyzeClick = (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (message && message.feedback) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      // Update message to show feedback
+      setMessages(prev => prev.map(m => 
+        m.id === messageId ? { ...m, showFeedback: true } : m
+      ));
+      
+      // Show feedback overlay
+      setLatestFeedback(message.feedback);
+      setShowFeedbackOverlay(true);
+      
+      Animated.spring(feedbackOverlayAnim, {
+        toValue: 1,
+        tension: 60,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
+      
+      // Auto-hide overlay after 6 seconds
+      setTimeout(() => {
+        Animated.timing(feedbackOverlayAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => {
+          setShowFeedbackOverlay(false);
+          setLatestFeedback(null);
+        });
+      }, 6000);
+    }
   };
 
   return (
@@ -422,110 +434,6 @@ export default function CoachScreen() {
                   <View style={styles.aiMessageBubbleContainer}>
                     <View style={styles.aiMessageBubble}>
                       <Text style={styles.aiMessageText}>{message.text}</Text>
-                      
-                      {message.feedback && (
-                        <View style={styles.feedbackContainer}>
-                          {/* Scores with Material Design Cards */}
-                          <View style={styles.scoresContainer}>
-                            <View style={styles.scoreCardWrapper}>
-                              <LinearGradient
-                                colors={
-                                  message.feedback.accuracy >= 85 
-                                    ? ['#10B981', '#059669'] as const
-                                    : message.feedback.accuracy >= 70 
-                                    ? ['#F59E0B', '#D97706'] as const
-                                    : ['#EF4444', '#DC2626'] as const
-                                }
-                                style={styles.scoreCardGradient}
-                              >
-                                <Icon name="stars" size={20} color="#FFFFFF" />
-                                <Text style={styles.scoreCardValue}>
-                                  {message.feedback.accuracy.toFixed(0)}%
-                                </Text>
-                                <Text style={styles.scoreCardLabel}>Accuracy</Text>
-                              </LinearGradient>
-                            </View>
-
-                            <View style={styles.scoreCardWrapper}>
-                              <LinearGradient
-                                colors={
-                                  message.feedback.fluency_score >= 85 
-                                    ? ['#10B981', '#059669'] as const
-                                    : message.feedback.fluency_score >= 70 
-                                    ? ['#F59E0B', '#D97706'] as const
-                                    : ['#EF4444', '#DC2626'] as const
-                                }
-                                style={styles.scoreCardGradient}
-                              >
-                                <Icon name="speed" size={20} color="#FFFFFF" />
-                                <Text style={styles.scoreCardValue}>
-                                  {message.feedback.fluency_score.toFixed(0)}%
-                                </Text>
-                                <Text style={styles.scoreCardLabel}>Fluency</Text>
-                              </LinearGradient>
-                            </View>
-                          </View>
-
-                          {/* Problem Words */}
-                          {(message.feedback.mispronounced_words.length > 0 || 
-                            message.feedback.partial_words.length > 0) && (
-                            <View style={styles.wordsSection}>
-                              <View style={styles.wordsSectionHeader}>
-                                <Icon name="priority-high" size={18} color="#F59E0B" />
-                                <Text style={styles.wordsSectionTitle}>Practice These</Text>
-                              </View>
-                              <View style={styles.wordsChipContainer}>
-                                {message.feedback.mispronounced_words.map((word, idx) => (
-                                  <View key={`mis-${idx}`} style={[styles.wordChip, styles.wordChipError]}>
-                                    <Text style={styles.wordChipTextError}>{word}</Text>
-                                    <Icon name="close" size={14} color="#DC2626" />
-                                  </View>
-                                ))}
-                                {message.feedback.partial_words.map((word, idx) => (
-                                  <View key={`par-${idx}`} style={[styles.wordChip, styles.wordChipWarning]}>
-                                    <Text style={styles.wordChipTextWarning}>{word}</Text>
-                                    <Icon name="remove" size={14} color="#D97706" />
-                                  </View>
-                                ))}
-                              </View>
-                            </View>
-                          )}
-
-                          {/* Perfect Words */}
-                          {message.feedback.correct_words.length > 0 && (
-                            <View style={styles.wordsSection}>
-                              <View style={styles.wordsSectionHeader}>
-                                <Icon name="verified" size={18} color="#10B981" />
-                                <Text style={styles.wordsSectionTitle}>Perfect! 🎉</Text>
-                              </View>
-                              <View style={styles.wordsChipContainer}>
-                                {message.feedback.correct_words.slice(0, 5).map((word, idx) => (
-                                  <View key={`cor-${idx}`} style={[styles.wordChip, styles.wordChipSuccess]}>
-                                    <Text style={styles.wordChipTextSuccess}>{word}</Text>
-                                    <Icon name="check" size={14} color="#059669" />
-                                  </View>
-                                ))}
-                              </View>
-                            </View>
-                          )}
-
-                          {/* Tips */}
-                          {message.feedback.suggestions.length > 0 && (
-                            <View style={styles.tipsContainer}>
-                              <View style={styles.tipsHeader}>
-                                <Icon name="tips-and-updates" size={18} color="#667EEA" />
-                                <Text style={styles.tipsTitle}>Pro Tips</Text>
-                              </View>
-                              {message.feedback.suggestions.map((tip, idx) => (
-                                <View key={idx} style={styles.tipItem}>
-                                  <View style={styles.tipBullet} />
-                                  <Text style={styles.tipText}>{tip}</Text>
-                                </View>
-                              ))}
-                            </View>
-                          )}
-                        </View>
-                      )}
                     </View>
                     <Text style={styles.timestamp}>
                       {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -549,6 +457,24 @@ export default function CoachScreen() {
                         </View>
                       )}
                     </LinearGradient>
+                    
+                    {/* Analyze Button Overlay */}
+                    {message.isVoiceMessage && message.feedback && !message.showFeedback && (
+                      <TouchableOpacity
+                        style={styles.analyzeButton}
+                        onPress={() => handleAnalyzeClick(message.id)}
+                        activeOpacity={0.9}
+                      >
+                        <LinearGradient
+                          colors={['#F59E0B', '#D97706']}
+                          style={styles.analyzeButtonGradient}
+                        >
+                          <Icon name="analytics" size={18} color="#FFFFFF" />
+                          <Text style={styles.analyzeButtonText}>Analyze</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    )}
+                    
                     <Text style={styles.timestampUser}>
                       {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
@@ -1380,5 +1306,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  analyzeButton: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  analyzeButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  analyzeButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
 });

@@ -1013,32 +1013,55 @@ export default function HomeScreen() {
                       { opacity: nodeAnim }
                     ]}
                   >
-                    <LinearGradient
-                      colors={
-                        isCompleted
-                          ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                    <View style={[
+                      styles.wordLabelCard,
+                      {
+                        backgroundColor: isCompleted
+                          ? COLORS.white
                           : isCurrent
-                          ? [COLORS.primary + '20', COLORS.primary + '10'] as const
-                          : [COLORS.white, COLORS.gray[50]] as const
+                          ? COLORS.white
+                          : COLORS.white,
+                        borderColor: isCompleted
+                          ? DIFFICULTY_COLORS[selectedDifficulty].primary
+                          : isCurrent
+                          ? COLORS.primary
+                          : COLORS.gray[200],
+                        shadowColor: isCompleted
+                          ? DIFFICULTY_COLORS[selectedDifficulty].primary
+                          : isCurrent
+                          ? COLORS.primary
+                          : '#000000',
                       }
-                      style={styles.wordLabelGradient}
-                    >
-                      <Text style={[
-                        styles.wordLabelText,
-                        { 
-                          color: isCompleted 
-                            ? DIFFICULTY_COLORS[selectedDifficulty].primary 
-                            : isCurrent
-                            ? COLORS.primary
-                            : COLORS.gray[800] 
-                        }
-                      ]}>{word.word}</Text>
-                      {isCurrent && (
-                        <View style={styles.currentBadge}>
-                          <Text style={styles.currentBadgeText}>CURRENT</Text>
+                    ]}>
+                      <View style={styles.wordLabelContent}>
+                        <Text style={[
+                          styles.wordLabelText,
+                          { 
+                            color: isCompleted 
+                              ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                              : isCurrent
+                              ? COLORS.primary
+                              : COLORS.gray[700] 
+                          }
+                        ]}>{word.word}</Text>
+                        {isCurrent && (
+                          <View style={[styles.currentIndicator, { backgroundColor: COLORS.primary }]}>
+                            <Icon name="play-arrow" size={12} color={COLORS.white} />
+                          </View>
+                        )}
+                        {isCompleted && (
+                          <View style={[styles.completedIndicator, { backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary }]}>
+                            <Icon name="check" size={12} color={COLORS.white} />
+                          </View>
+                        )}
+                      </View>
+                      {progress?.bestScore > 0 && !isCurrent && (
+                        <View style={styles.scoreIndicator}>
+                          <Icon name="stars" size={10} color={COLORS.gold} />
+                          <Text style={styles.scoreIndicatorText}>{Math.round(progress.bestScore * 100)}%</Text>
                         </View>
                       )}
-                    </LinearGradient>
+                    </View>
                   </Animated.View>
                 )}
               </Animated.View>
@@ -1861,42 +1884,70 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 95,
     left: '50%',
-    transform: [{ translateX: -60 }],
-    borderRadius: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
-    overflow: 'hidden',
-    minWidth: 120,
+    transform: [{ translateX: -65 }],
+    minWidth: 130,
   },
-  wordLabelGradient: {
-    paddingHorizontal: 16,
+  wordLabelCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 18,
+    borderWidth: 2,
+    paddingHorizontal: 14,
     paddingVertical: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  wordLabelContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
+    gap: 6,
   },
   wordLabelText: {
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: -0.4,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textAlign: 'center',
   },
-  currentBadge: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+  currentIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  currentBadgeText: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: COLORS.white,
-    letterSpacing: 0.5,
+  completedIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  scoreIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[100],
+  },
+  scoreIndicatorText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.gray[600],
+    letterSpacing: 0.2,
   },
   milestoneMarker: {
     position: 'absolute',
