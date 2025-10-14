@@ -589,6 +589,7 @@ export default function RecordingScreen() {
   const [playingWord, setPlayingWord] = useState<string | null>(null);
   const [recordingWord, setRecordingWord] = useState<string | null>(null);
   const [wordUpdates, setWordUpdates] = useState<{[key: string]: {status: 'correct' | 'mispronounced', accuracy: number}}>({});
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
   const insets = useSafeAreaInsets();
   const recordSecsRef = useRef(0);
   const recordTimeRef = useRef('00:00');
@@ -616,6 +617,69 @@ export default function RecordingScreen() {
       pulseAnim.setValue(1);
     }
   }, [isRecording]);
+
+  // Load the latest attempt when opening an existing session
+  useEffect(() => {
+    const loadLatestAttempt = async () => {
+      // Only load if we have a sessionId and it's not a new session
+      if (!sessionId || isNew === 'true') {
+        return;
+      }
+
+      const user = auth.currentUser;
+      if (!user) {
+        console.log('No authenticated user');
+        return;
+      }
+
+      setIsLoadingSession(true);
+      try {
+        console.log(`Loading latest attempt for session: ${sessionId}`);
+        
+        // Fetch the session data from Firebase
+        const sessionRef = ref(database, `users/${user.uid}/references/${sessionId}`);
+        const snapshot = await get(sessionRef);
+        
+        if (snapshot.exists()) {
+          const sessionData = snapshot.val();
+          const attempts = sessionData.attempts || {};
+          
+          // Convert attempts object to array and sort by timestamp (most recent first)
+          const attemptsArray = Object.keys(attempts).map(key => ({
+            id: key,
+            timestamp: new Date(attempts[key].timestamp),
+            audioPath: attempts[key].audioPath,
+            audioUrl: attempts[key].audioUrl,
+            scores: attempts[key].scores,
+            feedback: attempts[key].feedback,
+            source: attempts[key].source,
+            fileName: attempts[key].fileName,
+            mispronuncedWords: attempts[key].mispronuncedWords || [],
+            correctlyPronuncedWords: attempts[key].correctlyPronuncedWords || []
+          })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+          
+          if (attemptsArray.length > 0) {
+            const mostRecentAttempt = attemptsArray[0];
+            console.log(`✅ Loaded most recent attempt from ${mostRecentAttempt.timestamp.toLocaleString()}`);
+            console.log(`   Accuracy: ${(mostRecentAttempt.scores.accuracy * 100).toFixed(1)}%`);
+            console.log(`   Mispronounced words: ${mostRecentAttempt.mispronuncedWords.length}`);
+            setLatestAttempt(mostRecentAttempt);
+          } else {
+            console.log('No attempts found for this session');
+          }
+        } else {
+          console.log('Session not found in database');
+        }
+      } catch (error) {
+        console.error('Error loading latest attempt:', error);
+        Alert.alert('Error', 'Failed to load session data. Please try again.');
+      } finally {
+        setIsLoadingSession(false);
+      }
+    };
+
+    loadLatestAttempt();
+  }, [sessionId, isNew]);
 
   const handleBack = () => {
     router.back();
@@ -1261,15 +1325,18 @@ return (
         <LinearGradient
             colors={['#6366F1', '#8B5CF6']}
             style={[styles.header, { paddingTop: insets.top + 16 }]}
-        >
-            <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Icon name="arrow-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>Practice Session</Text>
-            <Text style={styles.headerSubtitle}>
-                {isNew ? 'New Session' : 'Continue Practice'}
-            </Text>
+            >
+            <View style={styles.headerRow}>
+                <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+                <Icon name="arrow-back" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+                
+                <View style={styles.headerContent}>
+                <Text style={styles.headerTitle}>Practice Session</Text>
+                <Text style={styles.headerSubtitle}>
+                    {isNew ? 'New Session' : 'Continue Practice'}
+                </Text>
+                </View>
             </View>
         </LinearGradient>
 
@@ -1286,9 +1353,29 @@ return (
             </View>
             </View>
 
-            {/* Show Results if Available */}
-            {latestAttempt ? (
+            {/* Loading Session Data */}
+            {isLoadingSession ? (
+              <View style={styles.processingContainer}>
+                <ActivityIndicator size="large" color="#6366F1" />
+                <Text style={styles.processingText}>Loading session data...</Text>
+              </View>
+            ) : /* Show Results if Available */ latestAttempt ? (
             <View style={styles.resultsContainer}>
+                {/* Recent Output Indicator */}
+                {sessionId && !isNew && (
+                  <View style={styles.recentOutputBanner}>
+                    <Icon name="history" size={18} color="#6366F1" />
+                    <Text style={styles.recentOutputText}>
+                      Most Recent Attempt • {latestAttempt.timestamp.toLocaleString([], { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </Text>
+                  </View>
+                )}
+
                 {/* Overall Score */}
                 <View style={styles.scoreCard}>
                 <Text style={styles.scoreLabel}>Overall Pronunciation Score</Text>
@@ -1403,13 +1490,13 @@ const styles = StyleSheet.create({
         backgroundColor: '#F8FAFC',
     },
     header: {
-        paddingBottom: 24,
+        paddingBottom: 20,
         paddingHorizontal: 20,
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-        elevation: 4,
+    },
+    headerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 16,
     },
     backButton: {
         width: 40,
@@ -1418,22 +1505,23 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255, 255, 255, 0.2)',
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 16,
     },
     headerContent: {
-        alignItems: 'center',
+        flex: 1,
     },
     headerTitle: {
         fontSize: 24,
         fontWeight: '900',
         color: '#FFFFFF',
-        marginBottom: 4,
+        letterSpacing: -0.5,
     },
     headerSubtitle: {
         fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.9)',
         fontWeight: '600',
+        color: 'rgba(255, 255, 255, 0.9)',
+        marginTop: 4,
     },
+
     scrollView: {
         flex: 1,
     },
@@ -1845,5 +1933,23 @@ const styles = StyleSheet.create({
     },
     pronunciationWordText: {
         fontSize: 15,
+    },
+    recentOutputBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: '#EEF2FF',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 16,
+        marginBottom: 16,
+        borderWidth: 1.5,
+        borderColor: '#C7D2FE',
+    },
+    recentOutputText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#6366F1',
     },
 });

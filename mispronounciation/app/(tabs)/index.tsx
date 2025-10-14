@@ -2092,7 +2092,7 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Text style={styles.userName}>Hi, {userName}! 👋</Text>
+          <Text style={styles.userName}>Hi, {userName}! </Text>
         </View>
 
         <View style={styles.badgesContainer}>

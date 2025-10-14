@@ -48,6 +48,361 @@ interface PracticeHistory {
   attemptCount?: number;
 }
 
+// Streak Calendar Component
+const StreakCalendar = ({ visible, onClose, streakDays, currentStreak }: { 
+  visible: boolean; 
+  onClose: () => void;
+  streakDays: string[];
+  currentStreak: number;
+}) => {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  // Get days in month and starting day
+  const getDaysInMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  };
+
+  // Check if a date is in streak
+  const isDateInStreak = (date: Date) => {
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return streakDays.includes(dateStr);
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() && 
+           date.getMonth() === today.getMonth() && 
+           date.getFullYear() === today.getFullYear();
+  };
+
+  // Navigate months
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    Haptics.selectionAsync();
+    const newMonth = new Date(currentMonth);
+    if (direction === 'prev') {
+      newMonth.setMonth(newMonth.getMonth() - 1);
+    } else {
+      newMonth.setMonth(newMonth.getMonth() + 1);
+    }
+    setCurrentMonth(newMonth);
+  };
+
+  // Render calendar days
+  const renderCalendarDays = () => {
+    const daysInMonth = getDaysInMonth(currentMonth);
+    const firstDayOfMonth = getFirstDayOfMonth(currentMonth);
+    const today = new Date();
+    
+    const rows = [];
+    let currentRow = [];
+    
+    // Empty cells for days before the first day of month
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      currentRow.push(
+        <View key={`empty-${i}`} style={[calendarStyles.calendarDay, calendarStyles.emptyDay]} />
+      );
+    }
+    
+    // Days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+      const isStreakDay = isDateInStreak(date);
+      const isCurrentDay = isToday(date);
+      
+      currentRow.push(
+        <View 
+          key={`day-${day}`}
+          style={[
+            calendarStyles.calendarDay,
+            isCurrentDay && calendarStyles.today,
+            isStreakDay && !isCurrentDay && calendarStyles.streakDay,
+            !isStreakDay && !isCurrentDay && calendarStyles.normalDay,
+          ]}
+        >
+          <Text style={[
+            calendarStyles.calendarDayText,
+            isCurrentDay && calendarStyles.todayText,
+            isStreakDay && !isCurrentDay && calendarStyles.streakDayText,
+          ]}>
+            {day}
+          </Text>
+        </View>
+      );
+      
+      // Start new row after 7 days
+      if (currentRow.length === 7) {
+        rows.push(
+          <View key={`row-${rows.length}`} style={calendarStyles.calendarRow}>
+            {currentRow}
+          </View>
+        );
+        currentRow = [];
+      }
+    }
+    
+    // Fill remaining cells in last row
+    if (currentRow.length > 0) {
+      const remainingCells = 7 - currentRow.length;
+      for (let i = 0; i < remainingCells; i++) {
+        currentRow.push(
+          <View key={`empty-end-${i}`} style={[calendarStyles.calendarDay, calendarStyles.emptyDay]} />
+        );
+      }
+      rows.push(
+        <View key={`row-${rows.length}`} style={calendarStyles.calendarRow}>
+          {currentRow}
+        </View>
+      );
+    }
+    
+    return rows;
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={calendarStyles.calendarContainer}>
+          {/* Header */}
+          <View style={calendarStyles.calendarHeader}>
+            <TouchableOpacity 
+              style={calendarStyles.calendarNavButton}
+              onPress={() => navigateMonth('prev')}
+            >
+              <Icon name="chevron-left" size={20} color="#6B7280" />
+            </TouchableOpacity>
+            
+            <Text style={calendarStyles.calendarMonthText}>
+              {currentMonth.toLocaleDateString('en-US', { 
+                month: 'long', 
+                year: 'numeric' 
+              })}
+            </Text>
+            
+            <TouchableOpacity 
+              style={calendarStyles.calendarNavButton}
+              onPress={() => navigateMonth('next')}
+            >
+              <Icon name="chevron-right" size={20} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Week Days */}
+          <View style={calendarStyles.weekDaysContainer}>
+            {['M', 'D', 'W', 'D', 'V', 'Z', 'Z'].map((day, index) => (
+              <Text key={index} style={calendarStyles.weekDayText}>
+                {day}
+              </Text>
+            ))}
+          </View>
+
+          {/* Calendar Grid */}
+          <View style={calendarStyles.calendarGrid}>
+            {renderCalendarDays()}
+          </View>
+
+          {/* Stats */}
+          <View style={calendarStyles.statsContainer}>
+            <View style={calendarStyles.statItem}>
+              <Icon name="local-fire-department" size={24} color="#F59E0B" />
+              <Text style={calendarStyles.statValue}>{currentStreak}</Text>
+              <Text style={calendarStyles.statLabel}>Current Streak</Text>
+            </View>
+            <View style={calendarStyles.statItem}>
+              <Icon name="calendar-today" size={24} color="#6366F1" />
+              <Text style={calendarStyles.statValue}>{streakDays.length}</Text>
+              <Text style={calendarStyles.statLabel}>Total Days</Text>
+            </View>
+          </View>
+
+          {/* Close Button */}
+          <TouchableOpacity 
+            style={calendarStyles.closeButton}
+            onPress={onClose}
+          >
+            <Text style={calendarStyles.closeButtonText}>
+              Close
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Calendar Styles
+const calendarStyles = StyleSheet.create({
+  // Calendar Container
+  calendarContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    margin: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+    maxWidth: 400,
+    width: '90%',
+  },
+
+  // Calendar Header
+  calendarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 8,
+  },
+  calendarMonthText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1F2937',
+    letterSpacing: -0.5,
+  },
+  calendarNavButton: {
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  // Week Days Header
+  weekDaysContainer: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    paddingBottom: 12,
+  },
+  weekDayText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // Calendar Grid
+  calendarGrid: {
+    marginBottom: 8,
+  },
+  calendarRow: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+
+  // Calendar Days
+  calendarDay: {
+    flex: 1,
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    margin: 2,
+    borderRadius: 10,
+    minHeight: 40,
+  },
+  calendarDayText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  
+  // Day States
+  emptyDay: {
+    backgroundColor: 'transparent',
+  },
+  normalDay: {
+    backgroundColor: '#F3F4F6',
+  },
+  streakDay: {
+    backgroundColor: '#FF6B35',
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  today: {
+    backgroundColor: '#6366F1',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  todayText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  streakDayText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+
+  // Stats Container
+  statsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#1F2937',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+
+  // Close Button
+  closeButton: {
+    backgroundColor: '#6366F1',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    alignItems: 'center',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  closeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+});
+
 export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
@@ -66,7 +421,6 @@ export default function ProfileScreen() {
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [showStreakCalendar, setShowStreakCalendar] = useState(false);
   const [streakDays, setStreakDays] = useState<string[]>([]);
-  const streakCalendarAnim = new Animated.Value(0);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -115,50 +469,183 @@ export default function ProfileScreen() {
         });
       }
 
-      // Load streak days for calendar
-      const dailyWordsRef = ref(database, `users/${userId}/dailyWords`);
-      const dailySnapshot = await get(dailyWordsRef);
-      if (dailySnapshot.exists()) {
-        const allDailyWords = dailySnapshot.val();
-        await calculateStreakDays(allDailyWords, userId);
-      }
+      // Load and calculate streak days
+      await calculateStreakDays(userId);
     } catch (error) {
       console.error('Error loading stats:', error);
     }
   };
 
-  const calculateStreakDays = async (allDailyWords: any, userId: string) => {
+  // CORRECTED: Proper streak calculation from all practice sources
+  const calculateStreakDays = async (userId: string) => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const streakDates: string[] = [];
+      
+      console.log('🔥 Calculating streak days...');
+
+      // 1. Check Daily Words
+      const dailyWordsRef = ref(database, `users/${userId}/dailyWords`);
+      const dailySnapshot = await get(dailyWordsRef);
+      
+      if (dailySnapshot.exists()) {
+        const dailyData = dailySnapshot.val();
+        Object.entries(dailyData).forEach(([date, dayData]: [string, any]) => {
+          if (dayData.attempts > 0) {
+            // Validate date format and add to streak
+            const dateObj = new Date(date);
+            if (!isNaN(dateObj.getTime())) {
+              const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+              if (!streakDates.includes(dateStr)) {
+                streakDates.push(dateStr);
+              }
+            }
+          }
+        });
+        console.log(`✅ Daily words streak days: ${Object.keys(dailyData).filter(date => dailyData[date].attempts > 0).length}`);
+      }
+
+      // 2. Check Practice Words (Batch System)
+      for (const difficulty of ['easy', 'intermediate', 'hard']) {
+        const practiceRef = ref(database, `users/${userId}/practiceWords/${difficulty}`);
+        const practiceSnapshot = await get(practiceRef);
+        
+        if (practiceSnapshot.exists()) {
+          const practiceData = practiceSnapshot.val();
+          
+          Object.values(practiceData).forEach((wordData: any) => {
+            if (wordData.attempts > 0 && wordData.lastAttempted) {
+              const attemptDate = new Date(wordData.lastAttempted);
+              attemptDate.setHours(0, 0, 0, 0);
+              const dateStr = `${attemptDate.getFullYear()}-${String(attemptDate.getMonth() + 1).padStart(2, '0')}-${String(attemptDate.getDate()).padStart(2, '0')}`;
+              
+              if (!streakDates.includes(dateStr)) {
+                streakDates.push(dateStr);
+              }
+            }
+          });
+          console.log(`✅ ${difficulty} practice words checked`);
+        }
+      }
+
+      // 3. Check Custom Sentences/References
+      const referencesRef = ref(database, `users/${userId}/references`);
+      const referencesSnapshot = await get(referencesRef);
+      
+      if (referencesSnapshot.exists()) {
+        const referencesData = referencesSnapshot.val();
+        
+        Object.values(referencesData).forEach((sessionData: any) => {
+          if (sessionData.attempts) {
+            // Check all attempts in this session
+            Object.values(sessionData.attempts).forEach((attemptData: any) => {
+              if (attemptData.timestamp) {
+                const attemptDate = new Date(attemptData.timestamp);
+                attemptDate.setHours(0, 0, 0, 0);
+                const dateStr = `${attemptDate.getFullYear()}-${String(attemptDate.getMonth() + 1).padStart(2, '0')}-${String(attemptDate.getDate()).padStart(2, '0')}`;
+                
+                if (!streakDates.includes(dateStr)) {
+                  streakDates.push(dateStr);
+                }
+              }
+            });
+          }
+        });
+        console.log(`✅ Custom sentences checked`);
+      }
+
+      // 4. Check Practice Tracking (if exists)
+      const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
+      const trackingSnapshot = await get(practiceTrackingRef);
+      
+      if (trackingSnapshot.exists()) {
+        const trackingData = trackingSnapshot.val();
+        Object.entries(trackingData).forEach(([date, data]: [string, any]) => {
+          if (data.practiced) {
+            const dateObj = new Date(date);
+            if (!isNaN(dateObj.getTime())) {
+              const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+              if (!streakDates.includes(dateStr)) {
+                streakDates.push(dateStr);
+              }
+            }
+          }
+        });
+        console.log(`✅ Practice tracking checked`);
+      }
+
+      // Sort and deduplicate dates
+      const uniqueDates = [...new Set(streakDates)].sort();
+      console.log(`🔥 Total unique practice days: ${uniqueDates.length}`);
+      console.log('Streak dates:', uniqueDates);
+
+      setStreakDays(uniqueDates);
+
+      // Calculate current streak
+      const currentStreak = calculateCurrentStreak(uniqueDates);
+      console.log(`🔥 Current streak: ${currentStreak} days`);
+
+      // Update stats with calculated streak
+      setStats(prev => ({
+        ...prev,
+        streak: currentStreak
+      }));
+
+    } catch (error) {
+      console.error('Error calculating streak days:', error);
+      setStreakDays([]);
+    }
+  };
+
+  // Calculate current streak from practice dates
+  const calculateCurrentStreak = (practiceDates: string[]): number => {
+    if (practiceDates.length === 0) return 0;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const streakDates: string[] = [];
     
-    // Get practice tracking data
-    const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
-    const trackingSnapshot = await get(practiceTrackingRef);
-    const practiceTracking = trackingSnapshot.exists() ? trackingSnapshot.val() : {};
+    const sortedDates = practiceDates
+      .map(date => new Date(date))
+      .sort((a, b) => b.getTime() - a.getTime());
+
+    let streak = 0;
+    let currentDate = today.getTime();
     
-    // Check last 365 days for active streak days (any practice activity)
-    for (let daysAgo = 0; daysAgo < 365; daysAgo++) {
-      const checkDate = new Date(today);
-      checkDate.setDate(checkDate.getDate() - daysAgo);
-      const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+    // Check if today was practiced
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const hasPracticedToday = practiceDates.includes(todayStr);
+    
+    if (!hasPracticedToday) {
+      // If today not practiced, start from yesterday
+      currentDate = today.getTime() - (24 * 60 * 60 * 1000);
+    }
+
+    // Count consecutive days backwards
+    for (let i = 0; i < sortedDates.length; i++) {
+      const practiceDate = sortedDates[i].getTime();
+      const expectedDate = currentDate - (streak * 24 * 60 * 60 * 1000);
       
-      // Check both daily words and practice tracking
-      const dailyData = allDailyWords[checkDateStr];
-      const trackingData = practiceTracking[checkDateStr];
+      // Check if this practice date matches the expected date in the streak
+      const practiceDateStr = `${sortedDates[i].getFullYear()}-${String(sortedDates[i].getMonth() + 1).padStart(2, '0')}-${String(sortedDates[i].getDate()).padStart(2, '0')}`;
+      const expectedDateObj = new Date(expectedDate);
+      const expectedDateStr = `${expectedDateObj.getFullYear()}-${String(expectedDateObj.getMonth() + 1).padStart(2, '0')}-${String(expectedDateObj.getDate()).padStart(2, '0')}`;
       
-      if ((dailyData && dailyData.attempts > 0) || (trackingData && trackingData.practiced)) {
-        streakDates.push(checkDateStr);
+      if (practiceDateStr === expectedDateStr) {
+        streak++;
+      } else {
+        // If there's a gap, stop counting
+        break;
       }
     }
-    
-    setStreakDays(streakDates);
+
+    return streak;
   };
 
   const loadAllPracticeHistory = async (userId: string) => {
     try {
       const allPractices: PracticeHistory[] = [];
-      const practiceMap = new Map<string, PracticeHistory>(); // Track unique practices
+      const practiceMap = new Map<string, PracticeHistory>();
 
       // 1. Load Daily Words
       console.log('📅 Loading daily words...');
@@ -169,7 +656,7 @@ export default function ProfileScreen() {
         const dailyData = dailySnapshot.val();
         Object.entries(dailyData).forEach(([date, dayData]: [string, any]) => {
           if (dayData.attempts > 0) {
-            const word = dayData.word.toLowerCase(); // Use lowercase as key
+            const word = dayData.word.toLowerCase();
             const practice: PracticeHistory = {
               word: ` ${dayData.word}`,
               accuracy: Math.round((dayData.bestScore || dayData.accuracy || 0) * 100),
@@ -179,14 +666,12 @@ export default function ProfileScreen() {
               practiceType: 'daily_word',
             };
 
-            // Only keep the most recent attempt for each word
             const existingPractice = practiceMap.get(word);
             if (!existingPractice || practice.timestamp > existingPractice.timestamp) {
               practiceMap.set(word, practice);
             }
           }
         });
-        console.log(`✅ Loaded ${Object.keys(dailyData).length} daily words`);
       }
 
       // 2. Load Practice Sessions (Custom Sentences)
@@ -199,11 +684,10 @@ export default function ProfileScreen() {
         
         Object.entries(referencesData).forEach(([sessionId, sessionData]: [string, any]) => {
           if (sessionData.attempts) {
-            const text = (sessionData.text || 'Practice Session').toLowerCase(); // Use lowercase as key
+            const text = (sessionData.text || 'Practice Session').toLowerCase();
             const displayText = sessionData.text || 'Practice Session';
             const wordCount = displayText.split(' ').length;
             
-            // Get all attempts for this session and find the most recent
             const attempts = Object.entries(sessionData.attempts).map(([attemptId, attemptData]: [string, any]) => ({
               id: attemptId,
               timestamp: new Date(attemptData.timestamp).getTime(),
@@ -211,7 +695,6 @@ export default function ProfileScreen() {
               data: attemptData,
             }));
 
-            // Sort by timestamp to get the most recent
             attempts.sort((a, b) => b.timestamp - a.timestamp);
             const mostRecentAttempt = attempts[0];
 
@@ -227,7 +710,6 @@ export default function ProfileScreen() {
                 practiceType: 'sentence',
               };
 
-              // Only keep the most recent attempt for each sentence
               const existingPractice = practiceMap.get(text);
               if (!existingPractice || practice.timestamp > existingPractice.timestamp) {
                 practiceMap.set(text, practice);
@@ -235,7 +717,6 @@ export default function ProfileScreen() {
             }
           }
         });
-        console.log(`✅ Loaded ${Object.keys(referencesData).length} practice sessions`);
       }
 
       // 3. Load Practice Words from Batch System
@@ -249,7 +730,7 @@ export default function ProfileScreen() {
           
           Object.entries(practiceData).forEach(([wordId, wordData]: [string, any]) => {
             if (wordData.attempts > 0) {
-              const word = (wordData.word || '').toLowerCase(); // Use lowercase as key
+              const word = (wordData.word || '').toLowerCase();
               const displayWord = wordData.word || 'Unknown';
               
               const practice: PracticeHistory = {
@@ -262,30 +743,21 @@ export default function ProfileScreen() {
                 attemptCount: wordData.attempts,
               };
 
-              // Only keep the most recent attempt for each word
               const existingPractice = practiceMap.get(word);
               if (!existingPractice || practice.timestamp > existingPractice.timestamp) {
                 practiceMap.set(word, practice);
               }
             }
           });
-          console.log(`✅ Loaded ${Object.keys(practiceData).length} ${difficulty} practice words`);
         }
       }
 
-      // Convert map to array
+      // Convert map to array and sort
       const uniquePractices = Array.from(practiceMap.values());
-
-      // Sort by timestamp (most recent first) and take top 5
       uniquePractices.sort((a, b) => b.timestamp - a.timestamp);
       const recentFive = uniquePractices.slice(0, 5);
       
-      console.log(`📊 Total unique practices: ${uniquePractices.length}, showing: ${recentFive.length}`);
-      console.log('Recent practices:', recentFive.map(p => ({ word: p.word, accuracy: p.accuracy, date: p.date })));
-      
       setRecentPractice(recentFive);
-
-      // Calculate weekly progress from ALL practices (including duplicates for accurate stats)
       calculateWeeklyProgressFromUnique(uniquePractices);
 
     } catch (error) {
@@ -299,28 +771,25 @@ export default function ProfileScreen() {
       const now = Date.now();
       const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
       
-      const weekData = [0, 0, 0, 0, 0, 0, 0]; // Mon-Sun
-      const dayCounts = [0, 0, 0, 0, 0, 0, 0]; // Number of words practiced each day
+      const weekData = [0, 0, 0, 0, 0, 0, 0];
+      const dayCounts = [0, 0, 0, 0, 0, 0, 0];
       
       allPractices.forEach((practice) => {
         if (practice.timestamp >= sevenDaysAgo) {
           const practiceDate = new Date(practice.timestamp);
-          const dayOfWeek = practiceDate.getDay(); // 0 = Sunday
-          const mondayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Convert to Mon=0, Sun=6
+          const dayOfWeek = practiceDate.getDay();
+          const mondayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
           
           weekData[mondayIndex] += practice.accuracy;
           dayCounts[mondayIndex] += 1;
         }
       });
 
-      // Calculate average for each day
       const averagedData = weekData.map((total, index) => {
         const count = dayCounts[index];
         return count > 0 ? Math.round(total / count) : 0;
       });
 
-      console.log('📊 Weekly data (from unique practices):', averagedData);
-      console.log('📊 Weekly word counts:', dayCounts);
       setWeeklyData(averagedData);
       setWeeklyWordCounts(dayCounts);
     } catch (error) {
@@ -336,14 +805,11 @@ export default function ProfileScreen() {
       const snapshot = await get(statsRef);
       const stats = snapshot.val();
       
-      console.log('🏆 Calculating achievements...');
-
       const totalWords = stats?.totalWords || 0;
       const currentStreak = stats?.streak || stats?.currentStreak || 0;
       const averageAccuracy = (stats?.accuracy || stats?.averageAccuracy || 0);
       const totalAttempts = stats?.totalAttempts || 0;
 
-      // Convert accuracy to 0-1 scale if it's in 0-100 scale
       const normalizedAccuracy = averageAccuracy > 1 ? averageAccuracy / 100 : averageAccuracy;
 
       const achievementsList: Achievement[] = [
@@ -390,9 +856,6 @@ export default function ProfileScreen() {
           color: '#EF4444',
         },
       ];
-
-      const unlockedCount = achievementsList.filter(a => a.unlocked).length;
-      console.log(`🎯 Achievements: ${unlockedCount}/${achievementsList.length} unlocked`);
 
       setAchievements(achievementsList);
     } catch (error) {
@@ -461,7 +924,6 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Clear saved credentials
               await AsyncStorage.removeItem('rememberedEmail');
               await AsyncStorage.removeItem('rememberedPassword');
               await AsyncStorage.removeItem('rememberMe');
@@ -506,22 +968,6 @@ export default function ProfileScreen() {
   const openStreakCalendar = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowStreakCalendar(true);
-    Animated.spring(streakCalendarAnim, {
-      toValue: 1,
-      tension: 60,
-      friction: 8,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const closeStreakCalendar = () => {
-    Animated.timing(streakCalendarAnim, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowStreakCalendar(false);
-    });
   };
 
   if (loading) {
@@ -844,119 +1290,17 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* STREAK CALENDAR MODAL */}
-      <Modal
+      <StreakCalendar 
         visible={showStreakCalendar}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={closeStreakCalendar}
-      >
-        <View style={styles.modalOverlay}>
-          <Animated.View
-            style={[
-              styles.streakCalendarContainer,
-              {
-                opacity: streakCalendarAnim,
-                transform: [{
-                  scale: streakCalendarAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.9, 1],
-                  }),
-                }],
-              }
-            ]}
-          >
-            <LinearGradient
-              colors={['#F59E0B', '#D97706', '#EA580C']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.streakCalendarHeader}
-            >
-              <View style={styles.streakHeaderTop}>
-                <View style={styles.streakFireIcon}>
-                  <Icon name="local-fire-department" size={40} color="#FFFFFF" />
-                </View>
-                <TouchableOpacity
-                  onPress={closeStreakCalendar}
-                  style={styles.streakCloseButton}
-                >
-                  <Icon name="close" size={24} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.streakCalendarTitle}>🔥 Streak Calendar</Text>
-              <View style={styles.streakStatsRow}>
-                <View style={styles.streakStatBox}>
-                  <Text style={styles.streakStatValue}>{stats.streak}</Text>
-                  <Text style={styles.streakStatLabel}>Current Streak</Text>
-                </View>
-                <View style={styles.streakStatDivider} />
-                <View style={styles.streakStatBox}>
-                  <Text style={styles.streakStatValue}>{streakDays.length}</Text>
-                  <Text style={styles.streakStatLabel}>Total Days</Text>
-                </View>
-              </View>
-            </LinearGradient>
-
-            <ScrollView
-              style={styles.streakCalendarContent}
-              contentContainerStyle={styles.streakCalendarScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.streakCalendarSubtitle}>
-                Keep practicing daily to maintain your streak! 🌟
-              </Text>
-              
-              <View style={styles.calendarGrid}>
-                {Array.from({ length: 12 }, (_, monthIndex) => {
-                  const currentDate = new Date();
-                  const targetMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - monthIndex, 1);
-                  return (
-                    <View key={monthIndex} style={styles.monthContainer}>
-                      <Text style={styles.monthTitle}>
-                        {targetMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                      </Text>
-                      <View style={styles.monthGrid}>
-                        {Array.from({ length: 31 }, (_, dayIndex) => {
-                          const day = dayIndex + 1;
-                          const dateCheck = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), day);
-                          
-                          // Check if day exists in this month
-                          if (dateCheck.getMonth() !== targetMonth.getMonth()) return null;
-                          
-                          const dateStr = `${dateCheck.getFullYear()}-${String(dateCheck.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                          const isStreakDay = streakDays.includes(dateStr);
-                          const isToday = dateCheck.toDateString() === new Date().toDateString();
-                          
-                          return (
-                            <View
-                              key={dayIndex}
-                              style={[
-                                styles.dayCell,
-                                isStreakDay && styles.dayCellActive,
-                                isToday && styles.dayCellToday,
-                              ]}
-                            >
-                              {isStreakDay ? (
-                                <Text style={styles.fireEmoji}>🔥</Text>
-                              ) : (
-                                <Text style={styles.dayNumber}>{day}</Text>
-                              )}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          </Animated.View>
-        </View>
-      </Modal>
+        onClose={() => setShowStreakCalendar(false)}
+        streakDays={streakDays}
+        currentStreak={stats.streak}
+      />
     </View>
   );
 }
 
-
+// ... (keep the existing styles object exactly as it was)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1412,221 +1756,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-  },
-  streakCalendarContainer: {
-    width: '100%',
-    maxWidth: 480,
-    maxHeight: '85%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
-    overflow: 'hidden',
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 15,
-  },
-  streakCalendarHeader: {
-    padding: 24,
-    paddingTop: 28,
-  },
-  streakHeaderTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  streakFireIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
-  },
-  streakCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  streakCalendarTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    marginBottom: 20,
-    letterSpacing: -0.5,
-  },
-  streakStatsRow: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  streakStatBox: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  streakStatValue: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    marginBottom: 4,
-    letterSpacing: -1,
-  },
-  streakStatLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: 'rgba(255, 255, 255, 0.95)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  streakStatDivider: {
-    width: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    marginHorizontal: 16,
-  },
-  streakCalendarContent: {
-    flex: 1,
-  },
-  streakCalendarScrollContent: {
-    padding: 20,
-  },
-  streakCalendarSubtitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
-  },
-  calendarGrid: {
-    gap: 20,
-  },
-  monthContainer: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  monthTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#1F2937',
-    marginBottom: 12,
-    letterSpacing: -0.3,
-  },
-  monthGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  dayCell: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-  },
-  dayCellActive: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
-    borderWidth: 2,
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  dayCellToday: {
-    borderColor: '#6366F1',
-    borderWidth: 2.5,
-  },
-  dayNumber: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#9CA3AF',
-  },
-  fireEmoji: {
-    fontSize: 20,
-  },
-  motivationalBanner: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 20,
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  motivationalGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 12,
-  },
-  motivationalText: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.2,
-  },
-  calendarLegend: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 20,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-  },
-  legendItem: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-  },
-  legendActive: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
-    borderWidth: 2,
-  },
-  legendToday: {
-    borderColor: '#6366F1',
-    borderWidth: 2.5,
-  },
-  legendText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#6B7280',
-  },
-  legendNumber: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#9CA3AF',
-  },
-  fireEmojiSmall: {
-    fontSize: 16,
   },
 });
