@@ -1681,24 +1681,18 @@ export default function HomeScreen() {
           // Enhanced glow colors based on state
           const getGlowColor = () => {
             if (isCompleted) {
-              return [
-                `rgba(${DIFFICULTY_COLORS[selectedDifficulty].glow.match(/\d+/g)?.slice(0, 3).join(',')}, 0)`,
-                DIFFICULTY_COLORS[selectedDifficulty].glow
-              ];
+              return DIFFICULTY_COLORS[selectedDifficulty].glow;
             }
             if (isCurrent) {
-              return ['rgba(99, 102, 241, 0)', 'rgba(99, 102, 241, 0.6)'];
+              return 'rgba(99, 102, 241, 0.6)';
             }
             if (hasAttempted && currentAccuracy >= 0.5) {
-              return ['rgba(255, 200, 0, 0)', 'rgba(255, 200, 0, 0.5)'];
+              return 'rgba(255, 200, 0, 0.5)';
             }
-            return ['rgba(99, 102, 241, 0)', 'rgba(99, 102, 241, 0.3)'];
+            return 'rgba(99, 102, 241, 0.3)';
           };
 
-          const glowColor = glowAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: getGlowColor()
-          });
+          const glowColor = getGlowColor();
 
           const scale = nodeAnim.interpolate({
             inputRange: [0, 1],
