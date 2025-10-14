@@ -394,12 +394,18 @@ export default function HomeScreen() {
   };
 
   /**
-   * Optimized user progress update
+   * Optimized user progress update (ONLY for practice words, NOT daily words)
    */
   const updateWordProgressFast = async (accuracy: number) => {
     try {
       const user = auth.currentUser;
       if (!user || !selectedWord || !result) return;
+
+      // CRITICAL: If this is a daily word practice, do NOT save to practice words
+      if (isPracticingDaily) {
+        console.log('Skipping practice word save - this is a daily word');
+        return;
+      }
 
       const timestamp = new Date().toISOString();
       const isCompleted = accuracy >= 0.8;
@@ -1088,15 +1094,16 @@ export default function HomeScreen() {
         
         // Check if this is a daily word or practice word
         if (isPracticingDaily) {
-          // Save daily word attempt with full history
+          // DAILY WORD: Save to daily word attempts only
           await saveDailyWordAttempt(
             resultData.accuracy,
             resultData.feedback,
             resultData.correct_phonemes,
             resultData.total_phonemes
           );
+          // Note: saveDailyWordAttempt already handles streak update
         } else {
-          // Use fast progress update for practice words
+          // PRACTICE WORD: Save to practice word attempts only
           await updateWordProgressFast(resultData.accuracy);
           
           // Also update streak since user practiced today
