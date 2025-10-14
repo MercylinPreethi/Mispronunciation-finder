@@ -2133,11 +2133,10 @@ export default function HomeScreen() {
     extrapolate: 'clamp',
   });
 
-  // Path container margin moves up as user scrolls to extend toward header
-  // Stops just below the header badges (Words, Streak, Accuracy)
-  const pathContainerMarginTop = scrollY.interpolate({
+  // Path container padding reduces to 0 when scrolled - extends to header
+  const pathContainerPaddingTop = scrollY.interpolate({
     inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [0, -100], // Pull content up to just below badges
+    outputRange: [20, 0], // Remove padding when scrolled
     extrapolate: 'clamp',
   });
 
@@ -2486,7 +2485,7 @@ export default function HomeScreen() {
             style={[
               styles.pathContainer,
               {
-                marginTop: pathContainerMarginTop,
+                paddingTop: pathContainerPaddingTop, // Reduces to 0 when scrolled
               }
             ]}
           >
@@ -3460,7 +3459,7 @@ const styles = StyleSheet.create({
   pathContainer: {
     position: 'relative',
     minHeight: height * 2.5,
-    paddingTop: 20,
+    // paddingTop: animated (see pathContainerPaddingTop)
     paddingBottom: 100,
   },
   connectingPath: {
