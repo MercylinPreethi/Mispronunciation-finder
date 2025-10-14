@@ -2133,10 +2133,10 @@ export default function HomeScreen() {
     extrapolate: 'clamp',
   });
 
-  // Path container padding reduces as user scrolls
-  const pathContainerPaddingTop = scrollY.interpolate({
+  // Path container margin moves up as user scrolls to extend toward header
+  const pathContainerMarginTop = scrollY.interpolate({
     inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [40, 0],
+    outputRange: [0, -180], // Pull content up by 180px when scrolled
     extrapolate: 'clamp',
   });
 
@@ -2477,7 +2477,7 @@ export default function HomeScreen() {
             style={[
               styles.pathContainer,
               {
-                paddingTop: pathContainerPaddingTop,
+                marginTop: pathContainerMarginTop,
               }
             ]}
           >
@@ -3435,15 +3435,18 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     zIndex: 10,
+    overflow: 'visible', // Allow content to extend beyond bounds
   },
   scrollContent: {
     paddingTop: 0, // Path extends to header when scrolled
+    overflow: 'visible', // Ensure nothing is clipped
   },
   pathContainer: {
     position: 'relative',
     minHeight: height * 2.5,
-    // paddingTop: animated, see pathContainerPaddingTop interpolation
+    paddingTop: 40,
     paddingBottom: 100,
+    overflow: 'visible', // Ensure paths above aren't clipped
   },
   connectingPath: {
     position: 'absolute',
