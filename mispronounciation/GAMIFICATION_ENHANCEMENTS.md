@@ -89,16 +89,26 @@ Dynamic visual trail showing learning progression along the path.
 
 ## Integration
 
-The gamified background has been integrated into the Index tab (`app/(tabs)/index.tsx`):
+The gamified background has been integrated into the Index tab (`app/(tabs)/index.tsx`) to cover the entire tab below the header:
 
 ```tsx
-<View style={styles.pathContainer}>
-  <LearningPathBackground />
-  {renderWordPath()}
-</View>
+return (
+  <View style={styles.container}>
+    {/* Header */}
+    <View style={styles.header}>
+      {/* ... header content ... */}
+    </View>
+
+    {/* Learning Path Background - covers entire area below header */}
+    <LearningPathBackground />
+
+    {/* Controls, Progress, ScrollView, etc. */}
+    {/* ... rest of content ... */}
+  </View>
+);
 ```
 
-The `LearningPathBackground` component is positioned absolutely within the `pathContainer` with `zIndex: 0`, ensuring it stays behind all interactive elements while providing an engaging visual backdrop.
+The `LearningPathBackground` component is positioned absolutely to fill the entire screen below the header with `zIndex: -1`, ensuring it stays behind all interactive elements (controls, progress indicator, word circles, etc.) while providing an engaging visual backdrop for the entire tab.
 
 ## Design Principles
 

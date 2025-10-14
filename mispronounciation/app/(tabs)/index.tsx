@@ -2140,6 +2140,9 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* Learning Path Background - covers entire area below header */}
+      <LearningPathBackground />
+
       {/* Controls */}
       <View style={styles.controls}>
         <View style={styles.dropdownContainer}>
@@ -2265,7 +2268,6 @@ export default function HomeScreen() {
           scrollEventThrottle={16}
         >
           <View style={styles.pathContainer}>
-            <LearningPathBackground />
             {renderWordPath()}
           </View>
           <View style={{ height: 100 }} />
@@ -2822,7 +2824,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: 'transparent',
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
