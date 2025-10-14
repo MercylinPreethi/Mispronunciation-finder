@@ -565,6 +565,7 @@ export default function HomeScreen() {
   // Scroll animation tracking
   const scrollY = useRef(new Animated.Value(0)).current;
   const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
+  const [floatingPanelExpanded, setFloatingPanelExpanded] = useState(false);
 
   const initializeOnceRef = useRef(false);
   const loadingRef = useRef(false);
@@ -2093,58 +2094,48 @@ export default function HomeScreen() {
   // ============================================================================
 
   // Interpolate scroll position for smooth animations
-  const controlsTranslateY = scrollY.interpolate({
-    inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [0, -70], // Move up by 70px
-    extrapolate: 'clamp',
-  });
-
-  const controlsScale = scrollY.interpolate({
-    inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [1, 0.6], // Shrink to 60%
-    extrapolate: 'clamp',
-  });
-
-  const controlsTranslateX = scrollY.interpolate({
-    inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [0, width * 0.25], // Move to right
-    extrapolate: 'clamp',
-  });
-
-  const progressTranslateY = scrollY.interpolate({
-    inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [0, -120], // Move up by 120px
-    extrapolate: 'clamp',
-  });
-
-  const progressScale = scrollY.interpolate({
-    inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [1, 0.5], // Shrink to 50%
-    extrapolate: 'clamp',
-  });
-
-  const progressTranslateX = scrollY.interpolate({
-    inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [0, width * 0.15], // Move to right
+  // Controls and progress hide when scrolled, moved to floating panel
+  const controlsOpacity = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD * 0.5],
+    outputRange: [1, 0],
     extrapolate: 'clamp',
   });
 
   const progressOpacity = scrollY.interpolate({
-    inputRange: [0, SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
-    outputRange: [1, 0.6, 0.3], // Fade out gradually
+    inputRange: [0, SCROLL_THRESHOLD * 0.5],
+    outputRange: [1, 0],
     extrapolate: 'clamp',
   });
 
-  const headerHeight = scrollY.interpolate({
-    inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [0, -20], // Shrink header slightly
+  const controlsTranslateY = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD * 0.5],
+    outputRange: [0, -30],
     extrapolate: 'clamp',
   });
 
-  // Compact header view opacity (shows when scrolled)
-  const compactHeaderOpacity = scrollY.interpolate({
-    inputRange: [SCROLL_THRESHOLD * 0.7, SCROLL_THRESHOLD],
+  const progressTranslateY = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD * 0.5],
+    outputRange: [0, -30],
+    extrapolate: 'clamp',
+  });
+
+  // Floating panel appears when scrolled
+  const floatingPanelOpacity = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
     outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const floatingPanelTranslateY = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
+    outputRange: [20, 0],
+    extrapolate: 'clamp',
+  });
+
+  // Header shrinks slightly
+  const headerPaddingBottom = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [20, 10],
     extrapolate: 'clamp',
   });
 
@@ -2159,11 +2150,7 @@ export default function HomeScreen() {
         style={[
           styles.header,
           {
-            paddingBottom: scrollY.interpolate({
-              inputRange: [0, SCROLL_THRESHOLD],
-              outputRange: [20, 10],
-              extrapolate: 'clamp',
-            }),
+            paddingBottom: headerPaddingBottom,
           },
         ]}
       >
@@ -2213,48 +2200,6 @@ export default function HomeScreen() {
             </LinearGradient>
           </Animated.View>
         </View>
-
-        {/* Compact Header Info - appears when scrolled */}
-        <Animated.View 
-          style={[
-            styles.compactHeaderInfo,
-            {
-              opacity: compactHeaderOpacity,
-              transform: [{
-                translateY: scrollY.interpolate({
-                  inputRange: [0, SCROLL_THRESHOLD],
-                  outputRange: [20, 0],
-                  extrapolate: 'clamp',
-                }),
-              }],
-            },
-          ]}
-          pointerEvents="none"
-        >
-          <View style={styles.compactInfoRow}>
-            <View style={styles.compactBadge}>
-              <Icon name="track-changes" size={14} color={COLORS.primary} />
-              <Text style={styles.compactText}>
-                {selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1)}
-              </Text>
-            </View>
-            <View style={styles.compactBadge}>
-              <Icon name="check-circle" size={14} color={COLORS.success} />
-              <Text style={styles.compactText}>
-                {Math.round(completionPercentage)}%
-              </Text>
-            </View>
-            <View style={styles.compactBadge}>
-              <Icon name="emoji-events" size={14} color={COLORS.gold} />
-              <Text style={styles.compactText}>
-                {allWords.filter(w => {
-                  const prog = wordProgress[w.id];
-                  return prog && prog.bestScore >= 0.8;
-                }).length} mastered
-              </Text>
-            </View>
-          </View>
-        </Animated.View>
       </Animated.View>
 
       {/* Content Area with Background */}
@@ -2262,18 +2207,19 @@ export default function HomeScreen() {
         {/* Learning Path Background - covers entire area below header */}
         <LearningPathBackground />
 
-        {/* Controls - Animated for scroll collapse */}
+        {/* Controls - Fades out when scrolling */}
         <Animated.View 
           style={[
             styles.controls,
             {
-              transform: [
-                { translateY: controlsTranslateY },
-                { translateX: controlsTranslateX },
-                { scale: controlsScale },
-              ],
+              opacity: controlsOpacity,
+              transform: [{ translateY: controlsTranslateY }],
             },
           ]}
+          pointerEvents={controlsOpacity.interpolate({
+            inputRange: [0, 0.5],
+            outputRange: ['none', 'auto'],
+          }) as any}
         >
         <View style={styles.dropdownContainer}>
           <TouchableOpacity
@@ -2344,20 +2290,20 @@ export default function HomeScreen() {
         </Animated.View>
       </Animated.View>
 
-      {/* Progress Indicator - Animated for scroll collapse */}
+      {/* Progress Indicator - Fades out when scrolling */}
       {allWords.length > 0 && (
         <Animated.View 
           style={[
             styles.progressContainer,
             {
-              transform: [
-                { translateY: progressTranslateY },
-                { translateX: progressTranslateX },
-                { scale: progressScale },
-              ],
               opacity: progressOpacity,
+              transform: [{ translateY: progressTranslateY }],
             },
           ]}
+          pointerEvents={progressOpacity.interpolate({
+            inputRange: [0, 0.5],
+            outputRange: ['none', 'auto'],
+          }) as any}
         >
           <View style={styles.progressHeader}>
             <View style={styles.progressInfo}>
@@ -2394,6 +2340,128 @@ export default function HomeScreen() {
           </Text>
         </Animated.View>
       )}
+
+      {/* Floating Control Panel - appears when scrolled */}
+      <Animated.View 
+        style={[
+          styles.floatingPanel,
+          {
+            opacity: floatingPanelOpacity,
+            transform: [{ translateY: floatingPanelTranslateY }],
+          },
+        ]}
+        pointerEvents={floatingPanelOpacity.interpolate({
+          inputRange: [0, 0.5],
+          outputRange: ['none', 'auto'],
+        }) as any}
+      >
+        <TouchableOpacity
+          style={styles.floatingPanelToggle}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setFloatingPanelExpanded(!floatingPanelExpanded);
+          }}
+          activeOpacity={0.9}
+        >
+          <LinearGradient
+            colors={[COLORS.primary, COLORS.secondary] as const}
+            style={styles.floatingPanelToggleGradient}
+          >
+            <Icon name={floatingPanelExpanded ? "expand-less" : "expand-more"} size={20} color={COLORS.white} />
+            <View style={styles.floatingPanelCompact}>
+              <Icon name="tune" size={16} color={COLORS.white} />
+              <Text style={styles.floatingPanelText}>
+                {selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1)}
+              </Text>
+              <View style={styles.floatingDot} />
+              <Text style={styles.floatingPanelText}>{Math.round(completionPercentage)}%</Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* Expanded Panel Content */}
+        {floatingPanelExpanded && (
+          <View style={styles.floatingPanelExpanded}>
+            {/* Difficulty Selector */}
+            <View style={styles.floatingSection}>
+              <Text style={styles.floatingSectionTitle}>Difficulty Level</Text>
+              <View style={styles.floatingDifficultyButtons}>
+                {(['easy', 'intermediate', 'hard'] as DifficultyLevel[]).map((diff) => (
+                  <TouchableOpacity
+                    key={diff}
+                    style={[
+                      styles.floatingDiffButton,
+                      selectedDifficulty === diff && styles.floatingDiffButtonActive,
+                      { backgroundColor: selectedDifficulty === diff ? DIFFICULTY_COLORS[diff].primary : COLORS.white }
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      handleDifficultyChange(diff);
+                    }}
+                  >
+                    <Text style={[
+                      styles.floatingDiffButtonText,
+                      selectedDifficulty === diff && styles.floatingDiffButtonTextActive
+                    ]}>
+                      {diff.charAt(0).toUpperCase() + diff.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Progress Summary */}
+            <View style={styles.floatingSection}>
+              <Text style={styles.floatingSectionTitle}>Progress</Text>
+              <View style={styles.floatingProgressRow}>
+                <View style={styles.floatingProgressItem}>
+                  <Icon name="check-circle" size={18} color={COLORS.success} />
+                  <Text style={styles.floatingProgressValue}>{Math.round(completionPercentage)}%</Text>
+                  <Text style={styles.floatingProgressLabel}>Complete</Text>
+                </View>
+                <View style={styles.floatingProgressItem}>
+                  <Icon name="emoji-events" size={18} color={COLORS.gold} />
+                  <Text style={styles.floatingProgressValue}>
+                    {allWords.filter(w => {
+                      const prog = wordProgress[w.id];
+                      return prog && prog.bestScore >= 0.8;
+                    }).length}
+                  </Text>
+                  <Text style={styles.floatingProgressLabel}>Mastered</Text>
+                </View>
+                <View style={styles.floatingProgressItem}>
+                  <Icon name="trending-up" size={18} color={COLORS.primary} />
+                  <Text style={styles.floatingProgressValue}>{currentWordIndex + 1}</Text>
+                  <Text style={styles.floatingProgressLabel}>Active</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Daily Task Button */}
+            <TouchableOpacity
+              style={styles.floatingDailyTask}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowDailyTask(true);
+                setFloatingPanelExpanded(false);
+              }}
+            >
+              <LinearGradient
+                colors={[COLORS.gold, '#D97706'] as const}
+                style={styles.floatingDailyTaskGradient}
+              >
+                <Icon name="wb-sunny" size={20} color={COLORS.white} />
+                <Text style={styles.floatingDailyTaskText}>Today's Challenge</Text>
+                {!todayProgress?.completed && (
+                  <View style={styles.floatingDailyTaskBadge}>
+                    <Text style={styles.floatingDailyTaskBadgeText}>!</Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
+      </Animated.View>
 
       {/* Word Path ScrollView */}
       {isLoadingProgress ? (
@@ -2987,33 +3055,142 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 8,
   },
-  compactHeaderInfo: {
+  floatingPanel: {
     position: 'absolute',
-    bottom: 8,
-    right: 20,
-    left: 20,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    zIndex: 20,
+    top: 20,
+    right: 16,
+    zIndex: 500,
+    maxWidth: 280,
   },
-  compactInfoRow: {
+  floatingPanelToggle: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  floatingPanelToggleGradient: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  floatingPanelCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  floatingPanelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  floatingDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.white,
+    opacity: 0.6,
+  },
+  floatingPanelExpanded: {
+    marginTop: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  floatingSection: {
+    marginBottom: 16,
+  },
+  floatingSectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.gray[600],
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  floatingDifficultyButtons: {
     flexDirection: 'row',
     gap: 8,
-    alignItems: 'center',
   },
-  compactBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.gray[50],
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  floatingDiffButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: 12,
-    gap: 4,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.gray[200],
   },
-  compactText: {
-    fontSize: 11,
+  floatingDiffButtonActive: {
+    borderColor: 'transparent',
+  },
+  floatingDiffButtonText: {
+    fontSize: 12,
     fontWeight: '700',
     color: COLORS.gray[700],
+  },
+  floatingDiffButtonTextActive: {
+    color: COLORS.white,
+  },
+  floatingProgressRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  floatingProgressItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  floatingProgressValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+  },
+  floatingProgressLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.gray[500],
+  },
+  floatingDailyTask: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  floatingDailyTaskGradient: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  floatingDailyTaskText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.white,
+  },
+  floatingDailyTaskBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  floatingDailyTaskBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.white,
   },
   contentWrapper: {
     flex: 1,
@@ -3261,7 +3438,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   scrollContent: {
-    paddingTop: 20,
+    paddingTop: 0, // Path extends to header when scrolled
   },
   pathContainer: {
     position: 'relative',

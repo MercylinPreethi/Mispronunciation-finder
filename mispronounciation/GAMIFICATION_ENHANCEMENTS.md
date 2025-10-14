@@ -264,33 +264,44 @@ import ProgressTrail from '../../components/ProgressTrail';
 ## Scroll-Linked Animations
 
 ### Overview
-The Index tab features smooth, scroll-linked animations that create a dynamic, collapsing header experience. As users scroll through their learning path, UI elements smoothly transition to create a clean, compact view.
+The Index tab features smooth, scroll-linked animations that create a dynamic experience. As users scroll through their learning path, the controls and progress fade out while a floating panel appears, allowing the path to extend fully to the header without obstruction.
 
 ### Animation Behaviors
 
 **As User Scrolls Up:**
 
 1. **Controls Section (Difficulty Dropdown & Daily Task)**
-   - Scales down to 60% of original size
-   - Translates up by 70px
-   - Moves to the right by 25% of screen width
-   - Maintains interactivity
+   - Fades out completely (opacity: 1 → 0)
+   - Moves up by 30px while fading
+   - Becomes non-interactive when invisible
+   - Fades over first 50px of scroll
 
 2. **Progress Indicator**
-   - Scales down to 50% of original size
-   - Translates up by 120px
-   - Moves to the right by 15% of screen width
-   - Fades from 100% to 30% opacity
+   - Fades out completely (opacity: 1 → 0)
+   - Moves up by 30px while fading
+   - Becomes non-interactive when invisible
+   - Fades over first 50px of scroll
 
-3. **Header**
+3. **Floating Control Panel** (NEW!)
+   - Appears when scroll reaches 50px (opacity: 0 → 1)
+   - Slides in from top-right with smooth entrance
+   - Positioned at top-right of content area
+   - Contains compact view of all controls
+   - Tappable to expand/collapse
+   - **Expanded view includes:**
+     - Difficulty level selector (Easy/Intermediate/Hard)
+     - Progress summary (Completion %, Mastered, Active)
+     - Today's Challenge button
+   - Maintains high z-index (500) to stay above path elements
+
+4. **Header**
    - Bottom padding reduces from 20px to 10px
    - Creates more compact appearance
 
-4. **Compact Header Info**
-   - Appears when scroll reaches 70% of threshold
-   - Fades in smoothly
-   - Shows key stats: Difficulty, Completion %, Mastered count
-   - Positioned in bottom-right of header
+5. **Learning Path**
+   - Extends all the way to header area when scrolled
+   - No visual interruption from controls
+   - Full vertical space utilization
 
 ### Implementation Details
 
@@ -310,17 +321,24 @@ const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
 
 **Interpolation Examples:**
 ```typescript
-// Controls scale animation
-const controlsScale = scrollY.interpolate({
-  inputRange: [0, SCROLL_THRESHOLD],
-  outputRange: [1, 0.6],
+// Controls fade out animation
+const controlsOpacity = scrollY.interpolate({
+  inputRange: [0, SCROLL_THRESHOLD * 0.5],
+  outputRange: [1, 0],
   extrapolate: 'clamp',
 });
 
-// Progress opacity animation
-const progressOpacity = scrollY.interpolate({
-  inputRange: [0, SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
-  outputRange: [1, 0.6, 0.3],
+// Floating panel fade in animation
+const floatingPanelOpacity = scrollY.interpolate({
+  inputRange: [SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
+  outputRange: [0, 1],
+  extrapolate: 'clamp',
+});
+
+// Floating panel slide in animation
+const floatingPanelTranslateY = scrollY.interpolate({
+  inputRange: [SCROLL_THRESHOLD * 0.5, SCROLL_THRESHOLD],
+  outputRange: [20, 0],
   extrapolate: 'clamp',
 });
 ```
@@ -334,20 +352,34 @@ const progressOpacity = scrollY.interpolate({
 
 ### User Experience Benefits
 
-1. **Space Efficiency**: More screen real estate for learning path when scrolled
-2. **Context Awareness**: Compact header info keeps users informed while scrolling
-3. **Visual Continuity**: Smooth transitions maintain orientation
-4. **Professional Polish**: Fluid animations create premium feel
-5. **Accessibility**: Key controls remain visible and accessible
+1. **Unobstructed Path**: Learning path extends fully to header when scrolled
+2. **Smart Controls**: Floating panel provides access without blocking content
+3. **One-Tap Access**: Expandable panel keeps all features within reach
+4. **Visual Clarity**: No elements overlap the learning path
+5. **Space Efficiency**: Maximum vertical space for word progression
+6. **Professional Polish**: Fluid animations create premium feel
 
 ### Animation Parameters
 
-| Element | Scale | TranslateY | TranslateX | Opacity |
-|---------|-------|------------|------------|---------|
-| Controls | 1.0 → 0.6 | 0 → -70px | 0 → +25% | 1.0 |
-| Progress | 1.0 → 0.5 | 0 → -120px | 0 → +15% | 1.0 → 0.3 |
-| Header | - | - | - | - (padding: 20 → 10) |
-| Compact Info | - | +20 → 0 | - | 0 → 1.0 |
+| Element | Scroll Range | TranslateY | Opacity | Notes |
+|---------|--------------|------------|---------|-------|
+| Controls | 0-50px | 0 → -30px | 1.0 → 0 | Fades out completely |
+| Progress | 0-50px | 0 → -30px | 1.0 → 0 | Fades out completely |
+| Floating Panel | 50-100px | +20 → 0 | 0 → 1.0 | Slides in from top |
+| Header | 0-100px | - | - | Padding: 20 → 10px |
+
+### Floating Panel Features
+
+**Compact View (Always Visible When Scrolled):**
+- Difficulty level indicator
+- Progress percentage
+- Expand/collapse toggle
+
+**Expanded View (Tappable):**
+- Difficulty selector buttons (Easy/Intermediate/Hard)
+- Progress stats (Completion %, Mastered count, Active word)
+- Today's Challenge button
+- Quick access to all controls in one place
 
 ### Customization
 
