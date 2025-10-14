@@ -85,6 +85,15 @@ interface WordProgress {
   lastAttempted: string;
 }
 
+interface DailyWordAttempt {
+  attemptId: string;
+  accuracy: number;
+  feedback: string;
+  timestamp: string;
+  correctPhonemes: number;
+  totalPhonemes: number;
+}
+
 interface DailyWordProgress {
   word: string;
   date: string;
@@ -92,6 +101,9 @@ interface DailyWordProgress {
   accuracy: number;
   attempts: number;
   bestScore: number;
+  attemptHistory: DailyWordAttempt[];
+  lastAttemptFeedback?: string;
+  lastAttemptAccuracy?: number;
 }
 
 interface UserStats {
@@ -132,6 +144,8 @@ export default function HomeScreen() {
   
   const [todayWord, setTodayWord] = useState<Word | null>(null);
   const [todayProgress, setTodayProgress] = useState<DailyWordProgress | null>(null);
+  const [dailyWordAttemptHistory, setDailyWordAttemptHistory] = useState<DailyWordAttempt[]>([]);
+  const [showDailyWordHistory, setShowDailyWordHistory] = useState(false);
   
   const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel>('easy');
   const [wordProgress, setWordProgress] = useState<{ [key: string]: WordProgress }>({});
@@ -298,6 +312,7 @@ export default function HomeScreen() {
       if (!user || !selectedWord) return;
 
       const timestamp = new Date().toISOString();
+      const todayDate = getTodayDateString();
       const isCompleted = accuracy >= 0.8;
       const xpEarned = Math.round(accuracy * 10);
       const wordId = selectedWord.id;
@@ -318,6 +333,9 @@ export default function HomeScreen() {
       // Update Firebase in background (don't wait for it)
       const wordRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}`);
       set(wordRef, newProgress).catch(console.error);
+
+      // Mark today as practiced for streak tracking
+      markDayAsPracticed(todayDate, user.uid).catch(console.error);
 
       // Update stats optimistically
       const newXP = stats.xp + xpEarned;
@@ -376,9 +394,124 @@ export default function HomeScreen() {
       const response = await axios.get(`${API_BASE_URL}/api/daily-word-consistent`);
       if (response.data.success) {
         setTodayWord(response.data.word);
+        // Load daily word progress after fetching
+        await loadDailyWordProgress();
       }
     } catch (error) {
       console.error('Error fetching daily word:', error);
+    }
+  };
+
+  // Load daily word progress including attempt history
+  const loadDailyWordProgress = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const todayDate = getTodayDateString();
+      const dailyWordRef = ref(database, `users/${user.uid}/dailyWords/${todayDate}`);
+      const snapshot = await get(dailyWordRef);
+
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const progress: DailyWordProgress = {
+          word: data.word || '',
+          date: data.date || todayDate,
+          completed: data.completed || false,
+          accuracy: data.accuracy || data.bestScore || 0,
+          attempts: data.attempts || 0,
+          bestScore: data.bestScore || 0,
+          attemptHistory: data.attemptHistory || [],
+          lastAttemptFeedback: data.lastAttemptFeedback,
+          lastAttemptAccuracy: data.lastAttemptAccuracy,
+        };
+        setTodayProgress(progress);
+        setDailyWordAttemptHistory(progress.attemptHistory || []);
+      } else {
+        setTodayProgress(null);
+        setDailyWordAttemptHistory([]);
+      }
+    } catch (error) {
+      console.error('Error loading daily word progress:', error);
+    }
+  };
+
+  // Save daily word attempt with full feedback history
+  const saveDailyWordAttempt = async (accuracy: number, feedback: string, correctPhonemes: number, totalPhonemes: number, isDailyWord: boolean = true) => {
+    try {
+      const user = auth.currentUser;
+      if (!user || !selectedWord) return;
+
+      const todayDate = getTodayDateString();
+      const timestamp = new Date().toISOString();
+      const attemptId = `attempt_${Date.now()}`;
+
+      // Create new attempt record
+      const newAttempt: DailyWordAttempt = {
+        attemptId,
+        accuracy,
+        feedback,
+        timestamp,
+        correctPhonemes,
+        totalPhonemes,
+      };
+
+      // Load existing progress
+      const dailyWordRef = ref(database, `users/${user.uid}/dailyWords/${todayDate}`);
+      const snapshot = await get(dailyWordRef);
+      
+      let existingData = snapshot.exists() ? snapshot.val() : {};
+      let attemptHistory: DailyWordAttempt[] = existingData.attemptHistory || [];
+      
+      // Add new attempt to history
+      attemptHistory.push(newAttempt);
+
+      // Calculate updated stats
+      const attemptCount = attemptHistory.length;
+      const bestScore = Math.max(...attemptHistory.map(a => a.accuracy), accuracy);
+      const isCompleted = bestScore >= 0.8;
+
+      // Update daily word progress
+      const updatedProgress: DailyWordProgress = {
+        word: selectedWord.word,
+        date: todayDate,
+        completed: isCompleted,
+        accuracy: bestScore,
+        attempts: attemptCount,
+        bestScore: bestScore,
+        attemptHistory: attemptHistory,
+        lastAttemptFeedback: feedback,
+        lastAttemptAccuracy: accuracy,
+      };
+
+      // Save to Firebase
+      await set(dailyWordRef, updatedProgress);
+      setTodayProgress(updatedProgress);
+      setDailyWordAttemptHistory(attemptHistory);
+
+      // Mark today as practiced for streak tracking
+      await markDayAsPracticed(todayDate, user.uid);
+
+      // Update stats
+      await calculateStatsFromHistory({ [todayDate]: updatedProgress }, user.uid);
+
+      console.log('✅ Daily word attempt saved:', { attemptId, accuracy, attemptCount });
+    } catch (error) {
+      console.error('Error saving daily word attempt:', error);
+    }
+  };
+
+  // Mark a day as practiced (for streak tracking)
+  const markDayAsPracticed = async (dateStr: string, userId: string) => {
+    try {
+      const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking/${dateStr}`);
+      await set(practiceTrackingRef, {
+        practiced: true,
+        timestamp: new Date().toISOString(),
+      });
+      console.log('✅ Day marked as practiced:', dateStr);
+    } catch (error) {
+      console.error('Error marking day as practiced:', error);
     }
   };
 
@@ -430,19 +563,28 @@ export default function HomeScreen() {
 
       const averageAccuracy = accuracyCount > 0 ? totalAccuracy / accuracyCount : 0;
       
-      // Calculate streak
+      // Calculate streak based on practice tracking (ANY word practiced counts)
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      
+      // Load practice tracking data
+      const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
+      const trackingSnapshot = await get(practiceTrackingRef);
+      const practiceTracking = trackingSnapshot.exists() ? trackingSnapshot.val() : {};
       
       for (let daysAgo = 0; daysAgo < 365; daysAgo++) {
         const checkDate = new Date(today);
         checkDate.setDate(checkDate.getDate() - daysAgo);
         const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
         
+        // Check if ANY practice happened on this day (daily word OR practice words)
         const dayData = allDailyWords[checkDateStr];
-        if (dayData && dayData.attempts > 0) {
+        const trackingData = practiceTracking[checkDateStr];
+        
+        if ((dayData && dayData.attempts > 0) || (trackingData && trackingData.practiced)) {
           currentStreak++;
         } else {
+          // Only break if it's not today (allow today to have no practice yet)
           if (daysAgo > 0) break;
         }
       }
@@ -457,6 +599,8 @@ export default function HomeScreen() {
       const statsRef = ref(database, `users/${userId}/stats`);
       await set(statsRef, newStats);
       setStats(newStats);
+      
+      console.log('📊 Updated stats:', { streak: currentStreak, totalWords: wordsAttempted, accuracy: Math.round(averageAccuracy * 100) });
     } catch (error) {
       console.error('Error calculating stats:', error);
     }
@@ -725,18 +869,33 @@ export default function HomeScreen() {
       
       if (response.data.success) {
         const analysisResult = response.data.analysis;
+        const feedbackText = response.data.feedback || 'Great job!';
         const resultData: AnalysisResult = {
           accuracy: analysisResult.accuracy,
           correct_phonemes: analysisResult.correct_phonemes,
           total_phonemes: analysisResult.total_phonemes,
-          feedback: response.data.feedback || 'Great job!',
+          feedback: feedbackText,
         };
         
         setResult(resultData);
         setShowResult(true);
         
-        // Use fast progress update
-        await updateWordProgressFast(resultData.accuracy);
+        // Check if this is the daily word
+        const isDailyWord = todayWord && selectedWord?.word === todayWord.word;
+        
+        if (isDailyWord) {
+          // Save as daily word attempt with full history
+          await saveDailyWordAttempt(
+            resultData.accuracy,
+            feedbackText,
+            resultData.correct_phonemes,
+            resultData.total_phonemes,
+            true
+          );
+        } else {
+          // Regular practice word - use fast progress update
+          await updateWordProgressFast(resultData.accuracy);
+        }
         
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
@@ -1264,9 +1423,102 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </LinearGradient>
 
-              <View style={styles.dailyTaskContent}>
+              <ScrollView 
+                style={styles.dailyTaskContent}
+                contentContainerStyle={styles.dailyTaskScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
                 <Text style={styles.dailyWordText}>{todayWord.word}</Text>
                 <Text style={styles.dailyPhonetic}>{todayWord.phonetic}</Text>
+                
+                {/* Latest Feedback Section */}
+                {todayProgress && todayProgress.lastAttemptFeedback && (
+                  <View style={styles.latestFeedbackSection}>
+                    <View style={styles.latestFeedbackHeader}>
+                      <Icon name="feedback" size={22} color={COLORS.primary} />
+                      <Text style={styles.latestFeedbackTitle}>Latest Feedback</Text>
+                    </View>
+                    <View style={styles.latestFeedbackCard}>
+                      <View style={styles.accuracyRow}>
+                        <Text style={styles.accuracyLabel}>Accuracy:</Text>
+                        <Text style={[
+                          styles.accuracyValue,
+                          { color: (todayProgress.lastAttemptAccuracy || 0) >= 0.8 ? COLORS.success : COLORS.warning }
+                        ]}>
+                          {Math.round((todayProgress.lastAttemptAccuracy || 0) * 100)}%
+                        </Text>
+                      </View>
+                      <ScrollView 
+                        style={styles.feedbackTextContainer}
+                        nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                      >
+                        <Text style={styles.feedbackText}>{todayProgress.lastAttemptFeedback}</Text>
+                      </ScrollView>
+                      <View style={styles.attemptsInfo}>
+                        <Icon name="repeat" size={16} color={COLORS.gray[600]} />
+                        <Text style={styles.attemptsText}>
+                          {todayProgress.attempts} {todayProgress.attempts === 1 ? 'attempt' : 'attempts'} • 
+                          Best: {Math.round(todayProgress.bestScore * 100)}%
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* Attempt History */}
+                {dailyWordAttemptHistory.length > 0 && (
+                  <View style={styles.attemptHistorySection}>
+                    <TouchableOpacity 
+                      style={styles.historyToggleHeader}
+                      onPress={() => setShowDailyWordHistory(!showDailyWordHistory)}
+                    >
+                      <Icon name="history" size={20} color={COLORS.gray[700]} />
+                      <Text style={styles.historyToggleTitle}>
+                        Attempt History ({dailyWordAttemptHistory.length})
+                      </Text>
+                      <Icon 
+                        name={showDailyWordHistory ? "expand-less" : "expand-more"} 
+                        size={24} 
+                        color={COLORS.gray[600]} 
+                      />
+                    </TouchableOpacity>
+                    
+                    {showDailyWordHistory && (
+                      <View style={styles.historyList}>
+                        {dailyWordAttemptHistory.slice().reverse().map((attempt, index) => (
+                          <View key={attempt.attemptId} style={styles.historyItem}>
+                            <View style={styles.historyItemHeader}>
+                              <Text style={styles.historyItemNumber}>
+                                #{dailyWordAttemptHistory.length - index}
+                              </Text>
+                              <Text style={styles.historyItemTime}>
+                                {new Date(attempt.timestamp).toLocaleTimeString([], { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })}
+                              </Text>
+                              <View style={[
+                                styles.historyItemAccuracy,
+                                { backgroundColor: attempt.accuracy >= 0.8 ? '#ECFDF5' : '#FEF3C7' }
+                              ]}>
+                                <Text style={[
+                                  styles.historyItemAccuracyText,
+                                  { color: attempt.accuracy >= 0.8 ? COLORS.success : COLORS.warning }
+                                ]}>
+                                  {Math.round(attempt.accuracy * 100)}%
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={styles.historyItemFeedback} numberOfLines={2}>
+                              {attempt.feedback}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
                 
                 <View style={styles.dailyMeaning}>
                   <Icon name="info-outline" size={20} color={COLORS.primary} />
@@ -1295,12 +1547,13 @@ export default function HomeScreen() {
                     style={styles.startDailyGradient}
                   >
                     <Text style={styles.startDailyText}>
-                      {todayProgress?.completed ? 'Practice Again' : 'Start Challenge'}
+                      {todayProgress && todayProgress.attempts > 0 ? 'Try Again' : 'Start Challenge'}
                     </Text>
-                    <Icon name="arrow-forward" size={20} color={COLORS.white} />
+                    <Icon name={todayProgress && todayProgress.attempts > 0 ? "refresh" : "arrow-forward"} size={20} color={COLORS.white} />
                   </LinearGradient>
                 </TouchableOpacity>
-              </View>
+                <View style={{ height: 20 }} />
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -1922,6 +2175,7 @@ const styles = StyleSheet.create({
   dailyTaskModal: {
     width: '100%',
     maxWidth: 400,
+    maxHeight: '90%',
     backgroundColor: COLORS.white,
     borderRadius: 24,
     overflow: 'hidden',
@@ -1956,6 +2210,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dailyTaskContent: {
+    flex: 1,
+  },
+  dailyTaskScrollContent: {
     padding: 24,
   },
   dailyWordText: {
@@ -2344,5 +2601,138 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: COLORS.white,
+  },
+  // Latest Feedback Section Styles
+  latestFeedbackSection: {
+    marginBottom: 20,
+    marginTop: 16,
+  },
+  latestFeedbackHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  latestFeedbackTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+    letterSpacing: -0.3,
+  },
+  latestFeedbackCard: {
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: COLORS.primary + '30',
+  },
+  accuracyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[200],
+  },
+  accuracyLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.gray[700],
+  },
+  accuracyValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  feedbackTextContainer: {
+    maxHeight: 120,
+    marginBottom: 12,
+  },
+  feedbackText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.gray[700],
+    fontWeight: '500',
+  },
+  attemptsInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[200],
+  },
+  attemptsText: {
+    fontSize: 12,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+  },
+  // Attempt History Section Styles
+  attemptHistorySection: {
+    marginBottom: 20,
+  },
+  historyToggleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.gray[100],
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  historyToggleTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.gray[800],
+  },
+  historyList: {
+    gap: 8,
+  },
+  historyItem: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+  },
+  historyItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  historyItemNumber: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.primary,
+    backgroundColor: COLORS.primary + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  historyItemTime: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+  },
+  historyItemAccuracy: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.gray[300],
+  },
+  historyItemAccuracyText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  historyItemFeedback: {
+    fontSize: 13,
+    color: COLORS.gray[700],
+    lineHeight: 18,
+    fontWeight: '500',
   },
 });

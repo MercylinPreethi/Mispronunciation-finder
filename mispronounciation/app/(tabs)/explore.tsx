@@ -1013,6 +1013,25 @@ export default function RecordingScreen() {
   }
 };
 
+// Mark a day as practiced (for streak tracking)
+const markDayAsPracticed = async (dateStr: string, userId: string) => {
+  try {
+    const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking/${dateStr}`);
+    await set(practiceTrackingRef, {
+      practiced: true,
+      timestamp: new Date().toISOString(),
+    });
+    console.log('✅ Day marked as practiced:', dateStr);
+  } catch (error) {
+    console.error('Error marking day as practiced:', error);
+  }
+};
+
+const getTodayDateString = () => {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+};
+
 const saveAttemptToFirebase = async (attempt: PracticeAttempt) => {
 try {
 const user = auth.currentUser;
@@ -1049,6 +1068,10 @@ return;
     mispronuncedWords: attempt.mispronuncedWords,
     correctlyPronuncedWords: attempt.correctlyPronuncedWords
   });
+  
+  // Mark today as practiced for streak tracking
+  const todayDate = getTodayDateString();
+  await markDayAsPracticed(todayDate, user.uid);
   
   console.log('Attempt saved to Firebase successfully');
 } catch (error) {
