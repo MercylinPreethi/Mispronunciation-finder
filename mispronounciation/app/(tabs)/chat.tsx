@@ -10,6 +10,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Modal,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -74,6 +75,7 @@ export default function CoachScreen() {
   const micScaleAnim = useRef(new Animated.Value(1)).current;
   const rippleAnim = useRef(new Animated.Value(0)).current;
   const feedbackOverlayAnim = useRef(new Animated.Value(0)).current;
+  const practiceModalAnim = useRef(new Animated.Value(0)).current;
   const durationInterval = useRef<number | null>(null);
   const wordRecordingPathRef = useRef<string | null>(null);
 
@@ -364,8 +366,26 @@ export default function CoachScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setLatestFeedback(message.feedback);
       setWordPracticeVisible(true);
-      scrollViewRef.current?.scrollToEnd({ animated: true });
+      
+      // Animate modal opening
+      Animated.spring(practiceModalAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
     }
+  };
+
+  const closePracticeModal = () => {
+    Animated.timing(practiceModalAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setWordPracticeVisible(false);
+      setLatestFeedback(null);
+    });
   };
 
   const playWordAudio = async (word: string) => {
@@ -693,107 +713,6 @@ export default function CoachScreen() {
           </View>
         )}
 
-        {/* Word Practice Section */}
-        {wordPracticeVisible && latestFeedback && (
-          <View style={styles.wordPracticeSection}>
-            <View style={styles.practiceSectionHeader}>
-              <LinearGradient
-                colors={['#8B5CF6', '#7C3AED']}
-                style={styles.practiceSectionHeaderGradient}
-              >
-                <View style={styles.practiceSectionHeaderContent}>
-                  <Icon name="fitness-center" size={24} color="#FFFFFF" />
-                  <Text style={styles.practiceSectionTitle}>Practice Words</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => setWordPracticeVisible(false)}
-                  style={styles.closePracticeButton}
-                >
-                  <Icon name="close" size={20} color="rgba(255,255,255,0.9)" />
-                </TouchableOpacity>
-              </LinearGradient>
-            </View>
-
-            <View style={styles.practiceWordsContainer}>
-              {[...latestFeedback.mispronounced_words, ...latestFeedback.partial_words].map((word, index) => {
-                const isRecordingThis = isWordRecording && recordingWord === word;
-                const isPlayingThis = playingWord === word;
-                
-                return (
-                  <View key={`${word}-${index}`} style={styles.practiceWordCard}>
-                    <View style={styles.practiceWordHeader}>
-                      <Text style={styles.practiceWordText}>{word}</Text>
-                      {latestFeedback.mispronounced_words.includes(word) ? (
-                        <View style={styles.practiceWordBadgeMispronounced}>
-                          <Text style={styles.practiceWordBadgeText}>Need Practice</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.practiceWordBadgePartial}>
-                          <Text style={styles.practiceWordBadgeText}>Improve</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.practiceWordActions}>
-                      <TouchableOpacity
-                        style={[
-                          styles.practiceWordButton,
-                          isPlayingThis && styles.practiceWordButtonActive
-                        ]}
-                        onPress={() => playWordAudio(word)}
-                        disabled={isWordRecording || isWordProcessing}
-                      >
-                        <LinearGradient
-                          colors={isPlayingThis ? ['#10B981', '#059669'] : ['#667EEA', '#764BA2']}
-                          style={styles.practiceWordButtonGradient}
-                        >
-                          <Icon name={isPlayingThis ? 'pause' : 'volume-up'} size={20} color="#FFFFFF" />
-                          <Text style={styles.practiceWordButtonText}>
-                            {isPlayingThis ? 'Playing' : 'Listen'}
-                          </Text>
-                        </LinearGradient>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[
-                          styles.practiceWordButton,
-                          isRecordingThis && styles.practiceWordButtonRecording
-                        ]}
-                        onPress={() => handleWordRecord(word)}
-                        disabled={isWordProcessing || (isWordRecording && !isRecordingThis)}
-                      >
-                        <LinearGradient
-                          colors={isRecordingThis ? ['#EF4444', '#DC2626'] : ['#F59E0B', '#D97706']}
-                          style={styles.practiceWordButtonGradient}
-                        >
-                          <Icon name={isRecordingThis ? 'stop' : 'mic'} size={20} color="#FFFFFF" />
-                          <Text style={styles.practiceWordButtonText}>
-                            {isRecordingThis ? 'Stop' : 'Record'}
-                          </Text>
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-
-            {isWordProcessing && (
-              <View style={styles.practiceProcessingOverlay}>
-                <ActivityIndicator size="large" color="#8B5CF6" />
-                <Text style={styles.practiceProcessingText}>Analyzing your pronunciation...</Text>
-              </View>
-            )}
-
-            <View style={styles.practiceInstructions}>
-              <Icon name="lightbulb-outline" size={18} color="#8B5CF6" />
-              <Text style={styles.practiceInstructionsText}>
-                Tap "Listen" to hear the correct pronunciation, then "Record" to practice
-              </Text>
-            </View>
-          </View>
-        )}
-
         <View style={{ height: 20 }} />
       </ScrollView>
 
@@ -894,6 +813,150 @@ export default function CoachScreen() {
           </BlurView>
         </Animated.View>
       )}
+
+      {/* Word Practice Modal */}
+      <Modal
+        visible={wordPracticeVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={closePracticeModal}
+      >
+        <TouchableOpacity
+          style={styles.practiceModalBackdrop}
+          activeOpacity={1}
+          onPress={closePracticeModal}
+        >
+          <Animated.View
+            style={[
+              styles.practiceModalContainer,
+              {
+                opacity: practiceModalAnim,
+                transform: [
+                  {
+                    translateY: practiceModalAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [height, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <TouchableOpacity activeOpacity={1}>
+              <BlurView intensity={100} tint="light" style={styles.practiceModalBlur}>
+                <View style={styles.wordPracticeSection}>
+                  <View style={styles.practiceSectionHeader}>
+                    <LinearGradient
+                      colors={['#8B5CF6', '#7C3AED']}
+                      style={styles.practiceSectionHeaderGradient}
+                    >
+                      {/* Drag Handle */}
+                      <View style={styles.dragHandle} />
+                      
+                      {/* Header Row */}
+                      <View style={styles.practiceSectionHeaderRow}>
+                        <View style={styles.practiceSectionHeaderContent}>
+                          <Icon name="fitness-center" size={24} color="#FFFFFF" />
+                          <Text style={styles.practiceSectionTitle}>Practice Words</Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={closePracticeModal}
+                          style={styles.closePracticeButton}
+                        >
+                          <Icon name="close" size={22} color="rgba(255,255,255,0.95)" />
+                        </TouchableOpacity>
+                      </View>
+                    </LinearGradient>
+                  </View>
+
+                  <ScrollView 
+                    style={styles.practiceModalScroll}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <View style={styles.practiceWordsContainer}>
+                      {latestFeedback && [...latestFeedback.mispronounced_words, ...latestFeedback.partial_words].map((word, index) => {
+                        const isRecordingThis = isWordRecording && recordingWord === word;
+                        const isPlayingThis = playingWord === word;
+                        
+                        return (
+                          <View key={`${word}-${index}`} style={styles.practiceWordCard}>
+                            <View style={styles.practiceWordHeader}>
+                              <Text style={styles.practiceWordText}>{word}</Text>
+                              {latestFeedback.mispronounced_words.includes(word) ? (
+                                <View style={styles.practiceWordBadgeMispronounced}>
+                                  <Text style={styles.practiceWordBadgeText}>Need Practice</Text>
+                                </View>
+                              ) : (
+                                <View style={styles.practiceWordBadgePartial}>
+                                  <Text style={styles.practiceWordBadgeText}>Improve</Text>
+                                </View>
+                              )}
+                            </View>
+
+                            <View style={styles.practiceWordActions}>
+                              <TouchableOpacity
+                                style={[
+                                  styles.practiceWordButton,
+                                  isPlayingThis && styles.practiceWordButtonActive
+                                ]}
+                                onPress={() => playWordAudio(word)}
+                                disabled={isWordRecording || isWordProcessing}
+                              >
+                                <LinearGradient
+                                  colors={isPlayingThis ? ['#10B981', '#059669'] : ['#667EEA', '#764BA2']}
+                                  style={styles.practiceWordButtonGradient}
+                                >
+                                  <Icon name={isPlayingThis ? 'pause' : 'volume-up'} size={20} color="#FFFFFF" />
+                                  <Text style={styles.practiceWordButtonText}>
+                                    {isPlayingThis ? 'Playing' : 'Listen'}
+                                  </Text>
+                                </LinearGradient>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={[
+                                  styles.practiceWordButton,
+                                  isRecordingThis && styles.practiceWordButtonRecording
+                                ]}
+                                onPress={() => handleWordRecord(word)}
+                                disabled={isWordProcessing || (isWordRecording && !isRecordingThis)}
+                              >
+                                <LinearGradient
+                                  colors={isRecordingThis ? ['#EF4444', '#DC2626'] : ['#F59E0B', '#D97706']}
+                                  style={styles.practiceWordButtonGradient}
+                                >
+                                  <Icon name={isRecordingThis ? 'stop' : 'mic'} size={20} color="#FFFFFF" />
+                                  <Text style={styles.practiceWordButtonText}>
+                                    {isRecordingThis ? 'Stop' : 'Record'}
+                                  </Text>
+                                </LinearGradient>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+
+                    {isWordProcessing && (
+                      <View style={styles.practiceProcessingOverlay}>
+                        <ActivityIndicator size="large" color="#8B5CF6" />
+                        <Text style={styles.practiceProcessingText}>Analyzing your pronunciation...</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.practiceInstructions}>
+                      <Icon name="lightbulb-outline" size={18} color="#8B5CF6" />
+                      <Text style={styles.practiceInstructionsText}>
+                        Tap "Listen" to hear the correct pronunciation, then "Record" to practice
+                      </Text>
+                    </View>
+                  </ScrollView>
+                </View>
+              </BlurView>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Input Area with Glassmorphism */}
       <BlurView intensity={100} tint="light" style={styles.inputBlur}>
@@ -1659,25 +1722,57 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     textTransform: 'uppercase',
   },
-  wordPracticeSection: {
-    marginTop: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+  practiceModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  practiceModalContainer: {
+    maxHeight: height * 0.85,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     overflow: 'hidden',
     shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
-    borderWidth: 2,
-    borderColor: 'rgba(139, 92, 246, 0.15)',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  practiceModalBlur: {
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    overflow: 'hidden',
+  },
+  practiceModalScroll: {
+    maxHeight: height * 0.65,
+  },
+  wordPracticeSection: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
   },
   practiceSectionHeader: {
     overflow: 'hidden',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
   },
   practiceSectionHeaderGradient: {
-    paddingVertical: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
     paddingHorizontal: 20,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  practiceSectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1686,6 +1781,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
   },
   practiceSectionTitle: {
     fontSize: 18,
@@ -1694,12 +1790,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   closePracticeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   practiceWordsContainer: {
     padding: 16,
