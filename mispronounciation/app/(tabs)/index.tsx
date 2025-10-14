@@ -200,6 +200,8 @@ export default function HomeScreen() {
   
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDailyTask, setShowDailyTask] = useState(false);
+  const [showStreakCalendar, setShowStreakCalendar] = useState(false);
+  const [streakDays, setStreakDays] = useState<string[]>([]);
   
   const [selectedWord, setSelectedWord] = useState<Word | null>(null);
   const [showPracticeModal, setShowPracticeModal] = useState(false);
@@ -667,6 +669,34 @@ export default function HomeScreen() {
   // STATS CALCULATION
   // ============================================================================
 
+  const calculateStreakDays = useCallback(async (allDailyWords: any, userId: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const streakDates: string[] = [];
+    
+    // Get practice tracking data
+    const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
+    const trackingSnapshot = await get(practiceTrackingRef);
+    const practiceTracking = trackingSnapshot.exists() ? trackingSnapshot.val() : {};
+    
+    // Check last 365 days for active streak days (any practice activity)
+    for (let daysAgo = 0; daysAgo < 365; daysAgo++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(checkDate.getDate() - daysAgo);
+      const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+      
+      // Check both daily words and practice tracking
+      const dailyData = allDailyWords[checkDateStr];
+      const trackingData = practiceTracking[checkDateStr];
+      
+      if ((dailyData && dailyData.attempts > 0) || (trackingData && trackingData.practiced)) {
+        streakDates.push(checkDateStr);
+      }
+    }
+    
+    setStreakDays(streakDates);
+  }, []);
+
   const calculateStatsFromHistory = useCallback(async (allDailyWords: any, userId: string) => {
     try {
       const dates = Object.keys(allDailyWords);
@@ -798,6 +828,7 @@ export default function HomeScreen() {
         if (snapshot.exists()) {
           const allDailyWords = snapshot.val();
           calculateStatsFromHistory(allDailyWords, userId);
+          calculateStreakDays(allDailyWords, userId); // Load streak calendar data
           
           // Also update today's progress
           const today = getTodayDateString();
@@ -1021,6 +1052,27 @@ export default function HomeScreen() {
       setSelectedWord(null);
       setSelectedWordProgress(null);
       setShowFeedbackHistory(false);
+    });
+  };
+
+  const openStreakCalendar = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowStreakCalendar(true);
+    Animated.spring(streakCalendarAnim, {
+      toValue: 1,
+      tension: 60,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeStreakCalendar = () => {
+    Animated.timing(streakCalendarAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowStreakCalendar(false);
     });
   };
 
@@ -1700,18 +1752,20 @@ export default function HomeScreen() {
             </LinearGradient>
           </Animated.View>
 
-          <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
-            <LinearGradient
-              colors={['#F59E0B', '#D97706'] as const}
-              style={styles.badgeGradient}
-            >
-              <Icon name="local-fire-department" size={24} color={COLORS.white} />
-              <View style={styles.badgeInfo}>
-                <Text style={styles.badgeValue}>{stats.streak}</Text>
-                <Text style={styles.badgeLabel}>Streak</Text>
-              </View>
-            </LinearGradient>
-          </Animated.View>
+          <TouchableOpacity onPress={openStreakCalendar} activeOpacity={0.8}>
+            <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
+              <LinearGradient
+                colors={['#F59E0B', '#D97706'] as const}
+                style={styles.badgeGradient}
+              >
+                <Icon name="local-fire-department" size={24} color={COLORS.white} />
+                <View style={styles.badgeInfo}>
+                  <Text style={styles.badgeValue}>{stats.streak}</Text>
+                  <Text style={styles.badgeLabel}>Streak</Text>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          </TouchableOpacity>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[2] }] }]}>
             <LinearGradient
@@ -2392,6 +2446,116 @@ export default function HomeScreen() {
           </View>
         </Modal>
       )}
+
+      {/* STREAK CALENDAR MODAL */}
+      <Modal
+        visible={showStreakCalendar}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeStreakCalendar}
+      >
+        <View style={styles.modalOverlay}>
+          <Animated.View
+            style={[
+              styles.streakCalendarContainer,
+              {
+                opacity: streakCalendarAnim,
+                transform: [{
+                  scale: streakCalendarAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.9, 1],
+                  }),
+                }],
+              }
+            ]}
+          >
+            <LinearGradient
+              colors={['#F59E0B', '#D97706', '#EA580C']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.streakCalendarHeader}
+            >
+              <View style={styles.streakHeaderTop}>
+                <View style={styles.streakFireIcon}>
+                  <Icon name="local-fire-department" size={40} color="#FFFFFF" />
+                </View>
+                <TouchableOpacity
+                  onPress={closeStreakCalendar}
+                  style={styles.streakCloseButton}
+                >
+                  <Icon name="close" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.streakCalendarTitle}>🔥 Streak Calendar</Text>
+              <View style={styles.streakStatsRow}>
+                <View style={styles.streakStatBox}>
+                  <Text style={styles.streakStatValue}>{stats.streak}</Text>
+                  <Text style={styles.streakStatLabel}>Current Streak</Text>
+                </View>
+                <View style={styles.streakStatDivider} />
+                <View style={styles.streakStatBox}>
+                  <Text style={styles.streakStatValue}>{streakDays.length}</Text>
+                  <Text style={styles.streakStatLabel}>Total Days</Text>
+                </View>
+              </View>
+            </LinearGradient>
+
+            <ScrollView
+              style={styles.streakCalendarContent}
+              contentContainerStyle={styles.streakCalendarScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.streakCalendarSubtitle}>
+                Keep practicing daily to maintain your streak! 🌟
+              </Text>
+              
+              <View style={styles.calendarGrid}>
+                {Array.from({ length: 12 }, (_, monthIndex) => {
+                  const currentDate = new Date();
+                  const targetMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - monthIndex, 1);
+                  return (
+                    <View key={monthIndex} style={styles.monthContainer}>
+                      <Text style={styles.monthTitle}>
+                        {targetMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                      </Text>
+                      <View style={styles.monthGrid}>
+                        {Array.from({ length: 31 }, (_, dayIndex) => {
+                          const day = dayIndex + 1;
+                          const dateCheck = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), day);
+                          
+                          // Check if day exists in this month
+                          if (dateCheck.getMonth() !== targetMonth.getMonth()) return null;
+                          
+                          const dateStr = `${dateCheck.getFullYear()}-${String(dateCheck.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                          const isStreakDay = streakDays.includes(dateStr);
+                          const isToday = dateCheck.toDateString() === new Date().toDateString();
+                          
+                          return (
+                            <View
+                              key={dayIndex}
+                              style={[
+                                styles.dayCell,
+                                isStreakDay && styles.dayCellActive,
+                                isToday && styles.dayCellToday,
+                              ]}
+                            >
+                              {isStreakDay ? (
+                                <Text style={styles.fireEmoji}>🔥</Text>
+                              ) : (
+                                <Text style={styles.dayNumber}>{day}</Text>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -3632,5 +3796,155 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: COLORS.white,
+  },
+  // Streak Calendar Styles
+  streakCalendarContainer: {
+    width: width * 0.92,
+    maxHeight: height * 0.85,
+    backgroundColor: COLORS.white,
+    borderRadius: 28,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.3,
+    shadowRadius: 32,
+    elevation: 20,
+    overflow: 'hidden',
+  },
+  streakCalendarHeader: {
+    padding: 24,
+    paddingTop: 32,
+  },
+  streakHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  streakFireIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  streakCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  streakCalendarTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: COLORS.white,
+    marginBottom: 20,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  streakStatsRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 16,
+    padding: 16,
+    gap: 16,
+  },
+  streakStatBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  streakStatValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: COLORS.white,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  streakStatLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginTop: 4,
+  },
+  streakStatDivider: {
+    width: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  streakCalendarContent: {
+    flex: 1,
+  },
+  streakCalendarScrollContent: {
+    padding: 20,
+  },
+  streakCalendarSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  calendarGrid: {
+    gap: 24,
+  },
+  monthContainer: {
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  monthTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+    marginBottom: 12,
+  },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  dayCell: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: COLORS.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+  },
+  dayCellActive: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#F59E0B',
+    borderWidth: 2,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  dayCellToday: {
+    borderColor: COLORS.primary,
+    borderWidth: 2,
+  },
+  dayNumber: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.gray[500],
+  },
+  fireEmoji: {
+    fontSize: 20,
   },
 });
