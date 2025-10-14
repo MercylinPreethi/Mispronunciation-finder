@@ -10,6 +10,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Modal,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,9 +18,17 @@ import { BlurView } from 'expo-blur';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import axios from 'axios';
+import AudioRecorderPlayer, {
+  AudioEncoderAndroidType,
+  AudioSourceAndroidType,
+  AVEncoderAudioQualityIOSType,
+  AVEncodingOption
+} from 'react-native-audio-recorder-player';
+import RNFS from 'react-native-fs';
 
 const { width, height } = Dimensions.get('window');
-const API_BASE_URL = 'http://192.168.14.34:5050'; 
+const API_BASE_URL = 'http://192.168.14.34:5050';
+const audioRecorderPlayer = new AudioRecorderPlayer();
 
 interface PronunciationFeedback {
   accuracy: number;
@@ -56,12 +65,19 @@ export default function CoachScreen() {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showFeedbackOverlay, setShowFeedbackOverlay] = useState(false);
   const [latestFeedback, setLatestFeedback] = useState<PronunciationFeedback | null>(null);
+  const [playingWord, setPlayingWord] = useState<string | null>(null);
+  const [recordingWord, setRecordingWord] = useState<string | null>(null);
+  const [isWordRecording, setIsWordRecording] = useState(false);
+  const [isWordProcessing, setIsWordProcessing] = useState(false);
+  const [wordPracticeVisible, setWordPracticeVisible] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const micScaleAnim = useRef(new Animated.Value(1)).current;
   const rippleAnim = useRef(new Animated.Value(0)).current;
   const feedbackOverlayAnim = useRef(new Animated.Value(0)).current;
+  const practiceModalAnim = useRef(new Animated.Value(0)).current;
   const durationInterval = useRef<number | null>(null);
+  const wordRecordingPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     setupAudio();
@@ -344,39 +360,235 @@ export default function CoachScreen() {
     }
   };
 
+  const handlePracticeClick = (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (message && message.feedback) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setLatestFeedback(message.feedback);
+      setWordPracticeVisible(true);
+      
+      // Animate modal opening
+      Animated.spring(practiceModalAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
+    }
+  };
+
+  const closePracticeModal = () => {
+    Animated.timing(practiceModalAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setWordPracticeVisible(false);
+      setLatestFeedback(null);
+    });
+  };
+
+  const playWordAudio = async (word: string) => {
+    try {
+      Haptics.selectionAsync();
+      
+      if (playingWord === word) {
+        await audioRecorderPlayer.stopPlayer();
+        audioRecorderPlayer.removePlayBackListener();
+        setPlayingWord(null);
+        return;
+      }
+      
+      if (playingWord) {
+        await audioRecorderPlayer.stopPlayer();
+        audioRecorderPlayer.removePlayBackListener();
+      }
+
+      setPlayingWord(word);
+      
+      const response = await axios.get(`${API_BASE_URL}/get_word_audio/${word}`, {
+        responseType: 'arraybuffer',
+        timeout: 10000
+      });
+      
+      if (response.data) {
+        const uint8Array = new Uint8Array(response.data);
+        let binary = '';
+        for (let i = 0; i < uint8Array.byteLength; i++) {
+          binary += String.fromCharCode(uint8Array[i]);
+        }
+        const base64Audio = btoa(binary);
+        
+        const tempPath = `${RNFS.DocumentDirectoryPath}/temp_word_${word}_${Date.now()}.wav`;
+        await RNFS.writeFile(tempPath, base64Audio, 'base64');
+        
+        await audioRecorderPlayer.startPlayer(tempPath);
+        
+        audioRecorderPlayer.addPlayBackListener((e) => {
+          if (e.currentPosition >= e.duration) {
+            audioRecorderPlayer.stopPlayer();
+            audioRecorderPlayer.removePlayBackListener();
+            setPlayingWord(null);
+            RNFS.unlink(tempPath).catch(err => console.warn('Could not delete temp file:', err));
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error playing word audio:', error);
+      setPlayingWord(null);
+      Alert.alert('Audio Not Available', `Pronunciation audio for "${word}" is not available.`);
+    }
+  };
+
+  const startWordRecording = async (word: string) => {
+    try {
+      setIsWordRecording(true);
+      setRecordingWord(word);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      const path = `${RNFS.DocumentDirectoryPath}/word_recording_${word}_${Date.now()}.wav`;
+      
+      const audioSet = {
+        AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
+        AudioSourceAndroid: AudioSourceAndroidType.MIC,
+        AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
+        AVNumberOfChannelsKeyIOS: 1,
+        AVFormatIDKeyIOS: AVEncodingOption.lpcm,
+      };
+      
+      await audioRecorderPlayer.startRecorder(path, audioSet);
+      wordRecordingPathRef.current = path;
+    } catch (error) {
+      console.error('Word recording error:', error);
+      Alert.alert('Error', 'Failed to start recording');
+      setIsWordRecording(false);
+      setRecordingWord(null);
+    }
+  };
+
+  const stopWordRecording = async () => {
+    try {
+      const result = await audioRecorderPlayer.stopRecorder();
+      audioRecorderPlayer.removeRecordBackListener();
+      setIsWordRecording(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      const word = recordingWord;
+      if (!word) return;
+      
+      const exists = await RNFS.exists(result);
+      if (!exists) {
+        throw new Error('Recording file was not created');
+      }
+      
+      await processWordRecording(result, word);
+      setRecordingWord(null);
+    } catch (error) {
+      console.error('Stop word recording error:', error);
+      Alert.alert('Error', 'Failed to process recording. Please try again.');
+      setIsWordRecording(false);
+      setRecordingWord(null);
+    }
+  };
+
+  const processWordRecording = async (audioPath: string, word: string) => {
+    setIsWordProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio_file', {
+        uri: Platform.OS === 'ios' ? audioPath : `file://${audioPath}`,
+        type: 'audio/wav',
+        name: `word_${word}_recording.wav`,
+      } as any);
+      
+      formData.append('reference_text', word);
+      formData.append('use_llm_judge', 'true');
+      formData.append('generate_audio', 'false');
+      
+      console.log(`Analyzing word "${word}" pronunciation...`);
+      
+      const response = await axios.post(`${API_BASE_URL}/analyze_with_llm_judge`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000,
+      });
+      
+      if (response.data.success) {
+        const analysisResult = response.data.analysis;
+        const accuracy = analysisResult.accuracy;
+        const accuracyPercent = (accuracy * 100).toFixed(1);
+        
+        const status = accuracy >= 0.8 ? '✅ Great!' : accuracy >= 0.6 ? '⚠️ Good try!' : '❌ Keep practicing!';
+        
+        Alert.alert(
+          `Word: "${word}"`,
+          `${status}\nAccuracy: ${accuracyPercent}%\n\nKeep practicing to improve!`,
+          [{ text: 'OK' }]
+        );
+        
+        Haptics.notificationAsync(
+          accuracy >= 0.8 
+            ? Haptics.NotificationFeedbackType.Success 
+            : Haptics.NotificationFeedbackType.Warning
+        );
+      } else {
+        throw new Error(response.data.error || 'Word analysis failed');
+      }
+    } catch (error: any) {
+      console.error(`Word "${word}" processing error:`, error);
+      Alert.alert('Analysis Error', 'Failed to analyze word pronunciation.');
+    } finally {
+      setIsWordProcessing(false);
+    }
+  };
+
+  const handleWordRecord = (word: string) => {
+    if (isWordRecording && recordingWord === word) {
+      stopWordRecording();
+    } else if (!isWordRecording) {
+      startWordRecording(word);
+    } else {
+      Alert.alert('Recording in Progress', `Please finish recording "${recordingWord}" first`);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Animated Background */}
       <LinearGradient
-        colors={['#667EEA', '#764BA2', '#F093FB']}
+        colors={['#6366F1', '#8B5CF6', '#EC4899']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.backgroundGradient}
       />
 
       {/* Header */}
-      <BlurView intensity={95} tint="light" style={styles.headerBlur}>
-        <View style={styles.header}>
+      <View style={styles.header}>
+        <LinearGradient
+          colors={['#6366F1', '#8B5CF6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.headerGradient}
+        >
           <View style={styles.headerContent}>
             <View style={styles.coachAvatarContainer}>
               <LinearGradient
-                colors={['#667EEA', '#764BA2']}
+                colors={['#FFFFFF', '#F3F4F6']}
                 style={styles.coachAvatar}
               >
-                <Icon name="psychology" size={28} color="#FFFFFF" />
+                <Icon name="psychology" size={28} color="#6366F1" />
               </LinearGradient>
               <View style={styles.onlineIndicator} />
             </View>
             <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle}>AI Coach</Text>
+              <Text style={styles.headerTitle}>AI Pronunciation Coach</Text>
               <View style={styles.statusContainer}>
                 <View style={styles.pulsingDot} />
-                <Text style={styles.statusText}>Active now</Text>
+                <Text style={styles.statusText}>Active • Ready to help</Text>
               </View>
             </View>
           </View>
-        </View>
-      </BlurView>
+        </LinearGradient>
+      </View>
 
       {/* Chat Messages */}
       <ScrollView
@@ -418,7 +630,9 @@ export default function CoachScreen() {
                 <View style={styles.aiMessageContainer}>
                   <View style={styles.aiAvatarSmall}>
                     <LinearGradient
-                      colors={['#667EEA', '#764BA2']}
+                      colors={['#6366F1', '#8B5CF6']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
                       style={styles.aiAvatarSmallGradient}
                     >
                       <Icon name="psychology" size={16} color="#FFFFFF" />
@@ -437,7 +651,7 @@ export default function CoachScreen() {
                 <View style={styles.userMessageContainer}>
                   <View style={styles.userMessageBubbleContainer}>
                     <LinearGradient
-                      colors={['#667EEA', '#764BA2']}
+                      colors={['#6366F1', '#8B5CF6']}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
                       style={styles.userMessageBubble}
@@ -451,21 +665,39 @@ export default function CoachScreen() {
                       )}
                     </LinearGradient>
                     
-                    {/* Analyze Button Overlay - Always visible for voice messages */}
+                    {/* Action Buttons - Always visible for voice messages */}
                     {message.isVoiceMessage && message.feedback && (
-                      <TouchableOpacity
-                        style={styles.analyzeButton}
-                        onPress={() => handleAnalyzeClick(message.id)}
-                        activeOpacity={0.9}
-                      >
-                        <LinearGradient
-                          colors={['#F59E0B', '#D97706']}
-                          style={styles.analyzeButtonGradient}
+                      <View style={styles.actionButtonsContainer}>
+                        <TouchableOpacity
+                          style={styles.analyzeButton}
+                          onPress={() => handleAnalyzeClick(message.id)}
+                          activeOpacity={0.9}
                         >
-                          <Icon name="analytics" size={18} color="#FFFFFF" />
-                          <Text style={styles.analyzeButtonText}>Analyze</Text>
-                        </LinearGradient>
-                      </TouchableOpacity>
+                          <LinearGradient
+                            colors={['#F59E0B', '#D97706']}
+                            style={styles.analyzeButtonGradient}
+                          >
+                            <Icon name="analytics" size={16} color="#FFFFFF" />
+                            <Text style={styles.analyzeButtonText}>Analyze</Text>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                        
+                        {(message.feedback.mispronounced_words.length > 0 || message.feedback.partial_words.length > 0) && (
+                          <TouchableOpacity
+                            style={styles.practiceButton}
+                            onPress={() => handlePracticeClick(message.id)}
+                            activeOpacity={0.9}
+                          >
+                            <LinearGradient
+                              colors={['#8B5CF6', '#7C3AED']}
+                              style={styles.practiceButtonGradient}
+                            >
+                              <Icon name="fitness-center" size={16} color="#FFFFFF" />
+                              <Text style={styles.practiceButtonText}>Practice</Text>
+                            </LinearGradient>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     )}
                     
                     <Text style={styles.timestampUser}>
@@ -589,6 +821,160 @@ export default function CoachScreen() {
         </Animated.View>
       )}
 
+      {/* Word Practice Modal */}
+      <Modal
+        visible={wordPracticeVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={closePracticeModal}
+      >
+        <TouchableOpacity
+          style={styles.practiceModalBackdrop}
+          activeOpacity={1}
+          onPress={closePracticeModal}
+        >
+          <Animated.View
+            style={[
+              styles.practiceModalContainer,
+              {
+                opacity: practiceModalAnim,
+                transform: [
+                  {
+                    translateY: practiceModalAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [height, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <TouchableOpacity activeOpacity={1}>
+              <BlurView intensity={100} tint="light" style={styles.practiceModalBlur}>
+                <View style={styles.wordPracticeSection}>
+                  <View style={styles.practiceSectionHeader}>
+                    <View style={styles.dragHandleContainer}>
+                      <View style={styles.dragHandle} />
+                    </View>
+                    
+                    <LinearGradient
+                      colors={['#6366F1', '#8B5CF6']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.practiceSectionHeaderGradient}
+                    >
+                      {/* Header Content */}
+                      <View style={styles.practiceSectionHeaderRow}>
+                        <View style={styles.practiceSectionHeaderContent}>
+                          <Icon name="fitness-center" size={28} color="#FFFFFF" />
+                          <View>
+                            <Text style={styles.practiceSectionTitle}>Practice Words</Text>
+                            <Text style={styles.practiceSectionSubtitle}>
+                              {latestFeedback ? 
+                                `${latestFeedback.mispronounced_words.length + latestFeedback.partial_words.length} words to practice` 
+                                : 'Improve your pronunciation'}
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          onPress={closePracticeModal}
+                          style={styles.closePracticeButton}
+                        >
+                          <Icon name="close" size={24} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                    </LinearGradient>
+                  </View>
+
+                  <ScrollView 
+                    style={styles.practiceModalScroll}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <View style={styles.practiceWordsContainer}>
+                      {latestFeedback && [...latestFeedback.mispronounced_words, ...latestFeedback.partial_words].map((word, index) => {
+                        const isRecordingThis = isWordRecording && recordingWord === word;
+                        const isPlayingThis = playingWord === word;
+                        
+                        return (
+                          <View key={`${word}-${index}`} style={styles.practiceWordCard}>
+                            <View style={styles.practiceWordHeader}>
+                              <Text style={styles.practiceWordText}>{word}</Text>
+                              {latestFeedback.mispronounced_words.includes(word) ? (
+                                <View style={styles.practiceWordBadgeMispronounced}>
+                                  <Text style={styles.practiceWordBadgeText}>Need Practice</Text>
+                                </View>
+                              ) : (
+                                <View style={styles.practiceWordBadgePartial}>
+                                  <Text style={styles.practiceWordBadgeText}>Improve</Text>
+                                </View>
+                              )}
+                            </View>
+
+                            <View style={styles.practiceWordActions}>
+                              <TouchableOpacity
+                                style={[
+                                  styles.practiceWordButton,
+                                  isPlayingThis && styles.practiceWordButtonActive
+                                ]}
+                                onPress={() => playWordAudio(word)}
+                                disabled={isWordRecording || isWordProcessing}
+                              >
+                                <LinearGradient
+                                  colors={isPlayingThis ? ['#10B981', '#059669'] : ['#667EEA', '#764BA2']}
+                                  style={styles.practiceWordButtonGradient}
+                                >
+                                  <Icon name={isPlayingThis ? 'pause' : 'volume-up'} size={20} color="#FFFFFF" />
+                                  <Text style={styles.practiceWordButtonText}>
+                                    {isPlayingThis ? 'Playing' : 'Listen'}
+                                  </Text>
+                                </LinearGradient>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={[
+                                  styles.practiceWordButton,
+                                  isRecordingThis && styles.practiceWordButtonRecording
+                                ]}
+                                onPress={() => handleWordRecord(word)}
+                                disabled={isWordProcessing || (isWordRecording && !isRecordingThis)}
+                              >
+                                <LinearGradient
+                                  colors={isRecordingThis ? ['#EF4444', '#DC2626'] : ['#F59E0B', '#D97706']}
+                                  style={styles.practiceWordButtonGradient}
+                                >
+                                  <Icon name={isRecordingThis ? 'stop' : 'mic'} size={20} color="#FFFFFF" />
+                                  <Text style={styles.practiceWordButtonText}>
+                                    {isRecordingThis ? 'Stop' : 'Record'}
+                                  </Text>
+                                </LinearGradient>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+
+                    {isWordProcessing && (
+                      <View style={styles.practiceProcessingOverlay}>
+                        <ActivityIndicator size="large" color="#8B5CF6" />
+                        <Text style={styles.practiceProcessingText}>Analyzing your pronunciation...</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.practiceInstructions}>
+                      <Icon name="lightbulb-outline" size={18} color="#8B5CF6" />
+                      <Text style={styles.practiceInstructionsText}>
+                        Tap "Listen" to hear the correct pronunciation, then "Record" to practice
+                      </Text>
+                    </View>
+                  </ScrollView>
+                </View>
+              </BlurView>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Input Area with Glassmorphism */}
       <BlurView intensity={100} tint="light" style={styles.inputBlur}>
         <View style={styles.inputContainer}>
@@ -658,7 +1044,7 @@ export default function CoachScreen() {
                     disabled={isProcessing}
                   >
                     <LinearGradient
-                      colors={isProcessing ? ['#9CA3AF', '#6B7280'] : ['#667EEA', '#764BA2']}
+                      colors={isProcessing ? ['#9CA3AF', '#6B7280'] : ['#6366F1', '#8B5CF6']}
                       style={styles.micButton}
                     >
                       {isProcessing ? (
@@ -699,18 +1085,19 @@ const styles = StyleSheet.create({
     height: height * 0.4,
     opacity: 0.15,
   },
-  headerBlur: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-    paddingBottom: 12,
-    borderBottomWidth: 0,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
   header: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 16,
     paddingHorizontal: 20,
+  },
+  headerGradient: {
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   headerContent: {
     flexDirection: 'row',
@@ -720,27 +1107,29 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   coachAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   onlineIndicator: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: '#10B981',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    borderColor: '#6366F1',
   },
   headerTextContainer: {
     marginLeft: 14,
@@ -748,9 +1137,10 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '800',
-    color: '#1F2937',
+    fontWeight: '900',
+    color: '#FFFFFF',
     letterSpacing: -0.5,
+    marginBottom: 2,
   },
   statusContainer: {
     flexDirection: 'row',
@@ -758,15 +1148,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   pulsingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: '#10B981',
     marginRight: 6,
   },
   statusText: {
-    fontSize: 13,
-    color: '#6B7280',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '600',
   },
   messagesContainer: {
@@ -794,7 +1184,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -827,7 +1217,7 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -840,7 +1230,7 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 42,
-    backgroundColor: '#667EEA',
+    backgroundColor: '#6366F1',
     opacity: 0.15,
   },
   micTextContainer: {
@@ -871,13 +1261,13 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderTopLeftRadius: 6,
     padding: 18,
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 16,
     elevation: 6,
     borderWidth: 1.5,
-    borderColor: 'rgba(102, 126, 234, 0.1)',
+    borderColor: 'rgba(99, 102, 241, 0.1)',
   },
   aiMessageText: {
     fontSize: 16,
@@ -994,9 +1384,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     borderLeftWidth: 5,
-    borderLeftColor: '#667EEA',
+    borderLeftColor: '#6366F1',
     borderWidth: 1.5,
-    borderColor: 'rgba(102, 126, 234, 0.2)',
+    borderColor: 'rgba(99, 102, 241, 0.2)',
   },
   tipsHeader: {
     flexDirection: 'row',
@@ -1006,7 +1396,7 @@ const styles = StyleSheet.create({
   tipsTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#667EEA',
+    color: '#6366F1',
     marginLeft: 6,
     letterSpacing: -0.2,
   },
@@ -1019,7 +1409,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#667EEA',
+    backgroundColor: '#6366F1',
     marginTop: 6,
     marginRight: 10,
   },
@@ -1046,7 +1436,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderTopRightRadius: 6,
     padding: 18,
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
@@ -1133,7 +1523,7 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: '#667EEA',
+    backgroundColor: '#6366F1',
     top: '30%',
   },
   recordingInfo: {
@@ -1206,7 +1596,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.5)',
-    shadowColor: '#667EEA',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 24,
@@ -1300,11 +1690,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  analyzeButton: {
+  actionButtonsContainer: {
     position: 'absolute',
     bottom: 8,
     right: 8,
-    borderRadius: 14,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  analyzeButton: {
+    borderRadius: 12,
     overflow: 'hidden',
     shadowColor: '#F59E0B',
     shadowOffset: { width: 0, height: 3 },
@@ -1315,15 +1709,235 @@ const styles = StyleSheet.create({
   analyzeButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
   },
   analyzeButtonText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.3,
     textTransform: 'uppercase',
+  },
+  practiceButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  practiceButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  practiceButtonText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  practiceModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  practiceModalContainer: {
+    maxHeight: height * 0.85,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    overflow: 'hidden',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  practiceModalBlur: {
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    overflow: 'hidden',
+  },
+  practiceModalScroll: {
+    maxHeight: height * 0.65,
+  },
+  wordPracticeSection: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+  },
+  practiceSectionHeader: {
+    overflow: 'hidden',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+  },
+  dragHandleContainer: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(107, 114, 128, 0.3)',
+    borderRadius: 2,
+  },
+  practiceSectionHeaderGradient: {
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  practiceSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  practiceSectionHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  practiceSectionTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginBottom: 2,
+    letterSpacing: -0.5,
+  },
+  practiceSectionSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+  },
+  closePracticeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  practiceWordsContainer: {
+    padding: 16,
+    gap: 12,
+  },
+  practiceWordCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+  },
+  practiceWordHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  practiceWordText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1F2937',
+    letterSpacing: -0.3,
+  },
+  practiceWordBadgeMispronounced: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  practiceWordBadgePartial: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  practiceWordBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1F2937',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  practiceWordActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  practiceWordButton: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  practiceWordButtonActive: {
+    transform: [{ scale: 0.98 }],
+  },
+  practiceWordButtonRecording: {
+    transform: [{ scale: 1.02 }],
+  },
+  practiceWordButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  practiceWordButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  practiceProcessingOverlay: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  practiceProcessingText: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  practiceInstructions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F0F4FF',
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  practiceInstructionsText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#5B21B6',
+    fontWeight: '600',
+    lineHeight: 18,
   },
 });

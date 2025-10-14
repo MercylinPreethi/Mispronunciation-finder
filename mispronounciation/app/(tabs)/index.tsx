@@ -2091,52 +2091,50 @@ export default function HomeScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.userName}>Hi, {userName}! 👋</Text>
-        </View>
+        <LinearGradient
+          colors={['#6366F1', '#8B5CF6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerTop}>
+            <Text style={styles.userName}>Hi, {userName}! 👋</Text>
+          </View>
 
-        <View style={styles.badgesContainer}>
+          <View style={styles.badgesContainer}>
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[0] }] }]}>
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.secondary] as const}
-              style={styles.badgeGradient}
-            >
-              <Icon name="menu-book" size={24} color={COLORS.white} />
+            <View style={styles.badgeGradient}>
+              <Icon name="menu-book" size={24} color={COLORS.primary} />
               <View style={styles.badgeInfo}>
-                <Text style={styles.badgeValue}>{stats.totalWords}</Text>
+                <Text style={[styles.badgeValue, { color: COLORS.primary }]}>{stats.totalWords}</Text>
                 <Text style={styles.badgeLabel}>Words</Text>
               </View>
-            </LinearGradient>
+            </View>
           </Animated.View>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
             <TouchableOpacity onPress={openStreakCalendar} activeOpacity={0.8}>
-              <LinearGradient
-                colors={['#F59E0B', '#D97706'] as const}
-                style={styles.badgeGradient}
-              >
-                <Icon name="local-fire-department" size={24} color={COLORS.white} />
+              <View style={styles.badgeGradient}>
+                <Icon name="local-fire-department" size={24} color={COLORS.warning} />
                 <View style={styles.badgeInfo}>
-                  <Text style={styles.badgeValue}>{stats.streak}</Text>
+                  <Text style={[styles.badgeValue, { color: COLORS.warning }]}>{stats.streak}</Text>
                   <Text style={styles.badgeLabel}>Streak</Text>
                 </View>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
           </Animated.View>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[2] }] }]}>
-            <LinearGradient
-              colors={[COLORS.success, '#059669'] as const}
-              style={styles.badgeGradient}
-            >
-              <Icon name="check-circle" size={24} color={COLORS.white} />
+            <View style={styles.badgeGradient}>
+              <Icon name="check-circle" size={24} color={COLORS.success} />
               <View style={styles.badgeInfo}>
-                <Text style={styles.badgeValue}>{Math.round(stats.accuracy * 100)}%</Text>
+                <Text style={[styles.badgeValue, { color: COLORS.success }]}>{Math.round(stats.accuracy * 100)}%</Text>
                 <Text style={styles.badgeLabel}>Accuracy</Text>
               </View>
-            </LinearGradient>
+            </View>
           </Animated.View>
         </View>
+        </LinearGradient>
       </View>
 
       {/* Controls */}
@@ -2825,27 +2823,25 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
     paddingHorizontal: 20,
-    paddingBottom: 20,
-    backgroundColor: COLORS.white,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 8,
+    paddingBottom: 16,
+  },
+  headerGradient: {
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   headerTop: {
     marginBottom: 16,
   },
   userName: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '900',
-    color: COLORS.gray[900],
-    letterSpacing: -1,
-    textShadowColor: 'rgba(0, 0, 0, 0.05)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+    color: COLORS.white,
+    letterSpacing: -0.5,
   },
   badgesContainer: {
     flexDirection: 'row',
@@ -2853,36 +2849,33 @@ const styles = StyleSheet.create({
   },
   badge: {
     flex: 1,
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    shadowColor: 'rgba(0, 0, 0, 0.1)',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowRadius: 8,
+    elevation: 4,
   },
   badgeGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: 12,
     gap: 10,
   },
   badgeInfo: {
     flex: 1,
   },
   badgeValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
-    color: COLORS.white,
-    lineHeight: 22,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    lineHeight: 20,
   },
   badgeLabel: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: COLORS.gray[600],
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
