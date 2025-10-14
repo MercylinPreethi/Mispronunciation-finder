@@ -2140,11 +2140,13 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Learning Path Background - covers entire area below header */}
-      <LearningPathBackground />
+      {/* Content Area with Background */}
+      <View style={styles.contentWrapper}>
+        {/* Learning Path Background - covers entire area below header */}
+        <LearningPathBackground />
 
-      {/* Controls */}
-      <View style={styles.controls}>
+        {/* Controls */}
+        <View style={styles.controls}>
         <View style={styles.dropdownContainer}>
           <TouchableOpacity
             style={styles.dropdownButton}
@@ -2273,6 +2275,7 @@ export default function HomeScreen() {
           <View style={{ height: 100 }} />
         </ScrollView>
       )}
+      </View>
 
       {/* DAILY TASK MODAL */}
       {todayWord && (
@@ -2824,7 +2827,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: COLORS.background,
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
@@ -2833,11 +2836,16 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
+    zIndex: 10,
     shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
     shadowRadius: 24,
     elevation: 8,
+  },
+  contentWrapper: {
+    flex: 1,
+    position: 'relative',
   },
   headerTop: {
     marginBottom: 16,
@@ -2896,6 +2904,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    zIndex: 100,
   },
   dropdownContainer: {
     position: 'relative',
@@ -3006,6 +3015,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 20,
     backgroundColor: COLORS.white,
+    zIndex: 50,
     borderRadius: 24,
     padding: 20,
     shadowColor: '#6366F1',
@@ -3076,6 +3086,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    zIndex: 10,
   },
   scrollContent: {
     paddingTop: 20,

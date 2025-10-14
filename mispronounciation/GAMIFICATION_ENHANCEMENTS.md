@@ -94,21 +94,45 @@ The gamified background has been integrated into the Index tab (`app/(tabs)/inde
 ```tsx
 return (
   <View style={styles.container}>
-    {/* Header */}
+    {/* Header - stays on top with white background */}
     <View style={styles.header}>
-      {/* ... header content ... */}
+      {/* User name, badges, etc. */}
     </View>
 
-    {/* Learning Path Background - covers entire area below header */}
-    <LearningPathBackground />
+    {/* Content Area with Background */}
+    <View style={styles.contentWrapper}>
+      {/* Learning Path Background - covers entire content area */}
+      <LearningPathBackground />
 
-    {/* Controls, Progress, ScrollView, etc. */}
-    {/* ... rest of content ... */}
+      {/* Controls - overlays on background */}
+      <View style={styles.controls}>
+        {/* Difficulty dropdown, daily task button */}
+      </View>
+
+      {/* Progress Indicator - overlays on background */}
+      <View style={styles.progressContainer}>
+        {/* Progress bar and stats */}
+      </View>
+
+      {/* ScrollView with word path - overlays on background */}
+      <ScrollView>
+        {/* Word circles and path */}
+      </ScrollView>
+    </View>
   </View>
 );
 ```
 
-The `LearningPathBackground` component is positioned absolutely to fill the entire screen below the header with `zIndex: -1`, ensuring it stays behind all interactive elements (controls, progress indicator, word circles, etc.) while providing an engaging visual backdrop for the entire tab.
+**Layout Structure:**
+- **Container**: Main flex container with background color
+- **Header**: White background with `zIndex: 10`, stays on top
+- **Content Wrapper**: Flex container that holds all content below the header
+  - **LearningPathBackground**: Absolutely positioned with `zIndex: 0`, fills the content wrapper
+  - **Controls**: `zIndex: 100` to stay above background
+  - **Progress Container**: `zIndex: 50` to stay above background
+  - **ScrollView**: `zIndex: 10` to stay above background
+
+The background is positioned absolutely within the `contentWrapper` to fill the entire area below the header, ensuring it stays behind all interactive elements while providing an engaging visual backdrop for the entire tab.
 
 ## Design Principles
 
