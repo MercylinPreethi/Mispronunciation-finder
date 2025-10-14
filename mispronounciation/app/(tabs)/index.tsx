@@ -1785,7 +1785,7 @@ export default function HomeScreen() {
                 <Icon name="local-fire-department" size={24} color={COLORS.white} />
                 <View style={styles.badgeInfo}>
                   <Text style={styles.badgeValue}>{stats.streak}</Text>
-                  <Text style={styles.badgeLabel}>Streak 📅</Text>
+                  <Text style={styles.badgeLabel}>Streak</Text>
                 </View>
               </LinearGradient>
             </Animated.View>
