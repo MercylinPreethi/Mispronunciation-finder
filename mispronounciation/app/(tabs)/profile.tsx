@@ -120,26 +120,34 @@ export default function ProfileScreen() {
       const dailySnapshot = await get(dailyWordsRef);
       if (dailySnapshot.exists()) {
         const allDailyWords = dailySnapshot.val();
-        calculateStreakDays(allDailyWords);
+        await calculateStreakDays(allDailyWords, userId);
       }
     } catch (error) {
       console.error('Error loading stats:', error);
     }
   };
 
-  const calculateStreakDays = (allDailyWords: any) => {
+  const calculateStreakDays = async (allDailyWords: any, userId: string) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const streakDates: string[] = [];
     
-    // Check last 365 days for active streak days
+    // Get practice tracking data
+    const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
+    const trackingSnapshot = await get(practiceTrackingRef);
+    const practiceTracking = trackingSnapshot.exists() ? trackingSnapshot.val() : {};
+    
+    // Check last 365 days for active streak days (any practice activity)
     for (let daysAgo = 0; daysAgo < 365; daysAgo++) {
       const checkDate = new Date(today);
       checkDate.setDate(checkDate.getDate() - daysAgo);
       const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
       
-      const dayData = allDailyWords[checkDateStr];
-      if (dayData && dayData.attempts > 0) {
+      // Check both daily words and practice tracking
+      const dailyData = allDailyWords[checkDateStr];
+      const trackingData = practiceTracking[checkDateStr];
+      
+      if ((dailyData && dailyData.attempts > 0) || (trackingData && trackingData.practiced)) {
         streakDates.push(checkDateStr);
       }
     }

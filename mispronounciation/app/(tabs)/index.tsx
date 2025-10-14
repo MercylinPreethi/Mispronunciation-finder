@@ -85,6 +85,15 @@ interface WordProgress {
   lastAttempted: string;
 }
 
+interface AttemptRecord {
+  timestamp: string;
+  accuracy: number;
+  feedback: string;
+  correctPhonemes: number;
+  totalPhonemes: number;
+  attemptNumber: number;
+}
+
 interface DailyWordProgress {
   word: string;
   date: string;
@@ -158,6 +167,8 @@ export default function HomeScreen() {
   const [playingAudio, setPlayingAudio] = useState(false);
   const [showStreakCalendar, setShowStreakCalendar] = useState(false);
   const [streakDays, setStreakDays] = useState<string[]>([]);
+  const [previousAttempts, setPreviousAttempts] = useState<AttemptRecord[]>([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
 
   const recordSecsRef = useRef(0);
   const recordTimeRef = useRef('00:00');
@@ -294,38 +305,86 @@ export default function HomeScreen() {
   };
 
   /**
-   * Optimized user progress update
+   * Update daily practice tracking and streak
+   */
+  const updateDailyPracticeTracking = async (userId: string) => {
+    try {
+      const today = getTodayDateString();
+      const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking/${today}`);
+      const snapshot = await get(practiceTrackingRef);
+      
+      if (!snapshot.exists()) {
+        // First practice of the day - update streak
+        await set(practiceTrackingRef, {
+          date: today,
+          practiced: true,
+          timestamp: new Date().toISOString(),
+        });
+        
+        // Update streak in stats
+        const statsRef = ref(database, `users/${userId}/stats`);
+        const statsSnapshot = await get(statsRef);
+        if (statsSnapshot.exists()) {
+          const currentStats = statsSnapshot.val();
+          const newStreak = (currentStats.streak || 0) + 1;
+          await set(statsRef, { ...currentStats, streak: newStreak });
+          setStats(prev => ({ ...prev, streak: newStreak }));
+        }
+      }
+    } catch (error) {
+      console.error('Error updating daily practice tracking:', error);
+    }
+  };
+
+  /**
+   * Optimized user progress update with detailed attempt tracking
    */
   const updateWordProgressFast = async (accuracy: number) => {
     try {
       const user = auth.currentUser;
-      if (!user || !selectedWord) return;
+      if (!user || !selectedWord || !result) return;
 
       const timestamp = new Date().toISOString();
       const isCompleted = accuracy >= 0.5; // Changed from 0.8 to 0.5 (50% threshold)
       const xpEarned = Math.round(accuracy * 10);
       const wordId = selectedWord.id;
       const difficulty = selectedWord.difficulty;
+      const attemptNumber = (wordProgress[wordId]?.attempts || 0) + 1;
 
       // Update local state immediately for instant feedback
       const newProgress: WordProgress = {
         wordId: wordId,
         word: selectedWord.word,
         completed: isCompleted,
-        attempts: (wordProgress[wordId]?.attempts || 0) + 1,
+        attempts: attemptNumber,
         bestScore: Math.max(wordProgress[wordId]?.bestScore || 0, accuracy),
         lastAttempted: timestamp,
       };
 
       setWordProgress(prev => ({ ...prev, [wordId]: newProgress }));
 
-      // Update Firebase in background (don't wait for it)
+      // Save detailed attempt record
+      const attemptRecord: AttemptRecord = {
+        timestamp: timestamp,
+        accuracy: accuracy,
+        feedback: result.feedback,
+        correctPhonemes: result.correct_phonemes,
+        totalPhonemes: result.total_phonemes,
+        attemptNumber: attemptNumber,
+      };
+
+      // Update Firebase with progress and attempt history
       const wordRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}`);
-      set(wordRef, newProgress).catch(console.error);
+      const attemptRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}/attempts/${timestamp}`);
+      
+      await Promise.all([
+        set(wordRef, newProgress),
+        set(attemptRef, attemptRecord),
+      ]);
 
       // Update stats optimistically
       const newXP = stats.xp + xpEarned;
-      const isFirstAttempt = newProgress.attempts === 1;
+      const isFirstAttempt = attemptNumber === 1;
       const newTotalWords = isFirstAttempt ? stats.totalWords + 1 : stats.totalWords;
       
       setStats(prev => ({ ...prev, xp: newXP, totalWords: newTotalWords }));
@@ -333,6 +392,9 @@ export default function HomeScreen() {
       // Update Firebase stats in background
       const statsRef = ref(database, `users/${user.uid}/stats`);
       set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords }).catch(console.error);
+
+      // Update daily practice tracking (increments streak once per day)
+      await updateDailyPracticeTracking(user.uid);
 
       // If completed, advance to next word immediately
       if (isCompleted) {
@@ -390,19 +452,27 @@ export default function HomeScreen() {
   // STATS CALCULATION
   // ============================================================================
 
-  const calculateStreakDays = useCallback((allDailyWords: any) => {
+  const calculateStreakDays = useCallback(async (allDailyWords: any, userId: string) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const streakDates: string[] = [];
     
-    // Check last 365 days for active streak days
+    // Get practice tracking data
+    const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
+    const trackingSnapshot = await get(practiceTrackingRef);
+    const practiceTracking = trackingSnapshot.exists() ? trackingSnapshot.val() : {};
+    
+    // Check last 365 days for active streak days (any practice activity)
     for (let daysAgo = 0; daysAgo < 365; daysAgo++) {
       const checkDate = new Date(today);
       checkDate.setDate(checkDate.getDate() - daysAgo);
       const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
       
-      const dayData = allDailyWords[checkDateStr];
-      if (dayData && dayData.attempts > 0) {
+      // Check both daily words and practice tracking
+      const dailyData = allDailyWords[checkDateStr];
+      const trackingData = practiceTracking[checkDateStr];
+      
+      if ((dailyData && dailyData.attempts > 0) || (trackingData && trackingData.practiced)) {
         streakDates.push(checkDateStr);
       }
     }
@@ -419,8 +489,8 @@ export default function HomeScreen() {
       let currentStreak = 0;
       let totalXP = 0;
       
-      // Calculate streak days for calendar
-      calculateStreakDays(allDailyWords);
+      // Calculate streak days for calendar (includes practice tracking)
+      await calculateStreakDays(allDailyWords, userId);
 
       // Count daily words
       dates.forEach(date => {
@@ -457,7 +527,11 @@ export default function HomeScreen() {
 
       const averageAccuracy = accuracyCount > 0 ? totalAccuracy / accuracyCount : 0;
       
-      // Calculate streak
+      // Calculate streak from practice tracking (includes all practice types)
+      const practiceTrackingRef = ref(database, `users/${userId}/practiceTracking`);
+      const trackingSnapshot = await get(practiceTrackingRef);
+      const practiceTracking = trackingSnapshot.exists() ? trackingSnapshot.val() : {};
+      
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -466,11 +540,14 @@ export default function HomeScreen() {
         checkDate.setDate(checkDate.getDate() - daysAgo);
         const checkDateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
         
-        const dayData = allDailyWords[checkDateStr];
-        if (dayData && dayData.attempts > 0) {
+        // Check both daily words and practice tracking
+        const dailyData = allDailyWords[checkDateStr];
+        const trackingData = practiceTracking[checkDateStr];
+        
+        if ((dailyData && dailyData.attempts > 0) || (trackingData && trackingData.practiced)) {
           currentStreak++;
         } else {
-          if (daysAgo > 0) break;
+          if (daysAgo > 0) break; // Stop counting if we hit a gap (but allow today to be missed)
         }
       }
 
@@ -653,11 +730,55 @@ export default function HomeScreen() {
     setShowDropdown(false);
   };
 
+  /**
+   * Load previous attempts for a word
+   */
+  const loadPreviousAttempts = async (word: Word) => {
+    setLoadingAttempts(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const difficulty = word.difficulty;
+      const wordId = word.id;
+      const attemptsRef = ref(database, `users/${user.uid}/practiceWords/${difficulty}/${wordId}/attempts`);
+      const snapshot = await get(attemptsRef);
+
+      if (snapshot.exists()) {
+        const attemptsData = snapshot.val();
+        const attempts: AttemptRecord[] = Object.entries(attemptsData)
+          .map(([timestamp, data]: [string, any]) => ({
+            timestamp,
+            accuracy: data.accuracy,
+            feedback: data.feedback,
+            correctPhonemes: data.correctPhonemes,
+            totalPhonemes: data.totalPhonemes,
+            attemptNumber: data.attemptNumber,
+          }))
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 3); // Show last 3 attempts
+        
+        setPreviousAttempts(attempts);
+      } else {
+        setPreviousAttempts([]);
+      }
+    } catch (error) {
+      console.error('Error loading previous attempts:', error);
+      setPreviousAttempts([]);
+    } finally {
+      setLoadingAttempts(false);
+    }
+  };
+
   const openPracticeModalFast = (word: Word, isDaily: boolean = false) => {
     setSelectedWord(word);
     setShowPracticeModal(true);
     setShowResult(false);
     setResult(null);
+    setPreviousAttempts([]);
+    
+    // Load previous attempts for this word
+    loadPreviousAttempts(word);
     
     // Faster animation
     Animated.spring(modalAnim, {
@@ -1642,6 +1763,71 @@ export default function HomeScreen() {
                       <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
                       <Text style={styles.modalTipText}>{selectedWord.tip}</Text>
                     </View>
+
+                    {/* Previous Attempts Section */}
+                    {previousAttempts.length > 0 && (
+                      <View style={styles.previousAttemptsSection}>
+                        <View style={styles.previousAttemptsHeader}>
+                          <Icon name="history" size={20} color={COLORS.primary} />
+                          <Text style={styles.previousAttemptsTitle}>Your Recent Progress</Text>
+                        </View>
+                        {loadingAttempts ? (
+                          <ActivityIndicator size="small" color={COLORS.primary} />
+                        ) : (
+                          previousAttempts.map((attempt, index) => (
+                            <View key={attempt.timestamp} style={styles.attemptCard}>
+                              <View style={styles.attemptHeader}>
+                                <View style={styles.attemptNumberBadge}>
+                                  <Text style={styles.attemptNumberText}>#{attempt.attemptNumber}</Text>
+                                </View>
+                                <Text style={styles.attemptDate}>
+                                  {new Date(attempt.timestamp).toLocaleDateString('en-US', { 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </Text>
+                              </View>
+                              <View style={styles.attemptStats}>
+                                <View style={[
+                                  styles.attemptAccuracyBadge,
+                                  {
+                                    backgroundColor: attempt.accuracy >= 0.8 ? '#ECFDF5'
+                                      : attempt.accuracy >= 0.5 ? '#FEF3C7'
+                                      : '#FEE2E2'
+                                  }
+                                ]}>
+                                  <Icon 
+                                    name={attempt.accuracy >= 0.8 ? 'check-circle' : attempt.accuracy >= 0.5 ? 'pending' : 'error'} 
+                                    size={16} 
+                                    color={attempt.accuracy >= 0.8 ? '#10B981' : attempt.accuracy >= 0.5 ? '#F59E0B' : '#EF4444'} 
+                                  />
+                                  <Text style={[
+                                    styles.attemptAccuracy,
+                                    {
+                                      color: attempt.accuracy >= 0.8 ? '#10B981'
+                                        : attempt.accuracy >= 0.5 ? '#F59E0B'
+                                        : '#EF4444'
+                                    }
+                                  ]}>
+                                    {Math.round(attempt.accuracy * 100)}%
+                                  </Text>
+                                </View>
+                                <Text style={styles.attemptPhonemes}>
+                                  {attempt.correctPhonemes}/{attempt.totalPhonemes} phonemes
+                                </Text>
+                              </View>
+                              {index === 0 && (
+                                <View style={styles.latestBadge}>
+                                  <Text style={styles.latestBadgeText}>Latest</Text>
+                                </View>
+                              )}
+                            </View>
+                          ))
+                        )}
+                      </View>
+                    )}
 
                     <TouchableOpacity
                       style={styles.modalListenButton}
@@ -2906,5 +3092,125 @@ const styles = StyleSheet.create({
   },
   fireEmojiSmall: {
     fontSize: 16,
+  },
+  previousAttemptsSection: {
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: COLORS.gray[200],
+  },
+  previousAttemptsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  previousAttemptsTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+    letterSpacing: -0.2,
+  },
+  attemptCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.gray[200],
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    position: 'relative',
+  },
+  attemptHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  attemptNumberBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  attemptNumberText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.white,
+    letterSpacing: 0.3,
+  },
+  attemptDate: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+  },
+  attemptStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  attemptAccuracyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  attemptAccuracy: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  attemptPhonemes: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+  },
+  latestBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: COLORS.gold,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  latestBadgeText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: 0.5,
+  },
+  streakBanner: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  streakBannerGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  streakBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.white,
+    letterSpacing: -0.1,
   },
 });
