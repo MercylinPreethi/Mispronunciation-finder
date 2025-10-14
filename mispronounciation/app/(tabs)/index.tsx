@@ -430,16 +430,18 @@ export default function HomeScreen() {
 
       // Get existing progress and add new attempt to history
       const existingProgress = wordProgress[wordId];
+      const previousBestScore = existingProgress?.bestScore || 0;
       const attemptHistory = existingProgress?.attemptHistory || [];
       attemptHistory.push(newAttempt);
 
       // Update local state immediately for instant feedback
+      const newBestScore = Math.max(previousBestScore, accuracy);
       const newProgress: WordProgress = {
         wordId: wordId,
         word: selectedWord.word,
         completed: isCompleted,
         attempts: (wordProgress[wordId]?.attempts || 0) + 1,
-        bestScore: Math.max(wordProgress[wordId]?.bestScore || 0, accuracy),
+        bestScore: newBestScore,
         lastAttempted: timestamp,
         attemptHistory: attemptHistory,
       };
@@ -461,8 +463,13 @@ export default function HomeScreen() {
       const statsRef = ref(database, `users/${user.uid}/stats`);
       set(statsRef, { ...stats, xp: newXP, totalWords: newTotalWords }).catch(console.error);
 
-      // If unlocked (50%+), advance to next word if this is current word
-      if (isUnlocked && currentWordIndex === allWords.findIndex(w => w.id === wordId)) {
+      // Check if this is the FIRST TIME reaching unlock threshold (50%)
+      const wasUnlocked = previousBestScore >= 0.5;
+      const isNowUnlocked = newBestScore >= 0.5;
+      const justUnlocked = !wasUnlocked && isNowUnlocked;
+      
+      // Only show unlock celebration if this is the first time unlocking AND it's the current word
+      if (justUnlocked && currentWordIndex === allWords.findIndex(w => w.id === wordId)) {
         // Show immediate celebration
         const nodeAnim = wordNodeAnims[wordId];
         if (nodeAnim) {
@@ -485,12 +492,17 @@ export default function HomeScreen() {
         setTimeout(async () => {
           await loadAllDataFast(difficulty);
           
-          const message = isCompleted 
+          // Check if also just completed (80%+) for the first time
+          const wasCompleted = previousBestScore >= 0.8;
+          const isNowCompleted = newBestScore >= 0.8;
+          const justCompleted = !wasCompleted && isNowCompleted;
+          
+          const message = justCompleted
             ? `Great job! You've mastered "${selectedWord.word}". Moving to the next word...`
             : `Good progress! You scored ${Math.round(accuracy * 100)}% on "${selectedWord.word}". Next word unlocked!`;
           
           Alert.alert(
-            isCompleted ? '🎉 Word Completed!' : '✨ Next Word Unlocked!',
+            justCompleted ? '🎉 Word Completed!' : '✨ Next Word Unlocked!',
             message,
             [{ text: 'Continue', onPress: () => closePracticeModal() }]
           );
