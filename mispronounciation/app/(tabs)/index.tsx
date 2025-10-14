@@ -2521,6 +2521,7 @@ export default function HomeScreen() {
           <View style={{ height: 100 }} />
         </ScrollView>
       )}
+    </View>
 
       {/* DAILY TASK MODAL */}
       {todayWord && (
