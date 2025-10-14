@@ -1754,6 +1754,7 @@ export default function HomeScreen() {
           </Animated.View>
 
           <TouchableOpacity onPress={openStreakCalendar} activeOpacity={0.8}>
+          <TouchableOpacity onPress={openStreakCalendar} activeOpacity={0.8}>
             <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
               <LinearGradient
                 colors={['#F59E0B', '#D97706'] as const}
@@ -1766,6 +1767,7 @@ export default function HomeScreen() {
                 </View>
               </LinearGradient>
             </Animated.View>
+          </TouchableOpacity>
           </TouchableOpacity>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[2] }] }]}>
