@@ -560,6 +560,7 @@ export default function HomeScreen() {
   const glowAnims = useRef<Record<string, Animated.Value>>({}).current;
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
   const rotateAnims = useRef<Record<string, Animated.Value>>({}).current;
+  const activeGlowAnimations = useRef<Animated.CompositeAnimation[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   
   // Scroll animation tracking
@@ -729,7 +730,11 @@ export default function HomeScreen() {
           
           // Start continuous glow animation for current word
           if (index === 0) {
-            Animated.loop(
+            // Stop previous glow animations
+            activeGlowAnimations.current.forEach(anim => anim.stop());
+            activeGlowAnimations.current = [];
+            
+            const glowAnimation = Animated.loop(
               Animated.sequence([
                 Animated.timing(glowAnims[word.id], {
                   toValue: 1,
@@ -742,7 +747,9 @@ export default function HomeScreen() {
                   useNativeDriver: false,
                 }),
               ])
-            ).start();
+            );
+            glowAnimation.start();
+            activeGlowAnimations.current.push(glowAnimation);
           }
         });
       }
@@ -1279,7 +1286,7 @@ export default function HomeScreen() {
     });
 
     // Daily task pulse
-    Animated.loop(
+    const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(dailyTaskPulse, {
           toValue: 1.1,
@@ -1292,7 +1299,13 @@ export default function HomeScreen() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    pulseAnimation.start();
+
+    // Cleanup function to stop animation loop
+    return () => {
+      pulseAnimation.stop();
+    };
   }, []);
 
   // Fast difficulty change
@@ -1324,8 +1337,10 @@ export default function HomeScreen() {
   }, [allWords]);
 
   useEffect(() => {
+    let recordingAnimation: Animated.CompositeAnimation | null = null;
+    
     if (isRecording) {
-      Animated.loop(
+      recordingAnimation = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
             toValue: 1.15,
@@ -1338,11 +1353,28 @@ export default function HomeScreen() {
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      );
+      recordingAnimation.start();
     } else {
       pulseAnim.setValue(1);
     }
+
+    // Cleanup function to stop animation loop
+    return () => {
+      if (recordingAnimation) {
+        recordingAnimation.stop();
+      }
+    };
   }, [isRecording]);
+
+  // Cleanup all animations on unmount
+  useEffect(() => {
+    return () => {
+      // Stop all active glow animations
+      activeGlowAnimations.current.forEach(anim => anim.stop());
+      activeGlowAnimations.current = [];
+    };
+  }, []);
 
   // ============================================================================
   // OPTIMIZED UI HANDLERS
@@ -2489,7 +2521,6 @@ export default function HomeScreen() {
           <View style={{ height: 100 }} />
         </ScrollView>
       )}
-    </View>
 
       {/* DAILY TASK MODAL */}
       {todayWord && (
