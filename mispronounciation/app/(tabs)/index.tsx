@@ -1168,11 +1168,11 @@ export default function HomeScreen() {
     const pathPositions: { x: number; y: number; word: Word; index: number; }[] = [];
     const pathWidth = width - 120;
     const centerX = width / 2;
-    const verticalSpacing = 160; // Increased spacing for better clarity
+    const verticalSpacing = 200; // Increased spacing to prevent label overlap
     
     allWords.forEach((word, index) => {
       // Smoother wave pattern with alternating sides
-      const waveAmplitude = pathWidth * 0.38;
+      const waveAmplitude = pathWidth * 0.35;
       const wave = Math.sin(index * 0.7) * waveAmplitude;
       
       // Slight randomization for organic feel (using word ID for consistency)
@@ -1180,10 +1180,10 @@ export default function HomeScreen() {
       const randomOffset = ((seed % 30) - 15);
       
       let x = centerX + wave + randomOffset;
-      const y = 100 + (index * verticalSpacing); // More top padding
+      const y = 120 + (index * verticalSpacing); // Increased top padding
       
       // Ensure circles stay within bounds with more padding
-      x = Math.max(80, Math.min(width - 80, x));
+      x = Math.max(90, Math.min(width - 90, x));
       pathPositions.push({ x, y, word, index });
     });
 
@@ -1301,7 +1301,7 @@ export default function HomeScreen() {
                         ? COLORS.gradients.gold
                         : isPastWord
                         ? COLORS.gradients.success
-                        : [COLORS.gray[300], COLORS.gray[200], COLORS.gray[250]]
+                        : [COLORS.gray[300], COLORS.gray[200], COLORS.gray[100]]
                     }
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
@@ -1323,8 +1323,8 @@ export default function HomeScreen() {
                 style={[
                   styles.wordNodeContainer,
                   { 
-                    left: x - 50,
-                    top: y - 50,
+                    left: x - 52,
+                    top: y - 52,
                     opacity: opacity,
                     transform: [
                       { scale: scale },
@@ -1375,7 +1375,16 @@ export default function HomeScreen() {
                 ]} />
 
                 <TouchableOpacity
-                  style={styles.wordCircleButton}
+                  style={[
+                    styles.wordCircleButton,
+                    {
+                      shadowColor: isCompleted 
+                        ? DIFFICULTY_COLORS[selectedDifficulty].shadow
+                        : isCurrent 
+                        ? COLORS.shadows.primary 
+                        : '#000000',
+                    }
+                  ]}
                   onPress={() => {
                     if (!isLocked) {
                       Animated.sequence([
@@ -1397,43 +1406,51 @@ export default function HomeScreen() {
                   disabled={isLocked}
                   activeOpacity={0.8}
                 >
+                  {/* Material Design Surface */}
+                  <View style={styles.circleSurface} />
+                  
                   <LinearGradient
                     colors={
                       isCompleted 
-                        ? DIFFICULTY_COLORS[selectedDifficulty].gradient
+                        ? [COLORS.white, DIFFICULTY_COLORS[selectedDifficulty].light] as const
                         : hasAttempted && currentAccuracy > 0
-                        ? [COLORS.primary + '30', COLORS.secondary + '30'] as const
+                        ? [COLORS.white, '#FFFBEB'] as const
                         : isCurrent 
-                        ? [COLORS.primary, COLORS.secondary] as const
+                        ? [COLORS.white, COLORS.primary + '15'] as const
                         : isLocked
-                        ? [COLORS.gray[200], COLORS.gray[300]] as const
+                        ? [COLORS.gray[100], COLORS.gray[200]] as const
                         : [COLORS.white, COLORS.gray[50]] as const
                     }
                     style={styles.circleGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
                   >
                     {hasAttempted && currentAccuracy > 0 ? (
                       <View style={styles.progressCircleContainer}>
                         <ProgressCircle
-                          size={70}
+                          size={74}
                           accuracy={currentAccuracy}
-                          strokeWidth={8}
+                          strokeWidth={9}
                           showPercentage={true}
                         />
                         {currentAccuracy >= 0.95 && (
                           <View style={styles.perfectStar}>
-                            <Icon name="stars" size={20} color={COLORS.gold} />
+                            <Icon name="stars" size={22} color={COLORS.gold} />
                           </View>
                         )}
                       </View>
                     ) : isCurrent ? (
-                      <Animated.View style={{ transform: [{ rotate: '0deg' }] }}>
-                        <Icon name="play-circle-filled" size={42} color={COLORS.white} />
-                      </Animated.View>
+                      <View style={styles.currentIconContainer}>
+                        <View style={styles.currentIconGlow} />
+                        <Icon name="play-circle-filled" size={48} color={COLORS.primary} />
+                      </View>
                     ) : isLocked ? (
-                      <Icon name="lock" size={28} color={COLORS.gray[400]} />
+                      <View style={styles.lockedContainer}>
+                        <Icon name="lock" size={32} color={COLORS.gray[400]} />
+                      </View>
                     ) : (
                       <View style={styles.wordPreview}>
-                        <Icon name="play-circle-outline" size={32} color={COLORS.primary} />
+                        <Icon name="play-circle-outline" size={36} color={COLORS.primary} />
                       </View>
                     )}
                   </LinearGradient>
@@ -1557,8 +1574,8 @@ export default function HomeScreen() {
                   style={[
                     styles.milestoneMarker,
                     {
-                      left: x - 90,
-                      top: y + 80,
+                      left: x - 100,
+                      top: y + 90,
                       opacity: nodeAnim,
                     }
                   ]}
@@ -2583,9 +2600,9 @@ const styles = StyleSheet.create({
   },
   pathContainer: {
     position: 'relative',
-    minHeight: height * 2,
+    minHeight: height * 2.5,
     paddingTop: 40,
-    paddingBottom: 60,
+    paddingBottom: 100,
   },
   connectingPath: {
     position: 'absolute',
@@ -2616,74 +2633,92 @@ const styles = StyleSheet.create({
   },
   wordNodeContainer: {
     position: 'absolute',
-    width: 100,
-    height: 100,
+    width: 104,
+    height: 104,
     zIndex: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   wordNodeBackground: {
     position: 'absolute',
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: COLORS.white,
-    opacity: 0.5,
-  },
-  wordGlowOuter: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    left: -20,
-    top: -20,
-    opacity: 0.3,
-  },
-  wordGlow: {
-    position: 'absolute',
     width: 100,
     height: 100,
     borderRadius: 50,
-    left: 0,
-    top: 0,
+    backgroundColor: COLORS.white,
+    opacity: 0.6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  wordGlowOuter: {
+    position: 'absolute',
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    alignSelf: 'center',
+    top: -13,
+    opacity: 0.25,
+  },
+  wordGlow: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    alignSelf: 'center',
+    top: -3,
+    opacity: 0.5,
   },
   wordGlowInner: {
     position: 'absolute',
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    left: 6,
-    top: 6,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignSelf: 'center',
+    top: 4,
+    opacity: 0.3,
   },
   levelRing: {
     position: 'absolute',
-    width: 94,
-    height: 94,
-    borderRadius: 47,
-    borderWidth: 2,
-    left: 3,
+    width: 98,
+    height: 98,
+    borderRadius: 49,
+    borderWidth: 2.5,
+    alignSelf: 'center',
     top: 3,
-    opacity: 0.4,
+    opacity: 0.5,
   },
   wordCircleButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
     overflow: 'hidden',
+    backgroundColor: COLORS.white,
+  },
+  circleSurface: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    borderRadius: 42,
+    backgroundColor: COLORS.white,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
   },
   circleGradient: {
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 40,
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 42,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   progressCircleContainer: {
     position: 'relative',
@@ -2692,60 +2727,90 @@ const styles = StyleSheet.create({
   },
   perfectStar: {
     position: 'absolute',
-    top: -8,
-    right: -8,
+    top: -10,
+    right: -10,
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    width: 24,
-    height: 24,
+    borderRadius: 14,
+    width: 28,
+    height: 28,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: COLORS.gold,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 2,
+    borderColor: '#FEF3C7',
+  },
+  currentIconContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  currentIconGlow: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.primary,
+    opacity: 0.2,
+  },
+  lockedContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    opacity: 0.5,
   },
   wordPreview: {
     justifyContent: 'center',
     alignItems: 'center',
+    opacity: 0.7,
   },
   scoreLabel: {
     position: 'absolute',
-    bottom: -12,
-    borderRadius: 12,
+    bottom: -16,
+    borderRadius: 14,
     overflow: 'hidden',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
   },
   scoreLabelGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 4,
   },
   scoreLabelText: {
     fontSize: 10,
     fontWeight: '900',
     color: COLORS.gray[800],
+    textShadowColor: 'rgba(255, 255, 255, 0.8)',
+    textShadowOffset: { width: 0, height: 0.5 },
+    textShadowRadius: 1,
   },
   wordLabelCard: {
     position: 'absolute',
-    top: 105,
+    top: 110,
     left: '50%',
     transform: [{ translateX: -70 }],
     borderRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
     overflow: 'hidden',
-    minWidth: 140,
-    borderWidth: 1,
-    borderColor: COLORS.gray[200],
+    width: 140,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: COLORS.white,
   },
   wordLabelGradient: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 16,
   },
   wordLabelContent: {
@@ -2753,21 +2818,32 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   wordLabelText: {
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: -0.5,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.3,
     textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.08)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   wordLabelProgress: {
     width: '100%',
-    height: 4,
-    backgroundColor: COLORS.gray[200],
-    borderRadius: 2,
+    height: 5,
+    backgroundColor: '#E9EEF5',
+    borderRadius: 3,
     overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
   wordLabelProgressBar: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 3,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
   },
   wordLabelBadges: {
     flexDirection: 'row',
@@ -2780,8 +2856,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
   },
   statusBadgeText: {
     fontSize: 9,
@@ -2791,53 +2872,54 @@ const styles = StyleSheet.create({
   },
   milestoneMarker: {
     position: 'absolute',
-    width: 180,
-    borderRadius: 20,
+    width: 200,
+    borderRadius: 24,
     overflow: 'hidden',
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
-    borderWidth: 2,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 10,
+    borderWidth: 3,
     borderColor: COLORS.white,
   },
   milestoneGradient: {
-    padding: 16,
+    padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
   },
   milestoneIconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   milestoneIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
+    borderColor: 'rgba(255, 255, 255, 0.5)',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
   },
   milestoneInfo: {
     flex: 1,
   },
   milestoneTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '900',
     color: COLORS.white,
-    marginBottom: 4,
-    letterSpacing: -0.3,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    marginBottom: 5,
+    letterSpacing: -0.5,
+    textShadowColor: 'rgba(0, 0, 0, 0.4)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   milestoneText: {
     fontSize: 11,
