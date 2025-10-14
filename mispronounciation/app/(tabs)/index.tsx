@@ -2216,10 +2216,7 @@ export default function HomeScreen() {
               transform: [{ translateY: controlsTranslateY }],
             },
           ]}
-          pointerEvents={controlsOpacity.interpolate({
-            inputRange: [0, 0.5],
-            outputRange: ['none', 'auto'],
-          }) as any}
+          pointerEvents="box-none"
         >
         <View style={styles.dropdownContainer}>
           <TouchableOpacity
@@ -2300,10 +2297,7 @@ export default function HomeScreen() {
               transform: [{ translateY: progressTranslateY }],
             },
           ]}
-          pointerEvents={progressOpacity.interpolate({
-            inputRange: [0, 0.5],
-            outputRange: ['none', 'auto'],
-          }) as any}
+          pointerEvents="box-none"
         >
           <View style={styles.progressHeader}>
             <View style={styles.progressInfo}>
@@ -2350,10 +2344,7 @@ export default function HomeScreen() {
             transform: [{ translateY: floatingPanelTranslateY }],
           },
         ]}
-        pointerEvents={floatingPanelOpacity.interpolate({
-          inputRange: [0, 0.5],
-          outputRange: ['none', 'auto'],
-        }) as any}
+        pointerEvents="box-none"
       >
         <TouchableOpacity
           style={styles.floatingPanelToggle}
