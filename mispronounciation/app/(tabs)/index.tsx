@@ -115,6 +115,7 @@ interface WordProgress {
   wordId: string;
   word: string;
   completed: boolean;
+  mastered: boolean;
   attempts: number;
   bestScore: number;
   lastAttempted: string;
@@ -133,6 +134,7 @@ interface DailyWordProgress {
   word: string;
   date: string;
   completed: boolean;
+  mastered: boolean;
   accuracy: number;
   attempts: number;
   bestScore: number;
@@ -789,7 +791,8 @@ export default function HomeScreen() {
       }
 
       const timestamp = new Date().toISOString();
-      const isCompleted = accuracy >= 0.8;
+      const isCompleted = accuracy >= 0.5; // 50% threshold for completion
+      const isMastered = accuracy >= 0.8; // 80% threshold for mastery
       const isUnlocked = accuracy >= 0.5; // 50% threshold to unlock next word
       const xpEarned = Math.round(accuracy * 10);
       const wordId = selectedWord.id;
@@ -807,6 +810,7 @@ export default function HomeScreen() {
       // Get existing progress and add new attempt to history
       const existingProgress = wordProgress[wordId];
       const previousBestScore = existingProgress?.bestScore || 0;
+      const previousMastered = existingProgress?.mastered || false;
       const attemptHistory = existingProgress?.attemptHistory || [];
       attemptHistory.push(newAttempt);
 
@@ -815,7 +819,8 @@ export default function HomeScreen() {
       const newProgress: WordProgress = {
         wordId: wordId,
         word: selectedWord.word,
-        completed: isCompleted,
+        completed: isCompleted || existingProgress?.completed || false,
+        mastered: isMastered || existingProgress?.mastered || false, // NEW: Mastery tracking
         attempts: (wordProgress[wordId]?.attempts || 0) + 1,
         bestScore: newBestScore,
         lastAttempted: timestamp,
@@ -844,6 +849,11 @@ export default function HomeScreen() {
       const isNowUnlocked = newBestScore >= 0.5;
       const justUnlocked = !wasUnlocked && isNowUnlocked;
       
+      // Check if this is the FIRST TIME reaching mastery threshold (80%)
+      const wasMastered = previousMastered;
+      const isNowMastered = newProgress.mastered;
+      const justMastered = !wasMastered && isNowMastered;
+      
       // Only show unlock celebration if this is the first time unlocking AND it's the current word
       if (justUnlocked && currentWordIndex === allWords.findIndex(w => w.id === wordId)) {
         // Show immediate celebration
@@ -868,20 +878,24 @@ export default function HomeScreen() {
         setTimeout(async () => {
           await loadAllDataFast(difficulty);
           
-          // Check if also just completed (80%+) for the first time
-          const wasCompleted = previousBestScore >= 0.8;
-          const isNowCompleted = newBestScore >= 0.8;
-          const justCompleted = !wasCompleted && isNowCompleted;
+          let message = '';
+          let title = '';
           
-          const message = justCompleted
-            ? `Great job! You've mastered "${selectedWord.word}". Moving to the next word...`
-            : `Good progress! You scored ${Math.round(accuracy * 100)}% on "${selectedWord.word}". Next word unlocked!`;
+          if (justMastered) {
+            title = '🎉 Word Mastered!';
+            message = `Excellent! You've mastered "${selectedWord.word}" with ${Math.round(accuracy * 100)}% accuracy!`;
+          } else if (justUnlocked) {
+            title = '✨ Word Completed!';
+            message = `Good job! You completed "${selectedWord.word}" with ${Math.round(accuracy * 100)}% accuracy. Next word unlocked!`;
+          }
           
-          Alert.alert(
-            justCompleted ? '🎉 Word Completed!' : '✨ Next Word Unlocked!',
-            message,
-            [{ text: 'Continue', onPress: () => closePracticeModal() }]
-          );
+          if (message) {
+            Alert.alert(
+              title,
+              message,
+              [{ text: 'Continue', onPress: () => closePracticeModal() }]
+            );
+          }
         }, 1000);
       }
 
@@ -950,6 +964,7 @@ export default function HomeScreen() {
           word: todayWord.word,
           date: today,
           completed: false,
+          mastered: false, // NEW
           accuracy: 0,
           attempts: 0,
           bestScore: 0,
@@ -967,7 +982,8 @@ export default function HomeScreen() {
         attempts: existingProgress.attempts + 1,
         accuracy: accuracy,
         bestScore: Math.max(existingProgress.bestScore, accuracy),
-        completed: accuracy >= 0.8 || existingProgress.completed,
+        completed: accuracy >= 0.5 || existingProgress.completed,
+        mastered: accuracy >= 0.8 || existingProgress.mastered, // NEW: Mastery tracking
         attemptHistory,
       };
 
@@ -1199,10 +1215,22 @@ export default function HomeScreen() {
   // Recalculate counts when word progress changes
   useEffect(() => {
     if (allWords.length > 0) {
-      // Only count progress for words in current difficulty level
+      // Count completed words (50%+ accuracy)
       const completedInDifficulty = allWords.filter(w => {
         const prog = wordProgress[w.id];
+        return prog && prog.bestScore >= 0.5;
+      }).length;
+      
+      // Count mastered words (80%+ accuracy) - NEW
+      const masteredInDifficulty = allWords.filter(w => {
+        const prog = wordProgress[w.id];
         return prog && prog.bestScore >= 0.8;
+      }).length;
+      
+      // Count unlocked words (50%+ accuracy, same as completed)
+      const unlockedInDifficulty = allWords.filter(w => {
+        const prog = wordProgress[w.id];
+        return prog && prog.bestScore >= 0.5;
       }).length;
       
       const completionPerc = (completedInDifficulty / allWords.length) * 100;
@@ -1624,8 +1652,10 @@ export default function HomeScreen() {
       <>
         {pathPositions.map((pos, index) => {
           const { word, x, y } = pos;
+          // Check if previous word has at least 50% accuracy to unlock
           const progress = wordProgress[word.id];
-          const isCompleted = progress?.completed || false;
+          const isCompleted = progress?.bestScore >= 0.5; // 50% threshold
+          const isMastered = progress?.bestScore >= 0.8; // 80% threshold for mastery
           const currentAccuracy = progress?.bestScore || 0;
           const hasAttempted = progress?.attempts > 0;
           
@@ -1635,7 +1665,7 @@ export default function HomeScreen() {
           const isPreviousUnlocked = !previousWord || (previousProgress?.bestScore || 0) >= 0.5;
           
           const isCurrent = currentWordIndex === index;
-          const isPastWord = index < currentWordIndex || (hasAttempted && currentAccuracy >= 0.5);
+          const isPastWord = index < currentWordIndex || isCompleted;
           const isLocked = index > 0 && !isPreviousUnlocked;
           
           const nodeAnim = wordNodeAnims[word.id] || new Animated.Value(1);
@@ -1728,9 +1758,9 @@ export default function HomeScreen() {
                 >
                   <LinearGradient
                     colors={
-                      currentAccuracy >= 0.8
+                      isMastered
                         ? DIFFICULTY_COLORS[selectedDifficulty].gradient
-                        : currentAccuracy >= 0.5
+                        : isCompleted
                         ? COLORS.gradients.gold
                         : isPastWord
                         ? COLORS.gradients.success
@@ -1844,9 +1874,9 @@ export default function HomeScreen() {
                   
                   <LinearGradient
                     colors={
-                      isCompleted 
+                      isMastered 
                         ? [COLORS.white, DIFFICULTY_COLORS[selectedDifficulty].light] as const
-                        : hasAttempted && currentAccuracy > 0
+                        : isCompleted 
                         ? [COLORS.white, '#FFFBEB'] as const
                         : isCurrent 
                         ? [COLORS.white, COLORS.primary + '15'] as const
@@ -1892,15 +1922,15 @@ export default function HomeScreen() {
                   {progress?.attempts > 0 && (
                     <Animated.View style={[styles.scoreLabel, { opacity: 1 }]}>
                       <LinearGradient
-                        colors={
-                          currentAccuracy >= 0.8 
-                            ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
-                            : currentAccuracy >= 0.5
-                            ? ['#FFFBEB', '#FEF3C7'] as const
-                            : ['#FEE2E2', '#FECACA'] as const
-                        }
-                        style={styles.scoreLabelGradient}
-                      >
+                          colors={
+                            isMastered 
+                              ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                              : isCompleted 
+                              ? ['#FFFBEB', '#FEF3C7'] as const
+                              : ['#FEE2E2', '#FECACA'] as const
+                          }
+                          style={styles.scoreLabelGradient}
+                        >
                         <Icon 
                           name={currentAccuracy >= 0.8 ? "check-circle" : currentAccuracy >= 0.5 ? "stars" : "refresh"} 
                           size={10} 
@@ -1931,9 +1961,9 @@ export default function HomeScreen() {
                   >
                     <LinearGradient
                       colors={
-                        isCompleted
+                        isMastered
                           ? [COLORS.white, DIFFICULTY_COLORS[selectedDifficulty].light] as const
-                          : hasAttempted && currentAccuracy >= 0.5
+                          : isCompleted
                           ? [COLORS.white, '#FFFBEB'] as const
                           : isCurrent
                           ? [COLORS.white, COLORS.primary + '08'] as const
@@ -1947,9 +1977,9 @@ export default function HomeScreen() {
                         <Text style={[
                           styles.wordLabelText,
                           { 
-                            color: isCompleted 
+                            color: isMastered 
                               ? DIFFICULTY_COLORS[selectedDifficulty].primary 
-                              : hasAttempted && currentAccuracy >= 0.5
+                              : isCompleted 
                               ? COLORS.gold
                               : isCurrent
                               ? COLORS.primary
@@ -1958,7 +1988,7 @@ export default function HomeScreen() {
                         ]}>{word.word}</Text>
                         
                         {/* Progress indicator */}
-                        {hasAttempted && (
+                        {/* {hasAttempted && (
                           <View style={styles.wordLabelProgress}>
                             <View style={[
                               styles.wordLabelProgressBar,
@@ -1972,7 +2002,7 @@ export default function HomeScreen() {
                               }
                             ]} />
                           </View>
-                        )}
+                        )} */}
                       </View>
                       
                       {/* Status Badges */}
@@ -1983,15 +2013,15 @@ export default function HomeScreen() {
                             <Text style={styles.statusBadgeText}>ACTIVE</Text>
                           </View>
                         )}
-                        {hasAttempted && currentAccuracy >= 0.5 && currentAccuracy < 0.8 && (
+                        {isCompleted && !isMastered && ( // Completed but not mastered
                           <View style={[styles.statusBadge, { backgroundColor: COLORS.gold }]}>
-                            <Icon name="lock-open" size={10} color={COLORS.white} />
-                            <Text style={styles.statusBadgeText}>{Math.round(currentAccuracy * 100)}%</Text>
+                            <Icon name="check" size={10} color={COLORS.white} />
+                            <Text style={styles.statusBadgeText}>COMPLETED</Text>
                           </View>
                         )}
-                        {isCompleted && (
+                        {isMastered && ( // Mastered (implies completed)
                           <View style={[styles.statusBadge, { backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary }]}>
-                            <Icon name="check" size={10} color={COLORS.white} />
+                            <Icon name="stars" size={10} color={COLORS.white} />
                             <Text style={styles.statusBadgeText}>MASTERED</Text>
                           </View>
                         )}
@@ -2208,10 +2238,13 @@ export default function HomeScreen() {
             </Animated.View>
           </View>
           <Text style={styles.progressText}>
-            {completedCount} completed · {allWords.filter(w => {
+            {allWords.filter(w => {
               const prog = wordProgress[w.id];
-              return prog && prog.bestScore >= 0.5 && prog.bestScore < 0.8;
-            }).length} unlocked · Word {currentWordIndex + 1} active
+              return prog && prog.bestScore >= 0.8; // Mastered count
+            }).length} mastered · {allWords.filter(w => {
+              const prog = wordProgress[w.id];
+              return prog && prog.bestScore >= 0.5 && prog.bestScore < 0.8; // Completed but not mastered
+            }).length} completed · Word {currentWordIndex + 1} active
           </Text>
         </View>
       )}
@@ -3398,6 +3431,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 40,
+    width: '100%',
   },
   dailyTaskScrollView: {
     flex: 1,
@@ -3612,6 +3646,7 @@ const styles = StyleSheet.create({
   },
   latestFeedback: {
     gap: 8,
+    width: '100%'
   },
   latestFeedbackLabel: {
     fontSize: 12,
