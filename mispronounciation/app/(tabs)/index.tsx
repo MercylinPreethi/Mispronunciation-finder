@@ -1162,19 +1162,28 @@ export default function HomeScreen() {
   // ============================================================================
 
   /**
-   * **OPTIMIZED: Render sequential word path with current word highlighted**
+   * **ENHANCED: Render sequential word path with improved layout**
    */
   const renderWordPath = useCallback(() => {
     const pathPositions: { x: number; y: number; word: Word; index: number; }[] = [];
-    const pathWidth = width - 100;
+    const pathWidth = width - 120;
     const centerX = width / 2;
-    const verticalSpacing = 140;
+    const verticalSpacing = 160; // Increased spacing for better clarity
     
     allWords.forEach((word, index) => {
-      const wave = Math.sin(index * 0.8) * (pathWidth * 0.35);
-      let x = centerX + wave + (Math.random() * 20 - 10);
-      const y = 80 + (index * verticalSpacing);
-      x = Math.max(60, Math.min(width - 60, x));
+      // Smoother wave pattern with alternating sides
+      const waveAmplitude = pathWidth * 0.38;
+      const wave = Math.sin(index * 0.7) * waveAmplitude;
+      
+      // Slight randomization for organic feel (using word ID for consistency)
+      const seed = word.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const randomOffset = ((seed % 30) - 15);
+      
+      let x = centerX + wave + randomOffset;
+      const y = 100 + (index * verticalSpacing); // More top padding
+      
+      // Ensure circles stay within bounds with more padding
+      x = Math.max(80, Math.min(width - 80, x));
       pathPositions.push({ x, y, word, index });
     });
 
@@ -1266,7 +1275,7 @@ export default function HomeScreen() {
 
           return (
             <View key={word.id}>
-              {/* Connecting Path */}
+              {/* Enhanced Connecting Path */}
               {pathPoints && (
                 <View
                   style={[
@@ -1276,9 +1285,9 @@ export default function HomeScreen() {
                       left: pathPoints.startX,
                       top: pathPoints.startY,
                       width: pathPoints.width,
-                      height: 8,
+                      height: 10,
                       transform: [
-                        { translateY: -4 },
+                        { translateY: -5 },
                         { rotate: `${pathPoints.angle}deg` }
                       ],
                     }
@@ -1287,27 +1296,35 @@ export default function HomeScreen() {
                   <LinearGradient
                     colors={
                       currentAccuracy >= 0.8
-                        ? [DIFFICULTY_COLORS[selectedDifficulty].primary, DIFFICULTY_COLORS[selectedDifficulty].primary + 'CC'] as const
+                        ? DIFFICULTY_COLORS[selectedDifficulty].gradient
                         : currentAccuracy >= 0.5
-                        ? [COLORS.gold, '#D97706'] as const
+                        ? COLORS.gradients.gold
                         : isPastWord
-                        ? [COLORS.success, '#059669'] as const
-                        : [COLORS.gray[300], COLORS.gray[200]] as const
+                        ? COLORS.gradients.success
+                        : [COLORS.gray[300], COLORS.gray[200], COLORS.gray[250]]
                     }
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.pathGradient}
                   />
+                  {/* Path decoration dots */}
+                  {currentAccuracy >= 0.5 && (
+                    <>
+                      <View style={[styles.pathDot, { left: '25%' }]} />
+                      <View style={[styles.pathDot, { left: '50%' }]} />
+                      <View style={[styles.pathDot, { left: '75%' }]} />
+                    </>
+                  )}
                 </View>
               )}
 
-              {/* Word Node */}
+              {/* Word Node Container */}
               <Animated.View 
                 style={[
-                  styles.wordNode,
+                  styles.wordNodeContainer,
                   { 
-                    left: x - 40,
-                    top: y - 40,
+                    left: x - 50,
+                    top: y - 50,
                     opacity: opacity,
                     transform: [
                       { scale: scale },
@@ -1316,6 +1333,9 @@ export default function HomeScreen() {
                   }
                 ]}
               >
+                {/* Background decoration */}
+                <View style={styles.wordNodeBackground} />
+                
                 {/* Multi-layer glow effect */}
                 {(isCompleted || isCurrent || (hasAttempted && currentAccuracy >= 0.5)) && (
                   <>
@@ -1331,8 +1351,28 @@ export default function HomeScreen() {
                         { backgroundColor: glowColor, opacity: 0.6 }
                       ]}
                     />
+                    <Animated.View
+                      style={[
+                        styles.wordGlowInner,
+                        { backgroundColor: glowColor, opacity: 0.3 }
+                      ]}
+                    />
                   </>
                 )}
+                
+                {/* Level indicator ring */}
+                <View style={[
+                  styles.levelRing,
+                  { 
+                    borderColor: isCompleted 
+                      ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                      : hasAttempted && currentAccuracy >= 0.5
+                      ? COLORS.gold
+                      : isCurrent 
+                      ? COLORS.primary 
+                      : COLORS.gray[300]
+                  }
+                ]} />
 
                 <TouchableOpacity
                   style={styles.wordCircleButton}
@@ -1424,77 +1464,129 @@ export default function HomeScreen() {
                   )}
                 </TouchableOpacity>
 
-                {/* Word Label */}
+                {/* Enhanced Word Label Card */}
                 {!isLocked && (
                   <Animated.View 
                     style={[
-                      styles.wordLabelBelow,
-                      { opacity: nodeAnim }
+                      styles.wordLabelCard,
+                      { 
+                        opacity: nodeAnim,
+                        shadowColor: isCompleted 
+                          ? DIFFICULTY_COLORS[selectedDifficulty].shadow 
+                          : isCurrent 
+                          ? COLORS.shadows.primary 
+                          : COLORS.gray[400]
+                      }
                     ]}
                   >
                     <LinearGradient
                       colors={
                         isCompleted
-                          ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                          ? [COLORS.white, DIFFICULTY_COLORS[selectedDifficulty].light] as const
                           : hasAttempted && currentAccuracy >= 0.5
-                          ? ['#FFFBEB', '#FEF3C7'] as const
+                          ? [COLORS.white, '#FFFBEB'] as const
                           : isCurrent
-                          ? [COLORS.primary + '20', COLORS.primary + '10'] as const
+                          ? [COLORS.white, COLORS.primary + '08'] as const
                           : [COLORS.white, COLORS.gray[50]] as const
                       }
                       style={styles.wordLabelGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0, y: 1 }}
                     >
-                      <Text style={[
-                        styles.wordLabelText,
-                        { 
-                          color: isCompleted 
-                            ? DIFFICULTY_COLORS[selectedDifficulty].primary 
-                            : hasAttempted && currentAccuracy >= 0.5
-                            ? COLORS.gold
-                            : isCurrent
-                            ? COLORS.primary
-                            : COLORS.gray[800] 
-                        }
-                      ]}>{word.word}</Text>
-                      {isCurrent && !hasAttempted && (
-                        <View style={styles.currentBadge}>
-                          <Text style={styles.currentBadgeText}>CURRENT</Text>
-                        </View>
-                      )}
-                      {hasAttempted && currentAccuracy >= 0.5 && currentAccuracy < 0.8 && (
-                        <View style={[styles.currentBadge, { backgroundColor: COLORS.gold }]}>
-                          <Text style={styles.currentBadgeText}>UNLOCKED</Text>
-                        </View>
-                      )}
+                      <View style={styles.wordLabelContent}>
+                        <Text style={[
+                          styles.wordLabelText,
+                          { 
+                            color: isCompleted 
+                              ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                              : hasAttempted && currentAccuracy >= 0.5
+                              ? COLORS.gold
+                              : isCurrent
+                              ? COLORS.primary
+                              : COLORS.gray[900] 
+                          }
+                        ]}>{word.word}</Text>
+                        
+                        {/* Progress indicator */}
+                        {hasAttempted && (
+                          <View style={styles.wordLabelProgress}>
+                            <View style={[
+                              styles.wordLabelProgressBar,
+                              { 
+                                width: `${currentAccuracy * 100}%`,
+                                backgroundColor: isCompleted 
+                                  ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                                  : currentAccuracy >= 0.5 
+                                  ? COLORS.gold 
+                                  : COLORS.error
+                              }
+                            ]} />
+                          </View>
+                        )}
+                      </View>
+                      
+                      {/* Status Badges */}
+                      <View style={styles.wordLabelBadges}>
+                        {isCurrent && !hasAttempted && (
+                          <View style={[styles.statusBadge, { backgroundColor: COLORS.primary }]}>
+                            <Icon name="play-arrow" size={10} color={COLORS.white} />
+                            <Text style={styles.statusBadgeText}>ACTIVE</Text>
+                          </View>
+                        )}
+                        {hasAttempted && currentAccuracy >= 0.5 && currentAccuracy < 0.8 && (
+                          <View style={[styles.statusBadge, { backgroundColor: COLORS.gold }]}>
+                            <Icon name="lock-open" size={10} color={COLORS.white} />
+                            <Text style={styles.statusBadgeText}>{Math.round(currentAccuracy * 100)}%</Text>
+                          </View>
+                        )}
+                        {isCompleted && (
+                          <View style={[styles.statusBadge, { backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary }]}>
+                            <Icon name="check" size={10} color={COLORS.white} />
+                            <Text style={styles.statusBadgeText}>MASTERED</Text>
+                          </View>
+                        )}
+                      </View>
                     </LinearGradient>
                   </Animated.View>
                 )}
               </Animated.View>
 
-              {/* Milestone Markers */}
+              {/* Enhanced Milestone Markers */}
               {(index + 1) % 5 === 0 && index > 0 && !isLocked && (
                 <Animated.View
                   style={[
                     styles.milestoneMarker,
                     {
-                      left: x - 70,
-                      top: y + 60,
+                      left: x - 90,
+                      top: y + 80,
                       opacity: nodeAnim,
                     }
                   ]}
                 >
                   <LinearGradient
-                    colors={[COLORS.tertiary, '#DB2777'] as const}
+                    colors={COLORS.gradients.primary}
                     style={styles.milestoneGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
                   >
-                    <View style={styles.milestoneIcon}>
-                      <Icon name="emoji-events" size={28} color={COLORS.gold} />
+                    <View style={styles.milestoneIconContainer}>
+                      <View style={styles.milestoneIcon}>
+                        <Icon name="emoji-events" size={32} color={COLORS.gold} />
+                      </View>
                     </View>
                     <View style={styles.milestoneInfo}>
-                      <Text style={styles.milestoneTitle}>Milestone!</Text>
+                      <Text style={styles.milestoneTitle}>🎉 Milestone Reached!</Text>
                       <Text style={styles.milestoneText}>
-                        {completedCount}/{allWords.length} words
+                        Level {index + 1} • {Math.round((completedCount / allWords.length) * 100)}% Complete
                       </Text>
+                      <View style={styles.milestoneProgressContainer}>
+                        <View style={styles.milestoneProgress}>
+                          <View style={[
+                            styles.milestoneProgressFill,
+                            { width: `${(completedCount / allWords.length) * 100}%` }
+                          ]} />
+                        </View>
+                      </View>
                     </View>
                   </LinearGradient>
                 </Animated.View>
@@ -2491,23 +2583,52 @@ const styles = StyleSheet.create({
   },
   pathContainer: {
     position: 'relative',
-    minHeight: height * 1.5,
-    paddingTop: 20,
+    minHeight: height * 2,
+    paddingTop: 40,
+    paddingBottom: 60,
   },
   connectingPath: {
     position: 'absolute',
     overflow: 'visible',
     zIndex: 1,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   pathGradient: {
     flex: 1,
-    borderRadius: 4,
+    borderRadius: 5,
   },
-  wordNode: {
+  pathDot: {
     position: 'absolute',
-    width: 80,
-    height: 80,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.white,
+    top: 2,
+    transform: [{ translateX: -3 }],
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  wordNodeContainer: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
     zIndex: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wordNodeBackground: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: COLORS.white,
+    opacity: 0.5,
   },
   wordGlowOuter: {
     position: 'absolute',
@@ -2523,8 +2644,26 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    left: -10,
-    top: -10,
+    left: 0,
+    top: 0,
+  },
+  wordGlowInner: {
+    position: 'absolute',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    left: 6,
+    top: 6,
+  },
+  levelRing: {
+    position: 'absolute',
+    width: 94,
+    height: 94,
+    borderRadius: 47,
+    borderWidth: 2,
+    left: 3,
+    top: 3,
+    opacity: 0.4,
   },
   wordCircleButton: {
     width: 80,
@@ -2589,40 +2728,62 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: COLORS.gray[800],
   },
-  wordLabelBelow: {
+  wordLabelCard: {
     position: 'absolute',
-    top: 90,
+    top: 105,
     left: '50%',
-    transform: [{ translateX: -60 }],
-    borderRadius: 14,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 4,
+    transform: [{ translateX: -70 }],
+    borderRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
     overflow: 'hidden',
-    minWidth: 120,
+    minWidth: 140,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
   },
   wordLabelGradient: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+  },
+  wordLabelContent: {
     alignItems: 'center',
-    gap: 8,
-    justifyContent: 'center',
+    gap: 6,
   },
   wordLabelText: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+    textAlign: 'center',
   },
-  currentBadge: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+  wordLabelProgress: {
+    width: '100%',
+    height: 4,
+    backgroundColor: COLORS.gray[200],
+    borderRadius: 2,
+    overflow: 'hidden',
   },
-  currentBadgeText: {
+  wordLabelProgressBar: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  wordLabelBadges: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  statusBadgeText: {
     fontSize: 9,
     fontWeight: '900',
     color: COLORS.white,
@@ -2630,47 +2791,73 @@ const styles = StyleSheet.create({
   },
   milestoneMarker: {
     position: 'absolute',
-    width: 140,
-    borderRadius: 16,
+    width: 180,
+    borderRadius: 20,
     overflow: 'hidden',
-    shadowColor: COLORS.tertiary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: COLORS.white,
   },
   milestoneGradient: {
-    padding: 12,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
+  },
+  milestoneIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   milestoneIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   milestoneInfo: {
     flex: 1,
   },
   milestoneTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '900',
     color: COLORS.white,
-    marginBottom: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginBottom: 4,
+    letterSpacing: -0.3,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   milestoneText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginBottom: 4,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.95)',
+    marginBottom: 8,
+  },
+  milestoneProgressContainer: {
+    width: '100%',
+  },
+  milestoneProgress: {
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  milestoneProgressFill: {
+    height: '100%',
+    backgroundColor: COLORS.white,
+    borderRadius: 2,
   },
   modalOverlay: {
     flex: 1,
