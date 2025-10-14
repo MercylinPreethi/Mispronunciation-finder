@@ -846,24 +846,34 @@ export default function CoachScreen() {
               <BlurView intensity={100} tint="light" style={styles.practiceModalBlur}>
                 <View style={styles.wordPracticeSection}>
                   <View style={styles.practiceSectionHeader}>
+                    <View style={styles.dragHandleContainer}>
+                      <View style={styles.dragHandle} />
+                    </View>
+                    
                     <LinearGradient
-                      colors={['#8B5CF6', '#7C3AED']}
+                      colors={['#6366F1', '#8B5CF6']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
                       style={styles.practiceSectionHeaderGradient}
                     >
-                      {/* Drag Handle */}
-                      <View style={styles.dragHandle} />
-                      
-                      {/* Header Row */}
+                      {/* Header Content */}
                       <View style={styles.practiceSectionHeaderRow}>
                         <View style={styles.practiceSectionHeaderContent}>
-                          <Icon name="fitness-center" size={24} color="#FFFFFF" />
-                          <Text style={styles.practiceSectionTitle}>Practice Words</Text>
+                          <Icon name="fitness-center" size={28} color="#FFFFFF" />
+                          <View>
+                            <Text style={styles.practiceSectionTitle}>Practice Words</Text>
+                            <Text style={styles.practiceSectionSubtitle}>
+                              {latestFeedback ? 
+                                `${latestFeedback.mispronounced_words.length + latestFeedback.partial_words.length} words to practice` 
+                                : 'Improve your pronunciation'}
+                            </Text>
+                          </View>
                         </View>
                         <TouchableOpacity
                           onPress={closePracticeModal}
                           style={styles.closePracticeButton}
                         >
-                          <Icon name="close" size={22} color="rgba(255,255,255,0.95)" />
+                          <Icon name="close" size={24} color="#FFFFFF" />
                         </TouchableOpacity>
                       </View>
                     </LinearGradient>
