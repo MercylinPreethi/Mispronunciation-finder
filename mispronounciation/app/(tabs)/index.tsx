@@ -33,7 +33,7 @@ const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const API_BASE_URL = 'http://192.168.14.34:5050';
 
-// Material Design 3 Colors
+// Enhanced Material Design 3 Colors with Gradients
 const COLORS = {
   primary: '#6366F1',
   primaryDark: '#4F46E5',
@@ -58,12 +58,47 @@ const COLORS = {
   },
   white: '#FFFFFF',
   background: '#F8F9FE',
+  // Enhanced gradient colors
+  gradients: {
+    primary: ['#6366F1', '#8B5CF6', '#EC4899'],
+    success: ['#10B981', '#059669', '#047857'],
+    warning: ['#F59E0B', '#D97706', '#B45309'],
+    error: ['#EF4444', '#DC2626', '#B91C1C'],
+    gold: ['#FFC800', '#F59E0B', '#D97706'],
+    blue: ['#3B82F6', '#2563EB', '#1D4ED8'],
+  },
+  // Shadow colors
+  shadows: {
+    primary: 'rgba(99, 102, 241, 0.3)',
+    success: 'rgba(16, 185, 129, 0.3)',
+    warning: 'rgba(245, 158, 11, 0.3)',
+    error: 'rgba(239, 68, 68, 0.3)',
+    gold: 'rgba(255, 200, 0, 0.3)',
+  },
 } as const;
 
 const DIFFICULTY_COLORS = {
-  easy: { primary: '#10B981', gradient: ['#10B981', '#059669'] as const },
-  intermediate: { primary: '#F59E0B', gradient: ['#F59E0B', '#D97706'] as const },
-  hard: { primary: '#EF4444', gradient: ['#EF4444', '#DC2626'] as const },
+  easy: { 
+    primary: '#10B981', 
+    gradient: ['#10B981', '#059669', '#047857'] as const,
+    light: '#D1FAE5',
+    shadow: 'rgba(16, 185, 129, 0.4)',
+    glow: 'rgba(16, 185, 129, 0.6)',
+  },
+  intermediate: { 
+    primary: '#F59E0B', 
+    gradient: ['#F59E0B', '#D97706', '#B45309'] as const,
+    light: '#FEF3C7',
+    shadow: 'rgba(245, 158, 11, 0.4)',
+    glow: 'rgba(245, 158, 11, 0.6)',
+  },
+  hard: { 
+    primary: '#EF4444', 
+    gradient: ['#EF4444', '#DC2626', '#B91C1C'] as const,
+    light: '#FEE2E2',
+    shadow: 'rgba(239, 68, 68, 0.4)',
+    glow: 'rgba(239, 68, 68, 0.6)',
+  },
 } as const;
 
 interface Word {
@@ -194,6 +229,8 @@ export default function HomeScreen() {
   const dailyTaskPulse = useRef(new Animated.Value(1)).current;
   const wordNodeAnims = useRef<Record<string, Animated.Value>>({}).current;
   const glowAnims = useRef<Record<string, Animated.Value>>({}).current;
+  const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
+  const rotateAnims = useRef<Record<string, Animated.Value>>({}).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
   const initializeOnceRef = useRef(false);
@@ -289,6 +326,8 @@ export default function HomeScreen() {
           if (!wordNodeAnims[word.id]) {
             wordNodeAnims[word.id] = new Animated.Value(1); // Start at 1 for instant appearance
             glowAnims[word.id] = new Animated.Value(0);
+            pulseAnims[word.id] = new Animated.Value(1);
+            rotateAnims[word.id] = new Animated.Value(0);
           }
           
           Animated.spring(wordNodeAnims[word.id], {
@@ -298,6 +337,24 @@ export default function HomeScreen() {
             delay: index * 30, // Reduced delay for faster loading
             useNativeDriver: true,
           }).start();
+          
+          // Start continuous glow animation for current word
+          if (index === 0) {
+            Animated.loop(
+              Animated.sequence([
+                Animated.timing(glowAnims[word.id], {
+                  toValue: 1,
+                  duration: 2000,
+                  useNativeDriver: false,
+                }),
+                Animated.timing(glowAnims[word.id], {
+                  toValue: 0,
+                  duration: 2000,
+                  useNativeDriver: false,
+                }),
+              ])
+            ).start();
+          }
         });
       }
 
@@ -827,8 +884,21 @@ export default function HomeScreen() {
 
   const handleDifficultyChange = (difficulty: DifficultyLevel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setSelectedDifficulty(difficulty);
-    setShowDropdown(false);
+    
+    // Animate out current words
+    Object.keys(wordNodeAnims).forEach(wordId => {
+      Animated.timing(wordNodeAnims[wordId], {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    });
+    
+    // Change difficulty after animation
+    setTimeout(() => {
+      setSelectedDifficulty(difficulty);
+      setShowDropdown(false);
+    }, 200);
   };
 
   const openPracticeModalFast = (word: Word, isDaily: boolean = false) => {
@@ -1128,10 +1198,28 @@ export default function HomeScreen() {
           
           const nodeAnim = wordNodeAnims[word.id] || new Animated.Value(1);
           const glowAnim = glowAnims[word.id] || new Animated.Value(0);
+          const pulseAnimValue = pulseAnims[word.id] || new Animated.Value(1);
+
+          // Enhanced glow colors based on state
+          const getGlowColor = () => {
+            if (isCompleted) {
+              return [
+                `rgba(${DIFFICULTY_COLORS[selectedDifficulty].glow.match(/\d+/g)?.slice(0, 3).join(',')}, 0)`,
+                DIFFICULTY_COLORS[selectedDifficulty].glow
+              ];
+            }
+            if (isCurrent) {
+              return ['rgba(99, 102, 241, 0)', 'rgba(99, 102, 241, 0.6)'];
+            }
+            if (hasAttempted && currentAccuracy >= 0.5) {
+              return ['rgba(255, 200, 0, 0)', 'rgba(255, 200, 0, 0.5)'];
+            }
+            return ['rgba(99, 102, 241, 0)', 'rgba(99, 102, 241, 0.3)'];
+          };
 
           const glowColor = glowAnim.interpolate({
             inputRange: [0, 1],
-            outputRange: ['rgba(99, 102, 241, 0)', 'rgba(99, 102, 241, 0.4)']
+            outputRange: getGlowColor()
           });
 
           const scale = nodeAnim.interpolate({
@@ -1140,6 +1228,24 @@ export default function HomeScreen() {
           });
 
           const opacity = nodeAnim;
+          
+          // Pulse animation for current word
+          if (isCurrent && !hasAttempted) {
+            Animated.loop(
+              Animated.sequence([
+                Animated.timing(pulseAnimValue, {
+                  toValue: 1.1,
+                  duration: 1500,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(pulseAnimValue, {
+                  toValue: 1,
+                  duration: 1500,
+                  useNativeDriver: true,
+                }),
+              ])
+            ).start();
+          }
 
           // Render connecting path to next word
           const nextPos = pathPositions[index + 1];
@@ -1203,17 +1309,29 @@ export default function HomeScreen() {
                     left: x - 40,
                     top: y - 40,
                     opacity: opacity,
-                    transform: [{ scale: scale }]
+                    transform: [
+                      { scale: scale },
+                      { scale: isCurrent ? pulseAnimValue : 1 }
+                    ]
                   }
                 ]}
               >
-                {(isCompleted || isCurrent) && (
-                  <Animated.View
-                    style={[
-                      styles.wordGlow,
-                      { backgroundColor: glowColor }
-                    ]}
-                  />
+                {/* Multi-layer glow effect */}
+                {(isCompleted || isCurrent || (hasAttempted && currentAccuracy >= 0.5)) && (
+                  <>
+                    <Animated.View
+                      style={[
+                        styles.wordGlowOuter,
+                        { backgroundColor: glowColor }
+                      ]}
+                    />
+                    <Animated.View
+                      style={[
+                        styles.wordGlow,
+                        { backgroundColor: glowColor, opacity: 0.6 }
+                      ]}
+                    />
+                  </>
                 )}
 
                 <TouchableOpacity
@@ -2120,24 +2238,27 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 20,
     backgroundColor: COLORS.white,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
   },
   headerTop: {
     marginBottom: 16,
   },
   userName: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '900',
-    color: COLORS.gray[800],
-    letterSpacing: -0.5,
+    color: COLORS.gray[900],
+    letterSpacing: -1,
+    textShadowColor: 'rgba(0, 0, 0, 0.05)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   badgesContainer: {
     flexDirection: 'row',
@@ -2145,28 +2266,31 @@ const styles = StyleSheet.create({
   },
   badge: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
   badgeGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    gap: 8,
+    padding: 14,
+    gap: 10,
   },
   badgeInfo: {
     flex: 1,
   },
   badgeValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '900',
     color: COLORS.white,
-    lineHeight: 20,
+    lineHeight: 22,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   badgeLabel: {
     fontSize: 9,
@@ -2190,15 +2314,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.white,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    gap: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 16,
+    gap: 10,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: COLORS.gray[100],
   },
   dropdownButtonText: {
     fontSize: 15,
@@ -2207,32 +2333,39 @@ const styles = StyleSheet.create({
   },
   dropdownMenu: {
     position: 'absolute',
-    top: 50,
+    top: 55,
     left: 0,
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    paddingVertical: 8,
-    minWidth: 160,
+    borderRadius: 16,
+    paddingVertical: 12,
+    minWidth: 180,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
   },
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    gap: 12,
   },
   dropdownItemActive: {
-    backgroundColor: COLORS.gray[50],
+    backgroundColor: COLORS.primary + '10',
   },
   difficultyDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   dropdownItemText: {
     flex: 1,
@@ -2280,15 +2413,17 @@ const styles = StyleSheet.create({
   },
   progressContainer: {
     marginHorizontal: 20,
-    marginBottom: 16,
+    marginBottom: 20,
     backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: COLORS.gray[100],
   },
   progressHeader: {
     flexDirection: 'row',
@@ -2312,15 +2447,21 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   progressBar: {
-    height: 12,
-    backgroundColor: COLORS.gray[200],
-    borderRadius: 6,
+    height: 14,
+    backgroundColor: COLORS.gray[100],
+    borderRadius: 8,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
   },
   progressFill: {
     height: '100%',
-    borderRadius: 6,
+    borderRadius: 7,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
   },
   progressGradient: {
     flex: 1,
@@ -2368,6 +2509,15 @@ const styles = StyleSheet.create({
     height: 80,
     zIndex: 10,
   },
+  wordGlowOuter: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    left: -20,
+    top: -20,
+    opacity: 0.3,
+  },
   wordGlow: {
     position: 'absolute',
     width: 100,
@@ -2381,10 +2531,10 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
     overflow: 'hidden',
   },
   circleGradient: {
@@ -2393,6 +2543,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 40,
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   progressCircleContainer: {
     position: 'relative',
@@ -2700,29 +2852,38 @@ const styles = StyleSheet.create({
     color: COLORS.success,
   },
   latestAttemptCard: {
-    backgroundColor: COLORS.gray[50],
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 2,
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
     borderColor: COLORS.gray[200],
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   attemptScoreRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray[200],
+    marginBottom: 20,
+    paddingBottom: 20,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.gray[100],
   },
   attemptScoreItem: {
     alignItems: 'center',
   },
   attemptScoreValue: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '900',
     color: COLORS.primary,
-    marginBottom: 4,
+    marginBottom: 6,
+    letterSpacing: -1,
+    textShadowColor: 'rgba(99, 102, 241, 0.2)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   attemptScoreLabel: {
     fontSize: 11,
@@ -2778,11 +2939,16 @@ const styles = StyleSheet.create({
   },
   historyAttemptCard: {
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: COLORS.gray[200],
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   historyAttemptHeader: {
     flexDirection: 'row',
@@ -3037,11 +3203,18 @@ const styles = StyleSheet.create({
   resultStats: {
     flexDirection: 'row',
     width: '100%',
-    backgroundColor: COLORS.gray[50],
-    borderRadius: 20,
-    padding: 20,
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: 24,
     marginBottom: 24,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
   resultStatItem: {
     flex: 1,
@@ -3066,12 +3239,17 @@ const styles = StyleSheet.create({
   },
   resultFeedback: {
     width: '100%',
-    backgroundColor: COLORS.gray[50],
-    borderRadius: 20,
-    padding: 20,
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: 24,
     marginBottom: 24,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: COLORS.gray[200],
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
   resultFeedbackTitle: {
     fontSize: 14,
