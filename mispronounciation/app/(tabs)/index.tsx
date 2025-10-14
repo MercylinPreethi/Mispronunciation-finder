@@ -22,6 +22,7 @@ import * as Haptics from 'expo-haptics';
 import RNFS from 'react-native-fs';
 import axios from 'axios';
 import ProgressCircle from '../../components/ProgressCircle';
+import LearningPathBackground from '../../components/LearningPathBackground';
 import AudioRecorderPlayer, {
   AVEncoderAudioQualityIOSType,
   AVEncodingOption,
@@ -2264,6 +2265,7 @@ export default function HomeScreen() {
           scrollEventThrottle={16}
         >
           <View style={styles.pathContainer}>
+            <LearningPathBackground />
             {renderWordPath()}
           </View>
           <View style={{ height: 100 }} />
