@@ -2208,15 +2208,22 @@ export default function HomeScreen() {
       <View style={styles.contentWrapper}>
         {/* Learning Path Background - covers entire area below header */}
         <LearningPathBackground />
+        
+        {/* Minimum top spacer - prevents path from going behind header */}
+        <View style={styles.minTopBoundary} />
 
-        {/* Controls - Fades out when scrolling but maintains space */}
+        {/* Controls - Fades out when scrolling */}
         <Animated.View 
           style={[
             styles.controls,
             {
               opacity: controlsOpacity,
               transform: [{ translateY: controlsTranslateY }],
-              minHeight: 70, // Maintains space even when invisible
+              height: controlsOpacity.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 70], // Collapses height when faded
+              }),
+              overflow: 'hidden', // Hide content when collapsed
             },
           ]}
           pointerEvents="box-none"
@@ -3196,6 +3203,15 @@ const styles = StyleSheet.create({
   contentWrapper: {
     flex: 1,
     position: 'relative',
+  },
+  minTopBoundary: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 0,
+    zIndex: 9999,
+    pointerEvents: 'none',
   },
   headerTop: {
     marginBottom: 16,
