@@ -759,6 +759,7 @@ export default function HomeScreen() {
   }, []);
 
   const calculateStreakDays = useCallback(async (allDailyWords: any, userId: string) => {
+    console.log('📅 Calculating streak days...');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const streakDates: string[] = [];
@@ -796,10 +797,12 @@ export default function HomeScreen() {
       }
     }
     
+    console.log(`📅 Found ${streakDates.length} streak days`);
     setStreakDays(streakDates);
   }, []);
 
   const openStreakCalendar = useCallback(() => {
+    console.log('🔥 Opening streak calendar...');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowStreakCalendar(true);
     Animated.spring(streakCalendarAnim, {
@@ -811,6 +814,7 @@ export default function HomeScreen() {
   }, [streakCalendarAnim]);
 
   const closeStreakCalendar = useCallback(() => {
+    console.log('🔥 Closing streak calendar...');
     Animated.timing(streakCalendarAnim, {
       toValue: 0,
       duration: 250,
@@ -877,7 +881,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error in fast initialization:', error);
     }
-  }, [selectedDifficulty]);
+  }, [selectedDifficulty, calculateStreakDays]);
 
   // ============================================================================
   // OPTIMIZED USE EFFECTS
@@ -914,6 +918,7 @@ export default function HomeScreen() {
   }, [wordProgress, allWords]);
 
   useEffect(() => {
+    console.log('🏠 Index tab initialized - Streak calendar ready!');
     const user = auth.currentUser;
     if (user) {
       setUserName(user.displayName || 'User');
@@ -947,6 +952,11 @@ export default function HomeScreen() {
       ])
     ).start();
   }, []);
+
+  // Debug: Monitor streak calendar state
+  useEffect(() => {
+    console.log(`🔥 Streak calendar visibility changed: ${showStreakCalendar}`);
+  }, [showStreakCalendar]);
 
   // Fast difficulty change
   useEffect(() => {
@@ -1766,8 +1776,8 @@ export default function HomeScreen() {
             </LinearGradient>
           </Animated.View>
 
-          <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
-            <TouchableOpacity onPress={openStreakCalendar} activeOpacity={0.8}>
+          <TouchableOpacity onPress={openStreakCalendar} activeOpacity={0.8}>
+            <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
               <LinearGradient
                 colors={['#F59E0B', '#D97706'] as const}
                 style={styles.badgeGradient}
@@ -1775,11 +1785,11 @@ export default function HomeScreen() {
                 <Icon name="local-fire-department" size={24} color={COLORS.white} />
                 <View style={styles.badgeInfo}>
                   <Text style={styles.badgeValue}>{stats.streak}</Text>
-                  <Text style={styles.badgeLabel}>Streak</Text>
+                  <Text style={styles.badgeLabel}>Streak 📅</Text>
                 </View>
               </LinearGradient>
-            </TouchableOpacity>
-          </Animated.View>
+            </Animated.View>
+          </TouchableOpacity>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[2] }] }]}>
             <LinearGradient
