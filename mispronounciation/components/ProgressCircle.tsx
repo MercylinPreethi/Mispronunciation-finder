@@ -11,7 +11,7 @@ interface ProgressCircleProps {
   showPercentage?: boolean;
 }
 
-const ProgressCircle: React.FC<ProgressCircleProps> = ({
+const ProgressCircle: React.FC<ProgressCircleProps> = React.memo(({
   size,
   accuracy,
   strokeWidth = 8,
@@ -96,7 +96,7 @@ const ProgressCircle: React.FC<ProgressCircleProps> = ({
       )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
