@@ -1,6 +1,6 @@
 // app/(tabs)/index.tsx - OPTIMIZED with Fast Sequential Word Progression & Streak Calendar
 
-import React, { useState, useEffect, useRef, useCallback, useMemo, JSX } from 'react';
+import React, { useState, useEffect, useRef, useCallback, JSX } from 'react';
 import {
   View,
   Text,
@@ -560,15 +560,15 @@ export default function HomeScreen() {
   const glowAnims = useRef<Record<string, Animated.Value>>({}).current;
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
   const rotateAnims = useRef<Record<string, Animated.Value>>({}).current;
-  const scrollViewRef = useRef<ScrollView>(null);
   
   // Scroll animation tracking
   const scrollY = useRef(new Animated.Value(0)).current;
   const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
   const [floatingPanelExpanded, setFloatingPanelExpanded] = useState(false);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [autoScrollDone, setAutoScrollDone] = useState(false);
+  const [scrollToPosition, setScrollToPosition] = useState<number | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const initializeOnceRef = useRef(false);
   const loadingRef = useRef(false);
@@ -1260,28 +1260,6 @@ export default function HomeScreen() {
         }
       }
       setCurrentWordIndex(newCurrentIndex);
-      
-      // AUTO-SCROLL TO LAST COMPLETED WORD (or current word if none completed)
-      // This ensures users can see their progress path correctly
-      requestAnimationFrame(() => {
-        const verticalSpacing = 200; // Must match renderWordPath spacing
-        let scrollToIndex = newCurrentIndex;
-        
-        // If user has completed at least one word, show the last completed word
-        // along with the current word for context (show "before and after")
-        if (newCurrentIndex > 0) {
-          scrollToIndex = Math.max(0, newCurrentIndex - 1);
-        }
-        
-        const scrollToY = 60 + (scrollToIndex * verticalSpacing) - 150; // Center in view
-        
-        if (scrollViewRef.current && scrollToY > 0) {
-          scrollViewRef.current.scrollTo({
-            y: scrollToY,
-            animated: true,
-          });
-        }
-      });
     }
   }, [wordProgress, allWords]);
 
@@ -1343,49 +1321,10 @@ export default function HomeScreen() {
         if (!wordNodeAnims[word.id]) {
           wordNodeAnims[word.id] = new Animated.Value(1); // Start at 1 instead of 0
           glowAnims[word.id] = new Animated.Value(0);
-          pulseAnims[word.id] = new Animated.Value(1);
         }
       });
     }
   }, [allWords]);
-
-  // Optimize pulse animations - run only for current word
-  useEffect(() => {
-    if (currentWordIndex >= 0 && allWords.length > 0) {
-      const currentWord = allWords[currentWordIndex];
-      if (currentWord) {
-        const progress = wordProgress[currentWord.id];
-        const hasAttempted = progress?.attempts > 0;
-        
-        // Only pulse if current word hasn't been attempted
-        if (!hasAttempted && pulseAnims[currentWord.id]) {
-          const pulseAnim = Animated.loop(
-            Animated.sequence([
-              Animated.timing(pulseAnims[currentWord.id], {
-                toValue: 1.1,
-                duration: 1500,
-                useNativeDriver: true,
-              }),
-              Animated.timing(pulseAnims[currentWord.id], {
-                toValue: 1,
-                duration: 1500,
-                useNativeDriver: true,
-              }),
-            ])
-          );
-          pulseAnim.start();
-          
-          // Cleanup on unmount or when current word changes
-          return () => {
-            pulseAnim.stop();
-            if (pulseAnims[currentWord.id]) {
-              pulseAnims[currentWord.id].setValue(1);
-            }
-          };
-        }
-      }
-    }
-  }, [currentWordIndex, allWords, wordProgress]);
 
   useEffect(() => {
     if (isRecording) {
@@ -1408,24 +1347,12 @@ export default function HomeScreen() {
     }
   }, [isRecording]);
 
-  // Cleanup scroll timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
-
   // ============================================================================
   // OPTIMIZED UI HANDLERS
   // ============================================================================
 
   const handleDifficultyChange = (difficulty: DifficultyLevel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    // Close dropdown immediately
-    setShowDropdown(false);
     
     // Animate out current words
     Object.keys(wordNodeAnims).forEach(wordId => {
@@ -1439,6 +1366,7 @@ export default function HomeScreen() {
     // Change difficulty after animation
     setTimeout(() => {
       setSelectedDifficulty(difficulty);
+      setShowDropdown(false);
     }, 200);
   };
 
@@ -1703,443 +1631,437 @@ export default function HomeScreen() {
   // OPTIMIZED RENDERING HELPERS
   // ============================================================================
 
-  // Memoize path positions for better performance
-  const pathPositions = useMemo(() => {
-    const positions: { x: number; y: number; word: Word; index: number; }[] = [];
-    const pathWidth = width - 120;
-    const centerX = width / 2;
-    const verticalSpacing = 200;
-    
-    allWords.forEach((word, index) => {
-      const waveAmplitude = pathWidth * 0.35;
-      const wave = Math.sin(index * 0.7) * waveAmplitude;
-      const seed = word.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      const randomOffset = ((seed % 30) - 15);
-      
-      let x = centerX + wave + randomOffset;
-      // Start immediately with minimal offset - path begins right below controls
-      const y = 60 + (index * verticalSpacing);
-      x = Math.max(90, Math.min(width - 90, x));
-      
-      positions.push({ x, y, word, index });
-    });
-    
-    return positions;
-  }, [allWords]);
-
   /**
    * **ENHANCED: Render sequential word path with improved layout**
    */
   const renderWordPath = useCallback(() => {
-    return (
-      <>
-        {pathPositions.map((pos, index) => {
-          const { word, x, y } = pos;
-          // Check if previous word has at least 50% accuracy to unlock
-          const progress = wordProgress[word.id];
-          const isCompleted = progress?.bestScore >= 0.5; // 50% threshold
-          const isMastered = progress?.bestScore >= 0.8; // 80% threshold for mastery
-          const currentAccuracy = progress?.bestScore || 0;
-          const hasAttempted = progress?.attempts > 0;
-          
-          // Check if previous word has at least 50% accuracy to unlock
-          const previousWord = index > 0 ? allWords[index - 1] : null;
-          const previousProgress = previousWord ? wordProgress[previousWord.id] : null;
-          const isPreviousUnlocked = !previousWord || (previousProgress?.bestScore || 0) >= 0.5;
-          
-          const isCurrent = currentWordIndex === index;
-          const isPastWord = index < currentWordIndex || isCompleted;
-          const isLocked = index > 0 && !isPreviousUnlocked;
-          
-          const nodeAnim = wordNodeAnims[word.id] || new Animated.Value(1);
-          const glowAnim = glowAnims[word.id] || new Animated.Value(0);
-          const pulseAnimValue = pulseAnims[word.id] || new Animated.Value(1);
+  const pathPositions: { x: number; y: number; word: Word; index: number; }[] = [];
+  const pathWidth = width - 120;
+  const centerX = width / 2;
+  const verticalSpacing = 200;
+  
+  allWords.forEach((word, index) => {
+    const waveAmplitude = pathWidth * 0.35;
+    const wave = Math.sin(index * 0.7) * waveAmplitude;
+    
+    const seed = word.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const randomOffset = ((seed % 30) - 15);
+    
+    let x = centerX + wave + randomOffset;
+    const y = 120 + (index * verticalSpacing);
+    
+    x = Math.max(90, Math.min(width - 90, x));
+    pathPositions.push({ x, y, word, index });
+  });
 
-          // Enhanced glow colors based on state
-          const getGlowColor = () => {
-            if (isCompleted) {
-              return DIFFICULTY_COLORS[selectedDifficulty].glow;
-            }
-            if (isCurrent) {
-              return 'rgba(99, 102, 241, 0.6)';
-            }
-            if (hasAttempted && currentAccuracy >= 0.5) {
-              return 'rgba(255, 200, 0, 0.5)';
-            }
-            return 'rgba(99, 102, 241, 0.3)';
+  return (
+    <>
+      {pathPositions.map((pos, index) => {
+        const { word, x, y } = pos;
+        const progress = wordProgress[word.id];
+        const isCompleted = progress?.bestScore >= 0.5;
+        const isMastered = progress?.bestScore >= 0.8;
+        const currentAccuracy = progress?.bestScore || 0;
+        const hasAttempted = progress?.attempts > 0;
+        
+        // BIDIRECTIONAL NAVIGATION: Allow navigation to any completed or current word
+        const isCurrent = currentWordIndex === index;
+        const isPastWord = index <= currentWordIndex || isCompleted;
+        const isLocked = index > currentWordIndex && !isCompleted;
+        
+        const nodeAnim = wordNodeAnims[word.id] || new Animated.Value(1);
+        const glowAnim = glowAnims[word.id] || new Animated.Value(0);
+        const pulseAnimValue = pulseAnims[word.id] || new Animated.Value(1);
+
+        // Enhanced glow colors
+        const getGlowColor = () => {
+          if (isMastered) return DIFFICULTY_COLORS[selectedDifficulty].glow;
+          if (isCompleted) return 'rgba(255, 200, 0, 0.6)';
+          if (isCurrent) return 'rgba(99, 102, 241, 0.6)';
+          if (hasAttempted && currentAccuracy >= 0.5) return 'rgba(255, 200, 0, 0.5)';
+          return 'rgba(99, 102, 241, 0.3)';
+        };
+
+        const glowColor = getGlowColor();
+
+        const scale = nodeAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.3, 1]
+        });
+
+        const opacity = nodeAnim;
+        
+        // Enhanced pulse animation for current word
+        if (isCurrent) {
+          Animated.loop(
+            Animated.sequence([
+              Animated.timing(pulseAnimValue, {
+                toValue: 1.15,
+                duration: 1500,
+                useNativeDriver: true,
+              }),
+              Animated.timing(pulseAnimValue, {
+                toValue: 1,
+                duration: 1500,
+                useNativeDriver: true,
+              }),
+            ])
+          ).start();
+        }
+
+        // Render connecting path to next word
+        const nextPos = pathPositions[index + 1];
+        let pathPoints = null;
+        if (nextPos) {
+          const deltaX = nextPos.x - x;
+          const deltaY = nextPos.y - y;
+          const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+          const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+          
+          pathPoints = {
+            width: distance,
+            angle: angle,
+            startX: x,
+            startY: y,
           };
+        }
 
-          const glowColor = getGlowColor();
+        return (
+          <View key={word.id}>
+            {/* Enhanced Connecting Path */}
+            {pathPoints && (
+              <View
+                style={[
+                  styles.connectingPath,
+                  {
+                    position: 'absolute',
+                    left: pathPoints.startX,
+                    top: pathPoints.startY,
+                    width: pathPoints.width,
+                    height: 10,
+                    transform: [
+                      { translateY: -5 },
+                      { rotate: `${pathPoints.angle}deg` }
+                    ],
+                  }
+                ]}
+              >
+                <LinearGradient
+                  colors={
+                    isMastered
+                      ? DIFFICULTY_COLORS[selectedDifficulty].gradient
+                      : isCompleted
+                      ? COLORS.gradients.gold
+                      : isPastWord
+                      ? COLORS.gradients.success
+                      : [COLORS.gray[300], COLORS.gray[200], COLORS.gray[100]]
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.pathGradient}
+                />
+                {/* Path decoration dots */}
+                {currentAccuracy >= 0.5 && (
+                  <>
+                    <View style={[styles.pathDot, { left: '25%' }]} />
+                    <View style={[styles.pathDot, { left: '50%' }]} />
+                    <View style={[styles.pathDot, { left: '75%' }]} />
+                  </>
+                )}
+              </View>
+            )}
 
-          const scale = nodeAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0.3, 1]
-          });
+            {/* Word Node Container */}
+            <Animated.View 
+              style={[
+                styles.wordNodeContainer,
+                { 
+                  left: x - 52,
+                  top: y - 52,
+                  opacity: opacity,
+                  transform: [
+                    { scale: scale },
+                    { scale: isCurrent ? pulseAnimValue : 1 }
+                  ]
+                }
+              ]}
+            >
+              {/* Background decoration */}
+              <View style={styles.wordNodeBackground} />
+              
+              {/* Multi-layer glow effect */}
+              {(isCompleted || isCurrent || (hasAttempted && currentAccuracy >= 0.5)) && (
+                <>
+                  <Animated.View
+                    style={[
+                      styles.wordGlowOuter,
+                      { backgroundColor: glowColor }
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.wordGlow,
+                      { backgroundColor: glowColor, opacity: 0.6 }
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.wordGlowInner,
+                      { backgroundColor: glowColor, opacity: 0.3 }
+                    ]}
+                  />
+                </>
+              )}
+              
+              {/* Level indicator ring */}
+              <View style={[
+                styles.levelRing,
+                { 
+                  borderColor: isCompleted 
+                    ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                    : hasAttempted && currentAccuracy >= 0.5
+                    ? COLORS.gold
+                    : isCurrent 
+                    ? COLORS.primary 
+                    : COLORS.gray[300]
+                }
+              ]} />
 
-          const opacity = nodeAnim;
+              <TouchableOpacity
+                style={[
+                  styles.wordCircleButton,
+                  {
+                    shadowColor: isCompleted 
+                      ? DIFFICULTY_COLORS[selectedDifficulty].shadow
+                      : isCurrent 
+                      ? COLORS.shadows.primary 
+                      : '#000000',
+                  }
+                ]}
+                onPress={() => {
+                  // BIDIRECTIONAL NAVIGATION: Allow clicking any past or current word
+                  if (!isLocked) {
+                    Animated.sequence([
+                      Animated.timing(nodeAnim, {
+                        toValue: 0.9,
+                        duration: 100,
+                        useNativeDriver: true,
+                      }),
+                      Animated.spring(nodeAnim, {
+                        toValue: 1,
+                        tension: 100,
+                        friction: 3,
+                        useNativeDriver: true,
+                      }),
+                    ]).start();
+                    openPracticeModalFast(word);
+                  }
+                }}
+                disabled={isLocked}
+                activeOpacity={0.8}
+              >
+                {/* Material Design Surface */}
+                <View style={styles.circleSurface} />
+                
+                <LinearGradient
+                  colors={
+                    isMastered 
+                      ? [COLORS.white, DIFFICULTY_COLORS[selectedDifficulty].light] as const
+                      : isCompleted 
+                      ? [COLORS.white, '#FFFBEB'] as const
+                      : isCurrent 
+                      ? [COLORS.white, COLORS.primary + '15'] as const
+                      : isLocked
+                      ? [COLORS.gray[100], COLORS.gray[200]] as const
+                      : [COLORS.white, COLORS.gray[50]] as const
+                  }
+                  style={styles.circleGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                >
+                  {hasAttempted && currentAccuracy > 0 ? (
+                    <View style={styles.progressCircleContainer}>
+                      <ProgressCircle
+                        size={74}
+                        accuracy={currentAccuracy}
+                        strokeWidth={9}
+                        showPercentage={true}
+                      />
+                      {currentAccuracy >= 0.95 && (
+                        <View style={styles.perfectStar}>
+                          <Icon name="stars" size={22} color={COLORS.gold} />
+                        </View>
+                      )}
+                    </View>
+                  ) : isCurrent ? (
+                    <View style={styles.currentIconContainer}>
+                      <View style={styles.currentIconGlow} />
+                      <Icon name="play-circle-filled" size={48} color={COLORS.primary} />
+                    </View>
+                  ) : isLocked ? (
+                    <View style={styles.lockedContainer}>
+                      <Icon name="lock" size={32} color={COLORS.gray[400]} />
+                    </View>
+                  ) : (
+                    <View style={styles.wordPreview}>
+                      <Icon name="play-circle-outline" size={36} color={COLORS.primary} />
+                    </View>
+                  )}
+                </LinearGradient>
+                
+                {/* Attempt Count Badge */}
+                {progress?.attempts > 0 && (
+                  <Animated.View style={[styles.scoreLabel, { opacity: 1 }]}>
+                    <LinearGradient
+                        colors={
+                          isMastered 
+                            ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
+                            : isCompleted 
+                            ? ['#FFFBEB', '#FEF3C7'] as const
+                            : ['#FEE2E2', '#FECACA'] as const
+                        }
+                        style={styles.scoreLabelGradient}
+                      >
+                      <Icon 
+                        name={currentAccuracy >= 0.8 ? "check-circle" : currentAccuracy >= 0.5 ? "stars" : "refresh"} 
+                        size={10} 
+                        color={currentAccuracy >= 0.8 ? DIFFICULTY_COLORS[selectedDifficulty].primary : currentAccuracy >= 0.5 ? COLORS.gold : COLORS.error} 
+                      />
+                      <Text style={styles.scoreLabelText}>
+                        {progress.attempts} {progress.attempts === 1 ? 'try' : 'tries'}
+                      </Text>
+                    </LinearGradient>
+                  </Animated.View>
+                )}
+              </TouchableOpacity>
 
-          // Render connecting path to next word
-          const nextPos = pathPositions[index + 1];
-          let pathPoints = null;
-          if (nextPos) {
-            const deltaX = nextPos.x - x;
-            const deltaY = nextPos.y - y;
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
-            
-            pathPoints = {
-              width: distance,
-              angle: angle,
-              startX: x,
-              startY: y,
-            };
-          }
-
-          return (
-            <View key={word.id}>
-              {/* Enhanced Connecting Path */}
-              {pathPoints && (
-                <View
+              {/* Enhanced Word Label Card */}
+              {!isLocked && (
+                <Animated.View 
                   style={[
-                    styles.connectingPath,
-                    {
-                      position: 'absolute',
-                      left: pathPoints.startX,
-                      top: pathPoints.startY,
-                      width: pathPoints.width,
-                      height: 10,
-                      transform: [
-                        { translateY: -5 },
-                        { rotate: `${pathPoints.angle}deg` }
-                      ],
+                    styles.wordLabelCard,
+                    { 
+                      opacity: nodeAnim,
+                      shadowColor: isCompleted 
+                        ? DIFFICULTY_COLORS[selectedDifficulty].shadow 
+                        : isCurrent 
+                        ? COLORS.shadows.primary 
+                        : COLORS.gray[400]
                     }
                   ]}
                 >
                   <LinearGradient
                     colors={
                       isMastered
-                        ? DIFFICULTY_COLORS[selectedDifficulty].gradient
-                        : isCompleted
-                        ? COLORS.gradients.gold
-                        : isPastWord
-                        ? COLORS.gradients.success
-                        : [COLORS.gray[300], COLORS.gray[200], COLORS.gray[100]]
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.pathGradient}
-                  />
-                  {/* Path decoration dots */}
-                  {currentAccuracy >= 0.5 && (
-                    <>
-                      <View style={[styles.pathDot, { left: '25%' }]} />
-                      <View style={[styles.pathDot, { left: '50%' }]} />
-                      <View style={[styles.pathDot, { left: '75%' }]} />
-                    </>
-                  )}
-                </View>
-              )}
-
-              {/* Word Node Container */}
-              <Animated.View 
-                style={[
-                  styles.wordNodeContainer,
-                  { 
-                    left: x - 52,
-                    top: y - 52,
-                    opacity: opacity,
-                    transform: [
-                      { scale: scale },
-                      { scale: isCurrent ? pulseAnimValue : 1 }
-                    ]
-                  }
-                ]}
-              >
-                {/* Background decoration */}
-                <View style={styles.wordNodeBackground} />
-                
-                {/* Multi-layer glow effect */}
-                {(isCompleted || isCurrent || (hasAttempted && currentAccuracy >= 0.5)) && (
-                  <>
-                    <Animated.View
-                      style={[
-                        styles.wordGlowOuter,
-                        { backgroundColor: glowColor }
-                      ]}
-                    />
-                    <Animated.View
-                      style={[
-                        styles.wordGlow,
-                        { backgroundColor: glowColor, opacity: 0.6 }
-                      ]}
-                    />
-                    <Animated.View
-                      style={[
-                        styles.wordGlowInner,
-                        { backgroundColor: glowColor, opacity: 0.3 }
-                      ]}
-                    />
-                  </>
-                )}
-                
-                {/* Level indicator ring */}
-                <View style={[
-                  styles.levelRing,
-                  { 
-                    borderColor: isCompleted 
-                      ? DIFFICULTY_COLORS[selectedDifficulty].primary 
-                      : hasAttempted && currentAccuracy >= 0.5
-                      ? COLORS.gold
-                      : isCurrent 
-                      ? COLORS.primary 
-                      : COLORS.gray[300]
-                  }
-                ]} />
-
-                <TouchableOpacity
-                  style={[
-                    styles.wordCircleButton,
-                    {
-                      shadowColor: isCompleted 
-                        ? DIFFICULTY_COLORS[selectedDifficulty].shadow
-                        : isCurrent 
-                        ? COLORS.shadows.primary 
-                        : '#000000',
-                    }
-                  ]}
-                  onPress={() => {
-                    if (!isLocked) {
-                      // Haptic feedback for better user experience
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      
-                      // Smooth press animation
-                      Animated.sequence([
-                        Animated.timing(nodeAnim, {
-                          toValue: 0.9,
-                          duration: 100,
-                          useNativeDriver: true,
-                        }),
-                        Animated.spring(nodeAnim, {
-                          toValue: 1,
-                          tension: 100,
-                          friction: 3,
-                          useNativeDriver: true,
-                        }),
-                      ]).start();
-                      openPracticeModalFast(word);
-                    }
-                  }}
-                  disabled={isLocked}
-                  activeOpacity={0.7}
-                >
-                  {/* Material Design Surface */}
-                  <View style={styles.circleSurface} />
-                  
-                  <LinearGradient
-                    colors={
-                      isMastered 
                         ? [COLORS.white, DIFFICULTY_COLORS[selectedDifficulty].light] as const
-                        : isCompleted 
+                        : isCompleted
                         ? [COLORS.white, '#FFFBEB'] as const
-                        : isCurrent 
-                        ? [COLORS.white, COLORS.primary + '15'] as const
-                        : isLocked
-                        ? [COLORS.gray[100], COLORS.gray[200]] as const
+                        : isCurrent
+                        ? [COLORS.white, COLORS.primary + '08'] as const
                         : [COLORS.white, COLORS.gray[50]] as const
                     }
-                    style={styles.circleGradient}
+                    style={styles.wordLabelGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 0, y: 1 }}
                   >
-                    {hasAttempted && currentAccuracy > 0 ? (
-                      <View style={styles.progressCircleContainer}>
-                        <ProgressCircle
-                          size={74}
-                          accuracy={currentAccuracy}
-                          strokeWidth={9}
-                          showPercentage={true}
-                        />
-                        {currentAccuracy >= 0.95 && (
-                          <View style={styles.perfectStar}>
-                            <Icon name="stars" size={22} color={COLORS.gold} />
-                          </View>
-                        )}
-                      </View>
-                    ) : isCurrent ? (
-                      <View style={styles.currentIconContainer}>
-                        <View style={styles.currentIconGlow} />
-                        <Icon name="play-circle-filled" size={48} color={COLORS.primary} />
-                      </View>
-                    ) : isLocked ? (
-                      <View style={styles.lockedContainer}>
-                        <Icon name="lock" size={32} color={COLORS.gray[400]} />
-                      </View>
-                    ) : (
-                      <View style={styles.wordPreview}>
-                        <Icon name="play-circle-outline" size={36} color={COLORS.primary} />
-                      </View>
-                    )}
-                  </LinearGradient>
-                  
-                  {/* Attempt Count Badge */}
-                  {progress?.attempts > 0 && (
-                    <Animated.View style={[styles.scoreLabel, { opacity: 1 }]}>
-                      <LinearGradient
-                          colors={
-                            isMastered 
-                              ? [DIFFICULTY_COLORS[selectedDifficulty].primary + '20', DIFFICULTY_COLORS[selectedDifficulty].primary + '10'] as const
-                              : isCompleted 
-                              ? ['#FFFBEB', '#FEF3C7'] as const
-                              : ['#FEE2E2', '#FECACA'] as const
-                          }
-                          style={styles.scoreLabelGradient}
-                        >
-                        <Icon 
-                          name={currentAccuracy >= 0.8 ? "check-circle" : currentAccuracy >= 0.5 ? "stars" : "refresh"} 
-                          size={10} 
-                          color={currentAccuracy >= 0.8 ? DIFFICULTY_COLORS[selectedDifficulty].primary : currentAccuracy >= 0.5 ? COLORS.gold : COLORS.error} 
-                        />
-                        <Text style={styles.scoreLabelText}>
-                          {progress.attempts} {progress.attempts === 1 ? 'try' : 'tries'}
-                        </Text>
-                      </LinearGradient>
-                    </Animated.View>
-                  )}
-                </TouchableOpacity>
-
-                {/* Enhanced Word Label Card */}
-                {!isLocked && (
-                  <Animated.View 
-                    style={[
-                      styles.wordLabelCard,
-                      { 
-                        opacity: nodeAnim,
-                        shadowColor: isCompleted 
-                          ? DIFFICULTY_COLORS[selectedDifficulty].shadow 
-                          : isCurrent 
-                          ? COLORS.shadows.primary 
-                          : COLORS.gray[400]
-                      }
-                    ]}
-                  >
-                    <LinearGradient
-                      colors={
-                        isMastered
-                          ? [COLORS.white, DIFFICULTY_COLORS[selectedDifficulty].light] as const
-                          : isCompleted
-                          ? [COLORS.white, '#FFFBEB'] as const
-                          : isCurrent
-                          ? [COLORS.white, COLORS.primary + '08'] as const
-                          : [COLORS.white, COLORS.gray[50]] as const
-                      }
-                      style={styles.wordLabelGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 0, y: 1 }}
-                    >
-                      <View style={styles.wordLabelContent}>
-                        <Text style={[
-                          styles.wordLabelText,
-                          { 
-                            color: isMastered 
-                              ? DIFFICULTY_COLORS[selectedDifficulty].primary 
-                              : isCompleted 
-                              ? COLORS.gold
-                              : isCurrent
-                              ? COLORS.primary
-                              : COLORS.gray[900] 
-                          }
-                        ]}>{word.word}</Text>
-                        
-                        {/* Progress indicator */}
-                        {/* {hasAttempted && (
-                          <View style={styles.wordLabelProgress}>
-                            <View style={[
-                              styles.wordLabelProgressBar,
-                              { 
-                                width: `${currentAccuracy * 100}%`,
-                                backgroundColor: isCompleted 
-                                  ? DIFFICULTY_COLORS[selectedDifficulty].primary 
-                                  : currentAccuracy >= 0.5 
-                                  ? COLORS.gold 
-                                  : COLORS.error
-                              }
-                            ]} />
-                          </View>
-                        )} */}
-                      </View>
-                      
-                      {/* Status Badges */}
-                      <View style={styles.wordLabelBadges}>
-                        {isCurrent && !hasAttempted && (
-                          <View style={[styles.statusBadge, { backgroundColor: COLORS.primary }]}>
-                            <Icon name="play-arrow" size={10} color={COLORS.white} />
-                            <Text style={styles.statusBadgeText}>ACTIVE</Text>
-                          </View>
-                        )}
-                        {isCompleted && !isMastered && ( // Completed but not mastered
-                          <View style={[styles.statusBadge, { backgroundColor: COLORS.gold }]}>
-                            <Icon name="check" size={10} color={COLORS.white} />
-                            <Text style={styles.statusBadgeText}>COMPLETED</Text>
-                          </View>
-                        )}
-                        {isMastered && ( // Mastered (implies completed)
-                          <View style={[styles.statusBadge, { backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary }]}>
-                            <Icon name="stars" size={10} color={COLORS.white} />
-                            <Text style={styles.statusBadgeText}>MASTERED</Text>
-                          </View>
-                        )}
-                      </View>
-                    </LinearGradient>
-                  </Animated.View>
-                )}
-              </Animated.View>
-
-              {/* Enhanced Milestone Markers */}
-              {(index + 1) % 5 === 0 && index > 0 && !isLocked && (
-                <Animated.View
-                  style={[
-                    styles.milestoneMarker,
-                    {
-                      left: x - 100,
-                      top: y + 90,
-                      opacity: nodeAnim,
-                    }
-                  ]}
-                >
-                  <LinearGradient
-                    colors={COLORS.gradients.primary}
-                    style={styles.milestoneGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <View style={styles.milestoneIconContainer}>
-                      <View style={styles.milestoneIcon}>
-                        <Icon name="emoji-events" size={32} color={COLORS.gold} />
-                      </View>
+                    <View style={styles.wordLabelContent}>
+                      <Text style={[
+                        styles.wordLabelText,
+                        { 
+                          color: isMastered 
+                            ? DIFFICULTY_COLORS[selectedDifficulty].primary 
+                            : isCompleted 
+                            ? COLORS.gold
+                            : isCurrent
+                            ? COLORS.primary
+                            : COLORS.gray[900] 
+                        }
+                      ]}>{word.word}</Text>
                     </View>
-                    <View style={styles.milestoneInfo}>
-                      <Text style={styles.milestoneTitle}>🎉 Milestone Reached!</Text>
-                      <Text style={styles.milestoneText}>
-                        Level {index + 1} • {Math.round(completionPercentage)}% Complete
-                      </Text>
-                      <View style={styles.milestoneProgressContainer}>
-                        <View style={styles.milestoneProgress}>
-                          <View style={[
-                            styles.milestoneProgressFill,
-                            { width: `${completionPercentage}%` }
-                          ]} />
+                    
+                    {/* Status Badges */}
+                    <View style={styles.wordLabelBadges}>
+                      {isCurrent && (
+                        <View style={[styles.statusBadge, { backgroundColor: COLORS.primary }]}>
+                          <Icon name="play-arrow" size={10} color={COLORS.white} />
+                          <Text style={styles.statusBadgeText}>ACTIVE</Text>
                         </View>
-                      </View>
+                      )}
+                      {isCompleted && !isMastered && (
+                        <View style={[styles.statusBadge, { backgroundColor: COLORS.gold }]}>
+                          <Icon name="check" size={10} color={COLORS.white} />
+                          <Text style={styles.statusBadgeText}>COMPLETED</Text>
+                        </View>
+                      )}
+                      {isMastered && (
+                        <View style={[styles.statusBadge, { backgroundColor: DIFFICULTY_COLORS[selectedDifficulty].primary }]}>
+                          <Icon name="stars" size={10} color={COLORS.white} />
+                          <Text style={styles.statusBadgeText}>MASTERED</Text>
+                        </View>
+                      )}
                     </View>
                   </LinearGradient>
                 </Animated.View>
               )}
-            </View>
-          );
-        })}
-      </>
-    );
-  }, [pathPositions, wordProgress, currentWordIndex, selectedDifficulty, completedCount, allWords]);
+            </Animated.View>
+
+            {/* Enhanced Milestone Markers */}
+            {(index + 1) % 5 === 0 && index > 0 && !isLocked && (
+              <Animated.View
+                style={[
+                  styles.milestoneMarker,
+                  {
+                    left: x - 100,
+                    top: y + 90,
+                    opacity: nodeAnim,
+                  }
+                ]}
+              >
+                <LinearGradient
+                  colors={COLORS.gradients.primary}
+                  style={styles.milestoneGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={styles.milestoneIconContainer}>
+                    <View style={styles.milestoneIcon}>
+                      <Icon name="emoji-events" size={32} color={COLORS.gold} />
+                    </View>
+                  </View>
+                  <View style={styles.milestoneInfo}>
+                    <Text style={styles.milestoneTitle}>🎉 Milestone Reached!</Text>
+                    <Text style={styles.milestoneText}>
+                      Level {index + 1} • {Math.round(completionPercentage)}% Complete
+                    </Text>
+                    <View style={styles.milestoneProgressContainer}>
+                      <View style={styles.milestoneProgress}>
+                        <View style={[
+                          styles.milestoneProgressFill,
+                          { width: `${completionPercentage}%` }
+                        ]} />
+                      </View>
+                    </View>
+                  </View>
+                </LinearGradient>
+              </Animated.View>
+            )}
+          </View>
+        );
+      })}
+    </>
+  );
+}, [allWords, wordProgress, currentWordIndex, selectedDifficulty, completedCount]);
+
+  // Add scroll to current position function
+  const scrollToCurrentPosition = useCallback(() => {
+    if (scrollViewRef.current && currentWordIndex >= 0) {
+      const scrollPosition = Math.max(0, (currentWordIndex * 200) - (height * 0.4));
+      scrollViewRef.current.scrollTo({
+        y: scrollPosition,
+        animated: true
+      });
+    }
+  }, [currentWordIndex]);
 
   const modalScale = modalAnim.interpolate({
     inputRange: [0, 1],
@@ -2197,109 +2119,28 @@ export default function HomeScreen() {
   });
 
   // Path container margin moves up as user scrolls to extend toward header
-  // Stops just below the header badges (Words, Streak, Accuracy)
   const pathContainerMarginTop = scrollY.interpolate({
     inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [0, -50], // Reduced from -100 to prevent going too far up
+    outputRange: [0, -40], // Pull content up by 180px when scrolled
     extrapolate: 'clamp',
   });
 
-  // ============================================================================
-  // SCROLL HANDLERS - FIXED Dropdown Issues
-  // ============================================================================
-
-  // Handle scroll events with better dropdown management
-  const handleScroll = useCallback((event: any) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
-    
-    // Update scroll position for animations
-    scrollY.setValue(offsetY);
-    
-    // Close dropdown immediately when scrolling starts
-    if (showDropdown) {
-      setShowDropdown(false);
-    }
-    
-    // Handle floating panel expansion
-    if (offsetY > SCROLL_THRESHOLD && !floatingPanelExpanded) {
-      setFloatingPanelExpanded(true);
-    } else if (offsetY <= SCROLL_THRESHOLD && floatingPanelExpanded) {
-      setFloatingPanelExpanded(false);
-    }
-  }, [showDropdown, floatingPanelExpanded]);
-
-  // Handle scroll begin drag - close dropdown
-  const handleScrollBeginDrag = useCallback(() => {
-    setIsScrolling(true);
-    
-    // Close dropdown immediately when user starts dragging
-    if (showDropdown) {
-      setShowDropdown(false);
-    }
-    
-    // Clear any existing timeout
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-  }, [showDropdown]);
-
-  // Handle scroll end with debounce
-  const handleScrollEnd = useCallback(() => {
-    setIsScrolling(true); // Keep as true briefly
-    
-    // Set timeout to mark scrolling as complete
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    scrollTimeoutRef.current = setTimeout(() => {
-      setIsScrolling(false);
-    }, 150); // Reduced timeout for faster response
-  }, []);
-
-  // ============================================================================
-  // DROPDOWN HANDLERS - FIXED
-  // ============================================================================
-
-  const toggleDropdown = useCallback(() => {
-    // Prevent opening if currently scrolling
-    if (isScrolling) {
-      console.log('Dropdown blocked - currently scrolling');
-      return;
-    }
-    
-    Haptics.selectionAsync();
-    setShowDropdown(prev => !prev);
-  }, [isScrolling]);
-
-  // Close dropdown when clicking outside
   useEffect(() => {
-    const closeDropdown = () => {
-      if (showDropdown) {
-        setShowDropdown(false);
-      }
-    };
-
-    // Add a small delay to ensure this runs after the click event
-    const timer = setTimeout(closeDropdown, 0);
-    
-    return () => clearTimeout(timer);
-  }, [showDropdown]);
-
-  // ============================================================================
-  // DAILY TASK BUTTON FIX
-  // ============================================================================
-
-  const openDailyTask = useCallback(() => {
-    // Prevent opening if currently scrolling
-    if (isScrolling) {
-      console.log('Daily task blocked - currently scrolling');
-      return;
+    if (allWords.length > 0 && currentWordIndex >= 0 && !autoScrollDone && scrollViewRef.current) {
+      // Calculate scroll position based on current word index
+      const scrollPosition = Math.max(0, (currentWordIndex * 200) - (height * 0.4));
+      
+      setTimeout(() => {
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({
+            y: scrollPosition,
+            animated: true
+          });
+          setAutoScrollDone(true);
+        }
+      }, 500); // Small delay to ensure content is rendered
     }
-    
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setShowDailyTask(true);
-  }, [isScrolling]);
+  }, [allWords, currentWordIndex, autoScrollDone]);
 
   // ============================================================================
   // MAIN RENDER
@@ -2367,9 +2208,7 @@ export default function HomeScreen() {
       {/* Content Area with Background */}
       <View style={styles.contentWrapper}>
         {/* Learning Path Background - covers entire area below header */}
-        <View style={styles.backgroundContainer}>
-          <LearningPathBackground />
-        </View>
+        <LearningPathBackground />
 
         {/* Controls - Fades out when scrolling */}
         <Animated.View 
@@ -2380,18 +2219,16 @@ export default function HomeScreen() {
               transform: [{ translateY: controlsTranslateY }],
             },
           ]}
-          pointerEvents="auto"
+          pointerEvents="box-none"
         >
-        <View 
-          style={styles.dropdownContainer} 
-        >
+        <View style={styles.dropdownContainer}>
           <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={toggleDropdown} // Use the fixed handler
-              activeOpacity={0.7}
-              disabled={isScrolling}
-            >
-
+            style={styles.dropdownButton}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setShowDropdown(!showDropdown);
+            }}
+          >
             <Icon name="tune" size={20} color={COLORS.primary} />
             <Text style={styles.dropdownButtonText}>
               {selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1)}
@@ -2409,7 +2246,6 @@ export default function HomeScreen() {
                     selectedDifficulty === diff && styles.dropdownItemActive
                   ]}
                   onPress={() => handleDifficultyChange(diff)}
-                  activeOpacity={0.7}
                 >
                   <View style={[
                     styles.difficultyDot,
@@ -2431,28 +2267,27 @@ export default function HomeScreen() {
         </View>
 
         {/* Daily Task Button */}
-        {todayWord && (
-          <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
-            <TouchableOpacity
-                style={styles.dailyTaskButton}
-                onPress={openDailyTask} // Use the fixed handler
-                activeOpacity={0.7}
-                disabled={isScrolling}
-              >
-              <LinearGradient
-                colors={[COLORS.gold, '#D97706'] as const}
-                style={styles.dailyTaskGradient}
-              >
-                <Icon name="assignment" size={24} color={COLORS.white} />
-                {!todayProgress?.completed && (
-                  <View style={styles.dailyTaskBadge}>
-                    <Text style={styles.dailyTaskBadgeText}>!</Text>
-                  </View>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
+        <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
+          <TouchableOpacity
+            style={styles.dailyTaskButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setShowDailyTask(true);
+            }}
+          >
+            <LinearGradient
+              colors={[COLORS.gold, '#D97706'] as const}
+              style={styles.dailyTaskGradient}
+            >
+              <Icon name="assignment" size={24} color={COLORS.white} />
+              {!todayProgress?.completed && (
+                <View style={styles.dailyTaskBadge}>
+                  <Text style={styles.dailyTaskBadgeText}>!</Text>
+                </View>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
       </Animated.View>
 
       {/* Progress Indicator - Fades out when scrolling */}
@@ -2465,7 +2300,7 @@ export default function HomeScreen() {
               transform: [{ translateY: progressTranslateY }],
             },
           ]}
-          pointerEvents="none"
+          pointerEvents="box-none"
         >
           <View style={styles.progressHeader}>
             <View style={styles.progressInfo}>
@@ -2512,7 +2347,7 @@ export default function HomeScreen() {
             transform: [{ translateY: floatingPanelTranslateY }],
           },
         ]}
-        pointerEvents="auto"
+        pointerEvents="box-none"
       >
         <TouchableOpacity
           style={styles.floatingPanelToggle}
@@ -2629,32 +2464,42 @@ export default function HomeScreen() {
           <Text style={styles.loadingText}>Loading your progress...</Text>
         </View>
       ) : (
-        <ScrollView 
-          ref={scrollViewRef}
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          removeClippedSubviews={true}
-          onScroll={handleScroll} // Use the fixed handler
-            onScrollBeginDrag={handleScrollBeginDrag} // Use the fixed handler
-            onScrollEndDrag={handleScrollEnd} // Use the fixed handler
-            onMomentumScrollEnd={handleScrollEnd} // Use the fixed handler
-        >
-          <Animated.View 
-            style={[
-              styles.pathContainer,
-              {
-                marginTop: pathContainerMarginTop,
-              }
-            ]}
+        <View style={styles.scrollContainer}>
+          <ScrollView 
+            ref={scrollViewRef}
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: false }
+            )}
           >
-            {renderWordPath()}
-          </Animated.View>
-          <View style={{ height: 100 }} />
-        </ScrollView>
+            <View style={styles.pathContainer}>
+              {renderWordPath()}
+            </View>
+            <View style={{ height: 100 }} />
+          </ScrollView>
+          
+          {/* Scroll to Current Position Button */}
+          {allWords.length > 0 && (
+            <TouchableOpacity 
+              style={styles.scrollToCurrentButton}
+              onPress={scrollToCurrentPosition}
+            >
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.secondary] as const}
+                style={styles.scrollToCurrentGradient}
+              >
+                <Icon name="my-location" size={20} color={COLORS.white} />
+                {/* <Text style={styles.scrollToCurrentText}>Current Level</Text> */}
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
-    </View>
+      </View>
 
       {/* DAILY TASK MODAL */}
       {todayWord && (
@@ -3215,8 +3060,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
-    // Increase z-index to ensure header stays above background
-    zIndex: 100, // Increased from 10
+    zIndex: 10,
     shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
@@ -3363,19 +3207,6 @@ const styles = StyleSheet.create({
   contentWrapper: {
     flex: 1,
     position: 'relative',
-    // Ensure content starts below header
-    marginTop: 0,
-  },
-  backgroundContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    // Ensure background stays below header
-    zIndex: 0,
-    // Clip any overflow
-    overflow: 'hidden',
   },
   headerTop: {
     marginBottom: 16,
@@ -3614,24 +3445,51 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.gray[600],
   },
+  scrollContainer:{
+    flex: 1,
+    marginTop: -40, // Pull up slightly to overlap with header background
+    zIndex: 1,
+  },
   scrollView: {
     flex: 1,
     zIndex: 10,
-    // Prevent content from going behind header
-    marginTop: 0,
-    overflow: 'visible',
+    overflow: 'visible', // Allow content to extend beyond bounds
   },
   scrollContent: {
-    paddingTop: 0,
-    overflow: 'visible',
+    paddingTop: 0, // Path extends to header when scrolled
+    overflow: 'visible', // Ensure nothing is clipped
+  },
+  scrollToCurrentButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 1000,
+  },
+  scrollToCurrentGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  scrollToCurrentText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.white,
   },
   pathContainer: {
     position: 'relative',
     minHeight: height * 2.5,
-    // Minimal padding - path starts immediately below controls/progress
-    paddingTop: 20, // Reduced so path starts right below controls
+    paddingTop: 40,
     paddingBottom: 100,
-    overflow: 'visible',
+    overflow: 'visible', // Ensure paths above aren't clipped
   },
   connectingPath: {
     position: 'absolute',
