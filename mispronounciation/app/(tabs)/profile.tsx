@@ -24,9 +24,9 @@ import { router } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
-// Avatar options
+// Avatar options - 'initial' is a special value for showing user's first letter
 const AVATAR_OPTIONS = [
-  '😊', '😎', '🤓', '😇', '🥳', '🤩', '😸', '🐶', 
+  'initial', '😊', '😎', '🤓', '😇', '🥳', '🤩', '😸', '🐶', 
   '🐱', '🐼', '🦊', '🐨', '🐯', '🦁', '🐸', '🐙',
   '🦄', '🌟', '⚡', '🔥', '💎', '🎯', '🎨', '🎭',
   '🎮', '🚀', '🌈', '🍕', '🍔', '🎂', '☕', '🌺'
@@ -473,12 +473,12 @@ export default function ProfileScreen() {
       if (data?.avatar) {
         setUserAvatar(data.avatar);
       } else {
-        // Set default avatar as first emoji
-        setUserAvatar(AVATAR_OPTIONS[0]);
+        // Set default avatar to 'initial' (user's first letter)
+        setUserAvatar('initial');
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
-      setUserAvatar(AVATAR_OPTIONS[0]);
+      setUserAvatar('initial');
     }
   };
 
@@ -1071,12 +1071,12 @@ export default function ProfileScreen() {
                 onPress={openAvatarPicker}
                 activeOpacity={0.8}
               >
-                {userAvatar ? (
-                  <Text style={styles.avatarEmoji}>{userAvatar}</Text>
-                ) : (
+                {userAvatar === 'initial' || !userAvatar ? (
                   <Text style={styles.avatarText}>
                     {userName.charAt(0).toUpperCase()}
                   </Text>
+                ) : (
+                  <Text style={styles.avatarEmoji}>{userAvatar}</Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity 
@@ -1404,12 +1404,29 @@ export default function ProfileScreen() {
                     key={index}
                     style={[
                       styles.avatarOption,
-                      userAvatar === avatar && styles.avatarOptionSelected
+                      userAvatar === avatar && styles.avatarOptionSelected,
+                      avatar === 'initial' && styles.initialAvatarOption
                     ]}
                     onPress={() => handleAvatarSelect(avatar)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.avatarOptionEmoji}>{avatar}</Text>
+                    {avatar === 'initial' ? (
+                      <>
+                        <LinearGradient
+                          colors={['#6366F1', '#8B5CF6']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={styles.initialAvatarGradient}
+                        >
+                          <Text style={styles.initialAvatarText}>
+                            {userName.charAt(0).toUpperCase()}
+                          </Text>
+                        </LinearGradient>
+                        <Text style={styles.initialAvatarLabel}>Initial</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.avatarOptionEmoji}>{avatar}</Text>
+                    )}
                     {userAvatar === avatar && (
                       <View style={styles.selectedBadge}>
                         <Icon name="check" size={16} color="#FFFFFF" />
@@ -1979,6 +1996,29 @@ const styles = StyleSheet.create({
   },
   avatarOptionEmoji: {
     fontSize: 32,
+  },
+  initialAvatarOption: {
+    backgroundColor: 'transparent',
+    padding: 4,
+  },
+  initialAvatarGradient: {
+    width: '100%',
+    height: '70%',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  initialAvatarText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  initialAvatarLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
   },
   selectedBadge: {
     position: 'absolute',
