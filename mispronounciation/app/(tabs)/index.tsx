@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -2689,6 +2690,13 @@ export default function HomeScreen() {
           <View style={{ height: 100 }} />
         </ScrollView>
       )}
+
+      {/* Dropdown Overlay - Close dropdown when touching outside */}
+      {showDropdown && (
+        <TouchableWithoutFeedback onPress={() => setShowDropdown(false)}>
+          <View style={styles.dropdownOverlay} />
+        </TouchableWithoutFeedback>
+      )}
     </View>
 
       {/* DAILY TASK MODAL */}
@@ -3509,6 +3517,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 24,
     elevation: 10,
+    zIndex: 1001,
     borderWidth: 1,
     borderColor: COLORS.gray[200],
   },
@@ -3541,6 +3550,14 @@ const styles = StyleSheet.create({
   dropdownItemTextActive: {
     color: COLORS.primary,
     fontWeight: '700',
+  },
+  dropdownOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
   },
   dailyTaskButton: {
     borderRadius: 14,
