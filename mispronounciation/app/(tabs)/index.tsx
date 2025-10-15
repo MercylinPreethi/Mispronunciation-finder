@@ -2310,21 +2310,6 @@ export default function HomeScreen() {
                     </View>
                   )}
                   
-                  <View style={styles.dailyMeaning}>
-                    <Icon name="info-outline" size={20} color={COLORS.primary} />
-                    <Text style={styles.dailyMeaningText}>{todayWord.meaning}</Text>
-                  </View>
-
-                  <View style={styles.dailyExample}>
-                    <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
-                    <Text style={styles.dailyExampleText}>"{todayWord.example}"</Text>
-                  </View>
-
-                  <View style={styles.dailyTip}>
-                    <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
-                    <Text style={styles.dailyTipText}>{todayWord.tip}</Text>
-                  </View>
-
                   <TouchableOpacity
                     style={styles.startDailyButton}
                     onPress={() => {
@@ -3534,7 +3519,7 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   dailyTaskModal: {
-    width: '100%',
+    width: '115%',
     maxWidth: 400,
     backgroundColor: COLORS.white,
     borderRadius: 24,
