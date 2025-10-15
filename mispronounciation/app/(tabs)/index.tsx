@@ -589,7 +589,7 @@ export default function HomeScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
   const [floatingPanelExpanded, setFloatingPanelExpanded] = useState(false);
-  const isScrollingRef = useRef(false);
+  const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const initializeOnceRef = useRef(false);
@@ -2305,19 +2305,23 @@ export default function HomeScreen() {
           ]}
           pointerEvents="box-none"
         >
-        <View style={styles.dropdownContainer} pointerEvents="auto">
+        <View 
+          style={styles.dropdownContainer} 
+          pointerEvents={isScrollingRef.current ? "none" : "auto"}
+        >
           <TouchableOpacity
             style={styles.dropdownButton}
             onPress={() => {
               // Prevent opening if currently scrolling
               if (isScrollingRef.current) {
+                console.log('Blocked dropdown - scrolling');
                 return;
               }
               Haptics.selectionAsync();
               setShowDropdown(!showDropdown);
             }}
             activeOpacity={0.7}
-            delayLongPress={200}
+            disabled={isScrollingRef.current}
           >
             <Icon name="tune" size={20} color={COLORS.primary} />
             <Text style={styles.dropdownButtonText}>
@@ -2570,8 +2574,8 @@ export default function HomeScreen() {
             { 
               useNativeDriver: false,
               listener: (event: any) => {
-                // Mark as scrolling
-                isScrollingRef.current = true;
+                // Mark as scrolling immediately
+                setIsScrolling(true);
                 
                 // Clear existing timeout
                 if (scrollTimeoutRef.current) {
@@ -2580,8 +2584,8 @@ export default function HomeScreen() {
                 
                 // Set timeout to mark scrolling as complete
                 scrollTimeoutRef.current = setTimeout(() => {
-                  isScrollingRef.current = false;
-                }, 150);
+                  setIsScrolling(false);
+                }, 300);
                 
                 // Close dropdown when scrolling to prevent accidental opening
                 if (showDropdown) {
@@ -2600,7 +2604,7 @@ export default function HomeScreen() {
           )}
           onScrollBeginDrag={() => {
             // Mark as scrolling when drag starts
-            isScrollingRef.current = true;
+            setIsScrolling(true);
             
             // Close dropdown when user starts dragging
             if (showDropdown) {
@@ -2610,14 +2614,14 @@ export default function HomeScreen() {
           onScrollEndDrag={() => {
             // Keep scrolling flag for a bit after drag ends
             setTimeout(() => {
-              isScrollingRef.current = false;
-            }, 200);
+              setIsScrolling(false);
+            }, 300);
           }}
           onMomentumScrollEnd={() => {
             // Clear scrolling flag when momentum scroll ends
             setTimeout(() => {
-              isScrollingRef.current = false;
-            }, 100);
+              setIsScrolling(false);
+            }, 200);
           }}
         >
           <Animated.View 
