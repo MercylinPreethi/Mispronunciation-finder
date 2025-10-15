@@ -15,13 +15,23 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import LearningPathBackground from '../../components/LearningPathBackground';
+import EnhancedStreakCalendar from '../../components/EnhancedStreakCalendar';
 import * as Haptics from 'expo-haptics';
 import { auth, database } from '../../lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, set } from 'firebase/database';
 import { signOut } from 'firebase/auth';
 import { router } from 'expo-router';
 
 const { width } = Dimensions.get('window');
+
+// Avatar options - 'initial' is a special value for showing user's first letter
+const AVATAR_OPTIONS = [
+  'initial', '😊', '😎', '🤓', '😇', '🥳', '🤩', '😸', '🐶', 
+  '🐱', '🐼', '🦊', '🐨', '🐯', '🦁', '🐸', '🐙',
+  '🦄', '🌟', '⚡', '🔥', '💎', '🎯', '🎨', '🎭',
+  '🎮', '🚀', '🌈', '🍕', '🍔', '🎂', '☕', '🌺'
+];
 
 interface Stats {
   totalWords: number;
@@ -48,365 +58,12 @@ interface PracticeHistory {
   attemptCount?: number;
 }
 
-// Streak Calendar Component
-const StreakCalendar = ({ visible, onClose, streakDays, currentStreak }: { 
-  visible: boolean; 
-  onClose: () => void;
-  streakDays: string[];
-  currentStreak: number;
-}) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-
-  // Get days in month and starting day
-  const getDaysInMonth = (date: Date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (date: Date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
-
-  // Check if a date is in streak
-  const isDateInStreak = (date: Date) => {
-    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    return streakDays.includes(dateStr);
-  };
-
-  const isToday = (date: Date) => {
-    const today = new Date();
-    return date.getDate() === today.getDate() && 
-           date.getMonth() === today.getMonth() && 
-           date.getFullYear() === today.getFullYear();
-  };
-
-  // Navigate months
-  const navigateMonth = (direction: 'prev' | 'next') => {
-    Haptics.selectionAsync();
-    const newMonth = new Date(currentMonth);
-    if (direction === 'prev') {
-      newMonth.setMonth(newMonth.getMonth() - 1);
-    } else {
-      newMonth.setMonth(newMonth.getMonth() + 1);
-    }
-    setCurrentMonth(newMonth);
-  };
-
-  // Render calendar days
-  const renderCalendarDays = () => {
-    const daysInMonth = getDaysInMonth(currentMonth);
-    const firstDayOfMonth = getFirstDayOfMonth(currentMonth);
-    const today = new Date();
-    
-    const rows = [];
-    let currentRow = [];
-    
-    // Empty cells for days before the first day of month
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      currentRow.push(
-        <View key={`empty-${i}`} style={[calendarStyles.calendarDay, calendarStyles.emptyDay]} />
-      );
-    }
-    
-    // Days of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-      const isStreakDay = isDateInStreak(date);
-      const isCurrentDay = isToday(date);
-      
-      currentRow.push(
-        <View 
-          key={`day-${day}`}
-          style={[
-            calendarStyles.calendarDay,
-            isCurrentDay && calendarStyles.today,
-            isStreakDay && !isCurrentDay && calendarStyles.streakDay,
-            !isStreakDay && !isCurrentDay && calendarStyles.normalDay,
-          ]}
-        >
-          <Text style={[
-            calendarStyles.calendarDayText,
-            isCurrentDay && calendarStyles.todayText,
-            isStreakDay && !isCurrentDay && calendarStyles.streakDayText,
-          ]}>
-            {day}
-          </Text>
-        </View>
-      );
-      
-      // Start new row after 7 days
-      if (currentRow.length === 7) {
-        rows.push(
-          <View key={`row-${rows.length}`} style={calendarStyles.calendarRow}>
-            {currentRow}
-          </View>
-        );
-        currentRow = [];
-      }
-    }
-    
-    // Fill remaining cells in last row
-    if (currentRow.length > 0) {
-      const remainingCells = 7 - currentRow.length;
-      for (let i = 0; i < remainingCells; i++) {
-        currentRow.push(
-          <View key={`empty-end-${i}`} style={[calendarStyles.calendarDay, calendarStyles.emptyDay]} />
-        );
-      }
-      rows.push(
-        <View key={`row-${rows.length}`} style={calendarStyles.calendarRow}>
-          {currentRow}
-        </View>
-      );
-    }
-    
-    return rows;
-  };
-
-  if (!visible) return null;
-
-  return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={calendarStyles.calendarContainer}>
-          {/* Header */}
-          <View style={calendarStyles.calendarHeader}>
-            <TouchableOpacity 
-              style={calendarStyles.calendarNavButton}
-              onPress={() => navigateMonth('prev')}
-            >
-              <Icon name="chevron-left" size={20} color="#6B7280" />
-            </TouchableOpacity>
-            
-            <Text style={calendarStyles.calendarMonthText}>
-              {currentMonth.toLocaleDateString('en-US', { 
-                month: 'long', 
-                year: 'numeric' 
-              })}
-            </Text>
-            
-            <TouchableOpacity 
-              style={calendarStyles.calendarNavButton}
-              onPress={() => navigateMonth('next')}
-            >
-              <Icon name="chevron-right" size={20} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Week Days */}
-          <View style={calendarStyles.weekDaysContainer}>
-            {['M', 'D', 'W', 'D', 'V', 'Z', 'Z'].map((day, index) => (
-              <Text key={index} style={calendarStyles.weekDayText}>
-                {day}
-              </Text>
-            ))}
-          </View>
-
-          {/* Calendar Grid */}
-          <View style={calendarStyles.calendarGrid}>
-            {renderCalendarDays()}
-          </View>
-
-          {/* Stats */}
-          <View style={calendarStyles.statsContainer}>
-            <View style={calendarStyles.statItem}>
-              <Icon name="local-fire-department" size={24} color="#F59E0B" />
-              <Text style={calendarStyles.statValue}>{currentStreak}</Text>
-              <Text style={calendarStyles.statLabel}>Current Streak</Text>
-            </View>
-            <View style={calendarStyles.statItem}>
-              <Icon name="calendar-today" size={24} color="#6366F1" />
-              <Text style={calendarStyles.statValue}>{streakDays.length}</Text>
-              <Text style={calendarStyles.statLabel}>Total Days</Text>
-            </View>
-          </View>
-
-          {/* Close Button */}
-          <TouchableOpacity 
-            style={calendarStyles.closeButton}
-            onPress={onClose}
-          >
-            <Text style={calendarStyles.closeButtonText}>
-              Close
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
-// Calendar Styles
-const calendarStyles = StyleSheet.create({
-  // Calendar Container
-  calendarContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    margin: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-    maxWidth: 400,
-    width: '90%',
-  },
-
-  // Calendar Header
-  calendarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 8,
-  },
-  calendarMonthText: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1F2937',
-    letterSpacing: -0.5,
-  },
-  calendarNavButton: {
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-
-  // Week Days Header
-  weekDaysContainer: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    paddingBottom: 12,
-  },
-  weekDayText: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // Calendar Grid
-  calendarGrid: {
-    marginBottom: 8,
-  },
-  calendarRow: {
-    flexDirection: 'row',
-    marginBottom: 6,
-  },
-
-  // Calendar Days
-  calendarDay: {
-    flex: 1,
-    aspectRatio: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    margin: 2,
-    borderRadius: 10,
-    minHeight: 40,
-  },
-  calendarDayText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  
-  // Day States
-  emptyDay: {
-    backgroundColor: 'transparent',
-  },
-  normalDay: {
-    backgroundColor: '#F3F4F6',
-  },
-  streakDay: {
-    backgroundColor: '#FF6B35',
-    shadowColor: '#FF6B35',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  today: {
-    backgroundColor: '#6366F1',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  todayText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-  },
-  streakDayText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-  },
-
-  // Stats Container
-  statsContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 16,
-    marginBottom: 16,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#1F2937',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-
-  // Close Button
-  closeButton: {
-    backgroundColor: '#6366F1',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 14,
-    alignItems: 'center',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  closeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-});
-
 export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [userAvatar, setUserAvatar] = useState<string>('');
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [stats, setStats] = useState<Stats>({
     totalWords: 0,
     accuracy: 0,
@@ -443,12 +100,31 @@ export default function ProfileScreen() {
         loadStats(userId),
         loadAllPracticeHistory(userId),
         loadAchievements(userId),
+        loadUserProfile(userId),
       ]);
 
       setLoading(false);
     } catch (error) {
       console.error('❌ Error loading user data:', error);
       setLoading(false);
+    }
+  };
+
+  const loadUserProfile = async (userId: string) => {
+    try {
+      const profileRef = ref(database, `users/${userId}/profile`);
+      const snapshot = await get(profileRef);
+      const data = snapshot.val();
+      
+      if (data?.avatar) {
+        setUserAvatar(data.avatar);
+      } else {
+        // Set default avatar to 'initial' (user's first letter)
+        setUserAvatar('initial');
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      setUserAvatar('initial');
     }
   };
 
@@ -970,6 +646,36 @@ export default function ProfileScreen() {
     setShowStreakCalendar(true);
   };
 
+  const handleAvatarSelect = async (avatar: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      // Save to Firebase
+      const profileRef = ref(database, `users/${user.uid}/profile`);
+      await set(profileRef, {
+        avatar: avatar,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Update local state
+      setUserAvatar(avatar);
+      setShowAvatarPicker(false);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Error saving avatar:', error);
+      Alert.alert('Error', 'Failed to save avatar. Please try again.');
+    }
+  };
+
+  const openAvatarPicker = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowAvatarPicker(true);
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -983,6 +689,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
+      <LearningPathBackground />
       {/* Header with Refresh */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
@@ -1005,11 +712,26 @@ export default function ProfileScreen() {
             style={styles.profileGradient}
           >
             <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {userName.charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <TouchableOpacity 
+                style={styles.avatar}
+                onPress={openAvatarPicker}
+                activeOpacity={0.8}
+              >
+                {userAvatar === 'initial' || !userAvatar ? (
+                  <Text style={styles.avatarText}>
+                    {userName.charAt(0).toUpperCase()}
+                  </Text>
+                ) : (
+                  <Text style={styles.avatarEmoji}>{userAvatar}</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.editAvatarButton}
+                onPress={openAvatarPicker}
+                activeOpacity={0.8}
+              >
+                <Icon name="edit" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
             <Text style={styles.userName}>{userName}</Text>
             <Text style={styles.userEmail}>{userEmail}</Text>
@@ -1290,7 +1012,81 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* STREAK CALENDAR MODAL */}
-      <StreakCalendar 
+      {/* Avatar Picker Modal */}
+      <Modal
+        visible={showAvatarPicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAvatarPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowAvatarPicker(false)}
+          >
+            <TouchableOpacity 
+              style={styles.avatarPickerContainer}
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.avatarPickerHeader}>
+                <Text style={styles.avatarPickerTitle}>Choose Your Avatar</Text>
+                <TouchableOpacity 
+                  onPress={() => setShowAvatarPicker(false)}
+                  style={styles.closeIconButton}
+                >
+                  <Icon name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView 
+                style={styles.avatarOptionsScroll}
+                contentContainerStyle={styles.avatarOptionsGrid}
+                showsVerticalScrollIndicator={false}
+              >
+                {AVATAR_OPTIONS.map((avatar, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.avatarOption,
+                      userAvatar === avatar && styles.avatarOptionSelected,
+                      avatar === 'initial' && styles.initialAvatarOption
+                    ]}
+                    onPress={() => handleAvatarSelect(avatar)}
+                    activeOpacity={0.7}
+                  >
+                    {avatar === 'initial' ? (
+                      <>
+                        <LinearGradient
+                          colors={['#6366F1', '#8B5CF6']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={styles.initialAvatarGradient}
+                        >
+                          <Text style={styles.initialAvatarText}>
+                            {userName.charAt(0).toUpperCase()}
+                          </Text>
+                        </LinearGradient>
+                        <Text style={styles.initialAvatarLabel}>Initial</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.avatarOptionEmoji}>{avatar}</Text>
+                    )}
+                    {userAvatar === avatar && (
+                      <View style={styles.selectedBadge}>
+                        <Icon name="check" size={16} color="#FFFFFF" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      <EnhancedStreakCalendar 
         visible={showStreakCalendar}
         onClose={() => setShowStreakCalendar(false)}
         streakDays={streakDays}
@@ -1368,6 +1164,7 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     marginBottom: 16,
+    position: 'relative',
   },
   avatar: {
     width: 80,
@@ -1383,6 +1180,27 @@ const styles = StyleSheet.create({
     fontSize: 36,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  avatarEmoji: {
+    fontSize: 42,
+  },
+  editAvatarButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#6366F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
   userName: {
     fontSize: 24,
@@ -1756,5 +1574,109 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  modalBackdrop: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarPickerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    width: width - 40,
+    maxHeight: 520,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  avatarPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  avatarPickerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  closeIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarOptionsScroll: {
+    maxHeight: 420,
+  },
+  avatarOptionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 16,
+    gap: 12,
+  },
+  avatarOption: {
+    width: (width - 40 - 32 - 48) / 5, // 5 columns with gaps
+    aspectRatio: 1,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    position: 'relative',
+  },
+  avatarOptionSelected: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+    borderWidth: 3,
+  },
+  avatarOptionEmoji: {
+    fontSize: 32,
+  },
+  initialAvatarOption: {
+    backgroundColor: 'transparent',
+    padding: 4,
+  },
+  initialAvatarGradient: {
+    width: '100%',
+    height: '70%',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  initialAvatarText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  initialAvatarLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  selectedBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#6366F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
 });

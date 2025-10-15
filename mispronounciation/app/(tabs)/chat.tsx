@@ -15,6 +15,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import LearningPathBackground from '../../components/LearningPathBackground';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import axios from 'axios';
@@ -553,6 +554,7 @@ export default function CoachScreen() {
 
   return (
     <View style={styles.container}>
+      <LearningPathBackground />
       {/* Animated Background */}
       <LinearGradient
         colors={['#667EEA', '#764BA2', '#F093FB']}

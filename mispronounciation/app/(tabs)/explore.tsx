@@ -26,6 +26,7 @@ import axios from 'axios';
 import { router, useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
+import LearningPathBackground from '../../components/LearningPathBackground';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ref, set, get } from 'firebase/database';
 import { auth, database } from '@/lib/firebase';
@@ -1320,6 +1321,7 @@ const formatAccuracy = (accuracy: number): string => {
 
 return (
     <View style={styles.container}>
+        <LearningPathBackground />
         <StatusBar barStyle="light-content" />
         {/* Header */}
         <LinearGradient

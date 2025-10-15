@@ -30,6 +30,7 @@ import { auth, database } from '@/lib/firebase';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
+import LearningPathBackground from '../../components/LearningPathBackground';
 
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const { width, height } = Dimensions.get('window');
@@ -419,6 +420,7 @@ export default function PracticeScreen() {
 
   return (
     <View style={styles.container}>
+      <LearningPathBackground />
       <StatusBar barStyle="dark-content" />
       
       {/* Header */}
