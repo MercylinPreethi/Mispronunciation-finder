@@ -2307,13 +2307,13 @@ export default function HomeScreen() {
         >
         <View 
           style={styles.dropdownContainer} 
-          pointerEvents={isScrollingRef.current ? "none" : "auto"}
+          pointerEvents={isScrolling ? "none" : "auto"}
         >
           <TouchableOpacity
             style={styles.dropdownButton}
             onPress={() => {
               // Prevent opening if currently scrolling
-              if (isScrollingRef.current) {
+              if (isScrolling) {
                 console.log('Blocked dropdown - scrolling');
                 return;
               }
@@ -2321,7 +2321,7 @@ export default function HomeScreen() {
               setShowDropdown(!showDropdown);
             }}
             activeOpacity={0.7}
-            disabled={isScrollingRef.current}
+            disabled={isScrolling}
           >
             <Icon name="tune" size={20} color={COLORS.primary} />
             <Text style={styles.dropdownButtonText}>
