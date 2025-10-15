@@ -23,6 +23,7 @@ import RNFS from 'react-native-fs';
 import axios from 'axios';
 import ProgressCircle from '../../components/ProgressCircle';
 import LearningPathBackground from '../../components/LearningPathBackground';
+import EnhancedStreakCalendar from '../../components/EnhancedStreakCalendar';
 import AudioRecorderPlayer, {
   AVEncoderAudioQualityIOSType,
   AVEncodingOption,
@@ -177,8 +178,7 @@ interface UserProgressResponse {
 
 type DifficultyLevel = 'easy' | 'intermediate' | 'hard';
 
-// Calendar Component
-const StreakCalendar = ({ visible, onClose, streakDays }: { 
+export default function HomeScreen() { 
   visible: boolean; 
   onClose: () => void;
   streakDays: string[];
@@ -3039,10 +3039,11 @@ export default function HomeScreen() {
       )}
 
       {/* STREAK CALENDAR MODAL */}
-      <StreakCalendar 
+      <EnhancedStreakCalendar 
         visible={showStreakCalendar}
         onClose={() => setShowStreakCalendar(false)}
         streakDays={streakDays}
+        currentStreak={stats.streak}
       />
     </View>
   );
