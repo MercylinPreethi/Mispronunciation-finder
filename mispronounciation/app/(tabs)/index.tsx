@@ -589,6 +589,8 @@ export default function HomeScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
   const [floatingPanelExpanded, setFloatingPanelExpanded] = useState(false);
+  const isScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const initializeOnceRef = useRef(false);
   const loadingRef = useRef(false);
@@ -1427,6 +1429,15 @@ export default function HomeScreen() {
       pulseAnim.setValue(1);
     }
   }, [isRecording]);
+
+  // Cleanup scroll timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // ============================================================================
   // OPTIMIZED UI HANDLERS
@@ -2292,16 +2303,21 @@ export default function HomeScreen() {
               transform: [{ translateY: controlsTranslateY }],
             },
           ]}
+          pointerEvents="box-none"
         >
-        <View style={styles.dropdownContainer}>
+        <View style={styles.dropdownContainer} pointerEvents="auto">
           <TouchableOpacity
             style={styles.dropdownButton}
             onPress={() => {
+              // Prevent opening if currently scrolling
+              if (isScrollingRef.current) {
+                return;
+              }
               Haptics.selectionAsync();
               setShowDropdown(!showDropdown);
             }}
             activeOpacity={0.7}
-            delayPressIn={0}
+            delayLongPress={200}
           >
             <Icon name="tune" size={20} color={COLORS.primary} />
             <Text style={styles.dropdownButtonText}>
@@ -2342,7 +2358,7 @@ export default function HomeScreen() {
 
         {/* Daily Task Button */}
         {todayWord && (
-          <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
+          <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }} pointerEvents="auto">
             <TouchableOpacity
               style={styles.dailyTaskButton}
               onPress={() => {
@@ -2350,6 +2366,7 @@ export default function HomeScreen() {
                 setShowDailyTask(true);
               }}
               activeOpacity={0.7}
+              delayLongPress={200}
             >
               <LinearGradient
                 colors={[COLORS.gold, '#D97706'] as const}
@@ -2553,6 +2570,19 @@ export default function HomeScreen() {
             { 
               useNativeDriver: false,
               listener: (event: any) => {
+                // Mark as scrolling
+                isScrollingRef.current = true;
+                
+                // Clear existing timeout
+                if (scrollTimeoutRef.current) {
+                  clearTimeout(scrollTimeoutRef.current);
+                }
+                
+                // Set timeout to mark scrolling as complete
+                scrollTimeoutRef.current = setTimeout(() => {
+                  isScrollingRef.current = false;
+                }, 150);
+                
                 // Close dropdown when scrolling to prevent accidental opening
                 if (showDropdown) {
                   setShowDropdown(false);
@@ -2569,10 +2599,25 @@ export default function HomeScreen() {
             }
           )}
           onScrollBeginDrag={() => {
-            // Also close dropdown when user starts dragging
+            // Mark as scrolling when drag starts
+            isScrollingRef.current = true;
+            
+            // Close dropdown when user starts dragging
             if (showDropdown) {
               setShowDropdown(false);
             }
+          }}
+          onScrollEndDrag={() => {
+            // Keep scrolling flag for a bit after drag ends
+            setTimeout(() => {
+              isScrollingRef.current = false;
+            }, 200);
+          }}
+          onMomentumScrollEnd={() => {
+            // Clear scrolling flag when momentum scroll ends
+            setTimeout(() => {
+              isScrollingRef.current = false;
+            }, 100);
           }}
         >
           <Animated.View 
@@ -3373,6 +3418,7 @@ const styles = StyleSheet.create({
   dropdownContainer: {
     position: 'relative',
     zIndex: 1000,
+    flex: 1,
   },
   dropdownButton: {
     flexDirection: 'row',
