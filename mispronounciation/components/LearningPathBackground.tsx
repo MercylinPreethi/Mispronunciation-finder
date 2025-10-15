@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, Dimensions, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle, Polygon, G, Defs, RadialGradient, Stop } from 'react-native-svg';
@@ -13,7 +13,7 @@ interface FloatingElementProps {
   type: 'book' | 'star' | 'sparkle' | 'scroll';
 }
 
-const FloatingElement: React.FC<FloatingElementProps> = ({ delay, duration, startY, startX, type }) => {
+const FloatingElement: React.FC<FloatingElementProps> = React.memo(({ delay, duration, startY, startX, type }) => {
   const translateY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const rotate = useRef(new Animated.Value(0)).current;
@@ -118,11 +118,13 @@ const FloatingElement: React.FC<FloatingElementProps> = ({ delay, duration, star
       {renderIcon()}
     </Animated.View>
   );
-};
+});
 
-const LearningPathBackground: React.FC = () => {
-  // Create floating elements with varied delays and positions
-  const floatingElements = [
+FloatingElement.displayName = 'FloatingElement';
+
+const LearningPathBackground: React.FC = React.memo(() => {
+  // Memoize floating elements configuration to prevent recreation
+  const floatingElements = useMemo(() => [
     { type: 'book' as const, delay: 0, duration: 4000, startY: height * 0.2, startX: width * 0.15 },
     { type: 'star' as const, delay: 500, duration: 3500, startY: height * 0.35, startX: width * 0.75 },
     { type: 'sparkle' as const, delay: 1000, duration: 3000, startY: height * 0.5, startX: width * 0.2 },
@@ -133,7 +135,7 @@ const LearningPathBackground: React.FC = () => {
     { type: 'star' as const, delay: 500, duration: 3600, startY: height * 1.25, startX: width * 0.85 },
     { type: 'sparkle' as const, delay: 1200, duration: 3300, startY: height * 1.4, startX: width * 0.15 },
     { type: 'scroll' as const, delay: 1800, duration: 4000, startY: height * 1.55, startX: width * 0.65 },
-  ];
+  ], []);
 
   return (
     <View style={styles.container}>
@@ -274,7 +276,9 @@ const LearningPathBackground: React.FC = () => {
       <View style={styles.patternOverlay} />
     </View>
   );
-};
+});
+
+LearningPathBackground.displayName = 'LearningPathBackground';
 
 const styles = StyleSheet.create({
   container: {

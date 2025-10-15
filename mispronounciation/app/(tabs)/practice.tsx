@@ -908,7 +908,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   modalCreateText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: '#6366F1',
   },
