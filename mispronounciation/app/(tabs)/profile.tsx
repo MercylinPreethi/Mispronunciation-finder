@@ -18,11 +18,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import LearningPathBackground from '../../components/LearningPathBackground';
 import * as Haptics from 'expo-haptics';
 import { auth, database } from '../../lib/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, set } from 'firebase/database';
 import { signOut } from 'firebase/auth';
 import { router } from 'expo-router';
 
 const { width } = Dimensions.get('window');
+
+// Avatar options
+const AVATAR_OPTIONS = [
+  '😊', '😎', '🤓', '😇', '🥳', '🤩', '😸', '🐶', 
+  '🐱', '🐼', '🦊', '🐨', '🐯', '🦁', '🐸', '🐙',
+  '🦄', '🌟', '⚡', '🔥', '💎', '🎯', '🎨', '🎭',
+  '🎮', '🚀', '🌈', '🍕', '🍔', '🎂', '☕', '🌺'
+];
 
 interface Stats {
   totalWords: number;
@@ -408,6 +416,8 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [userAvatar, setUserAvatar] = useState<string>('');
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [stats, setStats] = useState<Stats>({
     totalWords: 0,
     accuracy: 0,
@@ -444,12 +454,31 @@ export default function ProfileScreen() {
         loadStats(userId),
         loadAllPracticeHistory(userId),
         loadAchievements(userId),
+        loadUserProfile(userId),
       ]);
 
       setLoading(false);
     } catch (error) {
       console.error('❌ Error loading user data:', error);
       setLoading(false);
+    }
+  };
+
+  const loadUserProfile = async (userId: string) => {
+    try {
+      const profileRef = ref(database, `users/${userId}/profile`);
+      const snapshot = await get(profileRef);
+      const data = snapshot.val();
+      
+      if (data?.avatar) {
+        setUserAvatar(data.avatar);
+      } else {
+        // Set default avatar as first emoji
+        setUserAvatar(AVATAR_OPTIONS[0]);
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      setUserAvatar(AVATAR_OPTIONS[0]);
     }
   };
 
@@ -971,6 +1000,36 @@ export default function ProfileScreen() {
     setShowStreakCalendar(true);
   };
 
+  const handleAvatarSelect = async (avatar: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      // Save to Firebase
+      const profileRef = ref(database, `users/${user.uid}/profile`);
+      await set(profileRef, {
+        avatar: avatar,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Update local state
+      setUserAvatar(avatar);
+      setShowAvatarPicker(false);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Error saving avatar:', error);
+      Alert.alert('Error', 'Failed to save avatar. Please try again.');
+    }
+  };
+
+  const openAvatarPicker = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowAvatarPicker(true);
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -1007,11 +1066,26 @@ export default function ProfileScreen() {
             style={styles.profileGradient}
           >
             <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {userName.charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <TouchableOpacity 
+                style={styles.avatar}
+                onPress={openAvatarPicker}
+                activeOpacity={0.8}
+              >
+                {userAvatar ? (
+                  <Text style={styles.avatarEmoji}>{userAvatar}</Text>
+                ) : (
+                  <Text style={styles.avatarText}>
+                    {userName.charAt(0).toUpperCase()}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.editAvatarButton}
+                onPress={openAvatarPicker}
+                activeOpacity={0.8}
+              >
+                <Icon name="edit" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
             <Text style={styles.userName}>{userName}</Text>
             <Text style={styles.userEmail}>{userEmail}</Text>
@@ -1292,6 +1366,63 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* STREAK CALENDAR MODAL */}
+      {/* Avatar Picker Modal */}
+      <Modal
+        visible={showAvatarPicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAvatarPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowAvatarPicker(false)}
+          >
+            <TouchableOpacity 
+              style={styles.avatarPickerContainer}
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.avatarPickerHeader}>
+                <Text style={styles.avatarPickerTitle}>Choose Your Avatar</Text>
+                <TouchableOpacity 
+                  onPress={() => setShowAvatarPicker(false)}
+                  style={styles.closeIconButton}
+                >
+                  <Icon name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView 
+                style={styles.avatarOptionsScroll}
+                contentContainerStyle={styles.avatarOptionsGrid}
+                showsVerticalScrollIndicator={false}
+              >
+                {AVATAR_OPTIONS.map((avatar, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.avatarOption,
+                      userAvatar === avatar && styles.avatarOptionSelected
+                    ]}
+                    onPress={() => handleAvatarSelect(avatar)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.avatarOptionEmoji}>{avatar}</Text>
+                    {userAvatar === avatar && (
+                      <View style={styles.selectedBadge}>
+                        <Icon name="check" size={16} color="#FFFFFF" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
       <StreakCalendar 
         visible={showStreakCalendar}
         onClose={() => setShowStreakCalendar(false)}
@@ -1370,6 +1501,7 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     marginBottom: 16,
+    position: 'relative',
   },
   avatar: {
     width: 80,
@@ -1385,6 +1517,27 @@ const styles = StyleSheet.create({
     fontSize: 36,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  avatarEmoji: {
+    fontSize: 42,
+  },
+  editAvatarButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#6366F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
   userName: {
     fontSize: 24,
@@ -1758,5 +1911,86 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  modalBackdrop: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarPickerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    width: width - 40,
+    maxHeight: 520,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  avatarPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  avatarPickerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  closeIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarOptionsScroll: {
+    maxHeight: 420,
+  },
+  avatarOptionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 16,
+    gap: 12,
+  },
+  avatarOption: {
+    width: (width - 40 - 32 - 48) / 5, // 5 columns with gaps
+    aspectRatio: 1,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    position: 'relative',
+  },
+  avatarOptionSelected: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+    borderWidth: 3,
+  },
+  avatarOptionEmoji: {
+    fontSize: 32,
+  },
+  selectedBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#6366F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
 });
