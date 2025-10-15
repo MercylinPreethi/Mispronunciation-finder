@@ -568,6 +568,8 @@ export default function HomeScreen() {
   const [floatingPanelExpanded, setFloatingPanelExpanded] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isDailyTaskOpening, setIsDailyTaskOpening] = useState(false);
+  const dailyTaskDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
   const initializeOnceRef = useRef(false);
@@ -2272,19 +2274,14 @@ export default function HomeScreen() {
     setShowDropdown(prev => !prev);
   }, [isScrolling]);
 
-  // Close dropdown when clicking outside
+  // Cleanup on unmount
   useEffect(() => {
-    const closeDropdown = () => {
-      if (showDropdown) {
-        setShowDropdown(false);
+    return () => {
+      if (dailyTaskDebounceRef.current) {
+        clearTimeout(dailyTaskDebounceRef.current);
       }
     };
-
-    // Add a small delay to ensure this runs after the click event
-    const timer = setTimeout(closeDropdown, 0);
-    
-    return () => clearTimeout(timer);
-  }, [showDropdown]);
+  }, []);
 
   // ============================================================================
   // DAILY TASK BUTTON FIX
@@ -2297,9 +2294,28 @@ export default function HomeScreen() {
       return;
     }
     
+    // Prevent multiple rapid taps (debounce)
+    if (isDailyTaskOpening) {
+      console.log('Daily task blocked - already opening');
+      return;
+    }
+    
+    // Set debounce flag
+    setIsDailyTaskOpening(true);
+    
+    // Clear any existing debounce timer
+    if (dailyTaskDebounceRef.current) {
+      clearTimeout(dailyTaskDebounceRef.current);
+    }
+    
+    // Reset debounce flag after 500ms
+    dailyTaskDebounceRef.current = setTimeout(() => {
+      setIsDailyTaskOpening(false);
+    }, 500);
+    
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowDailyTask(true);
-  }, [isScrolling]);
+  }, [isScrolling, isDailyTaskOpening]);
 
   // ============================================================================
   // MAIN RENDER
@@ -2437,7 +2453,7 @@ export default function HomeScreen() {
                 style={styles.dailyTaskButton}
                 onPress={openDailyTask} // Use the fixed handler
                 activeOpacity={0.7}
-                disabled={isScrolling}
+                disabled={isScrolling || isDailyTaskOpening}
               >
               <LinearGradient
                 colors={[COLORS.gold, '#D97706'] as const}
@@ -2600,10 +2616,29 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={styles.floatingDailyTask}
               onPress={() => {
+                // Prevent multiple rapid taps
+                if (isDailyTaskOpening || isScrolling) {
+                  return;
+                }
+                
+                // Set debounce flag
+                setIsDailyTaskOpening(true);
+                
+                // Clear any existing debounce timer
+                if (dailyTaskDebounceRef.current) {
+                  clearTimeout(dailyTaskDebounceRef.current);
+                }
+                
+                // Reset debounce flag after 500ms
+                dailyTaskDebounceRef.current = setTimeout(() => {
+                  setIsDailyTaskOpening(false);
+                }, 500);
+                
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setShowDailyTask(true);
                 setFloatingPanelExpanded(false);
               }}
+              disabled={isDailyTaskOpening || isScrolling}
             >
               <LinearGradient
                 colors={[COLORS.gold, '#D97706'] as const}
