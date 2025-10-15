@@ -2019,22 +2019,6 @@ export default function HomeScreen() {
                           }
                         ]}>{word.word}</Text>
                         
-                        {/* Progress indicator */}
-                        {/* {hasAttempted && (
-                          <View style={styles.wordLabelProgress}>
-                            <View style={[
-                              styles.wordLabelProgressBar,
-                              { 
-                                width: `${currentAccuracy * 100}%`,
-                                backgroundColor: isCompleted 
-                                  ? DIFFICULTY_COLORS[selectedDifficulty].primary 
-                                  : currentAccuracy >= 0.5 
-                                  ? COLORS.gold 
-                                  : COLORS.error
-                              }
-                            ]} />
-                          </View>
-                        )} */}
                       </View>
                       
                       {/* Status Badges */}
@@ -2298,9 +2282,10 @@ export default function HomeScreen() {
             </View>
           )}
         </View>
+      </View>
 
-        {/* Daily Task Button */}
-        <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
+      {/* Daily Task Button */}
+      <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
           <TouchableOpacity
             style={styles.dailyTaskButton}
             onPress={() => {
