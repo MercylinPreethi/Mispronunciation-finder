@@ -2215,6 +2215,11 @@ export default function HomeScreen() {
   const handleScroll = useCallback((event: any) => {
     const offsetY = event.nativeEvent.contentOffset.y;
     
+    // Mark as scrolling immediately
+    if (!isScrolling) {
+      setIsScrolling(true);
+    }
+    
     // Update scroll position for animations
     scrollY.setValue(offsetY);
     
@@ -2229,7 +2234,7 @@ export default function HomeScreen() {
     } else if (offsetY <= SCROLL_THRESHOLD && floatingPanelExpanded) {
       setFloatingPanelExpanded(false);
     }
-  }, [showDropdown, floatingPanelExpanded]);
+  }, [showDropdown, floatingPanelExpanded, isScrolling]);
 
   // Handle scroll begin drag - close dropdown
   const handleScrollBeginDrag = useCallback(() => {
@@ -2257,7 +2262,7 @@ export default function HomeScreen() {
     
     scrollTimeoutRef.current = setTimeout(() => {
       setIsScrolling(false);
-    }, 150); // Reduced timeout for faster response
+    }, 300); // Increased timeout to prevent accidental opens during scroll momentum
   }, []);
 
   // ============================================================================
@@ -2272,7 +2277,13 @@ export default function HomeScreen() {
     }
     
     Haptics.selectionAsync();
-    setShowDropdown(prev => !prev);
+    setShowDropdown(prev => {
+      // Extra safety: never open during scroll
+      if (isScrolling && !prev) {
+        return false;
+      }
+      return !prev;
+    });
   }, [isScrolling]);
 
   // Cleanup on unmount
@@ -2397,7 +2408,7 @@ export default function HomeScreen() {
               transform: [{ translateY: controlsTranslateY }],
             },
           ]}
-          pointerEvents="auto"
+          pointerEvents={isScrolling ? "none" : "auto"}
         >
         <View 
           style={styles.dropdownContainer} 
