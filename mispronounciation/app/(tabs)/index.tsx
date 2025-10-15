@@ -1293,7 +1293,7 @@ export default function HomeScreen() {
           scrollToIndex = Math.max(0, newCurrentIndex - 1);
         }
         
-        const scrollToY = 120 + (scrollToIndex * verticalSpacing) - 150; // Center in view
+        const scrollToY = 60 + (scrollToIndex * verticalSpacing) - 150; // Center in view
         
         if (scrollViewRef.current && scrollToY > 0) {
           scrollViewRef.current.scrollTo({
@@ -1726,7 +1726,8 @@ export default function HomeScreen() {
       const randomOffset = ((seed % 30) - 15);
       
       let x = centerX + wave + randomOffset;
-      const y = 120 + (index * verticalSpacing);
+      // Start immediately with minimal offset - path begins right below controls
+      const y = 60 + (index * verticalSpacing);
       x = Math.max(90, Math.min(width - 90, x));
       
       positions.push({ x, y, word, index });
@@ -2339,27 +2340,30 @@ export default function HomeScreen() {
         </View>
 
         {/* Daily Task Button */}
-        <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
-          <TouchableOpacity
-            style={styles.dailyTaskButton}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setShowDailyTask(true);
-            }}
-          >
-            <LinearGradient
-              colors={[COLORS.gold, '#D97706'] as const}
-              style={styles.dailyTaskGradient}
+        {todayWord && (
+          <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
+            <TouchableOpacity
+              style={styles.dailyTaskButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowDailyTask(true);
+              }}
+              activeOpacity={0.7}
             >
-              <Icon name="assignment" size={24} color={COLORS.white} />
-              {!todayProgress?.completed && (
-                <View style={styles.dailyTaskBadge}>
-                  <Text style={styles.dailyTaskBadgeText}>!</Text>
-                </View>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-        </Animated.View>
+              <LinearGradient
+                colors={[COLORS.gold, '#D97706'] as const}
+                style={styles.dailyTaskGradient}
+              >
+                <Icon name="assignment" size={24} color={COLORS.white} />
+                {!todayProgress?.completed && (
+                  <View style={styles.dailyTaskBadge}>
+                    <Text style={styles.dailyTaskBadgeText}>!</Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
       </Animated.View>
 
       {/* Progress Indicator - Fades out when scrolling */}
@@ -3546,8 +3550,8 @@ const styles = StyleSheet.create({
   pathContainer: {
     position: 'relative',
     minHeight: height * 2.5,
-    // Add proper top padding to start below controls
-    paddingTop: 180, // Increased to ensure content starts below header area
+    // Minimal padding - path starts immediately below controls/progress
+    paddingTop: 20, // Reduced so path starts right below controls
     paddingBottom: 100,
     overflow: 'visible',
   },
