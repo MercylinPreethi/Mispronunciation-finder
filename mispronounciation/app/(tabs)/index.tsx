@@ -2292,7 +2292,6 @@ export default function HomeScreen() {
               transform: [{ translateY: controlsTranslateY }],
             },
           ]}
-          pointerEvents="box-none"
         >
         <View style={styles.dropdownContainer}>
           <TouchableOpacity
@@ -2301,6 +2300,8 @@ export default function HomeScreen() {
               Haptics.selectionAsync();
               setShowDropdown(!showDropdown);
             }}
+            activeOpacity={0.7}
+            delayPressIn={0}
           >
             <Icon name="tune" size={20} color={COLORS.primary} />
             <Text style={styles.dropdownButtonText}>
@@ -2552,6 +2553,11 @@ export default function HomeScreen() {
             { 
               useNativeDriver: false,
               listener: (event: any) => {
+                // Close dropdown when scrolling to prevent accidental opening
+                if (showDropdown) {
+                  setShowDropdown(false);
+                }
+                
                 // Throttle scroll events for better performance
                 const offsetY = event.nativeEvent.contentOffset.y;
                 if (offsetY > SCROLL_THRESHOLD && !floatingPanelExpanded) {
@@ -2562,6 +2568,12 @@ export default function HomeScreen() {
               }
             }
           )}
+          onScrollBeginDrag={() => {
+            // Also close dropdown when user starts dragging
+            if (showDropdown) {
+              setShowDropdown(false);
+            }
+          }}
         >
           <Animated.View 
             style={[
