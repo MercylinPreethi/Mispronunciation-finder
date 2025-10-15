@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -568,6 +569,8 @@ export default function HomeScreen() {
   const [floatingPanelExpanded, setFloatingPanelExpanded] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isDailyTaskOpening, setIsDailyTaskOpening] = useState(false);
+  const dailyTaskDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
   const initializeOnceRef = useRef(false);
@@ -2212,6 +2215,11 @@ export default function HomeScreen() {
   const handleScroll = useCallback((event: any) => {
     const offsetY = event.nativeEvent.contentOffset.y;
     
+    // Mark as scrolling immediately
+    if (!isScrolling) {
+      setIsScrolling(true);
+    }
+    
     // Update scroll position for animations
     scrollY.setValue(offsetY);
     
@@ -2226,7 +2234,7 @@ export default function HomeScreen() {
     } else if (offsetY <= SCROLL_THRESHOLD && floatingPanelExpanded) {
       setFloatingPanelExpanded(false);
     }
-  }, [showDropdown, floatingPanelExpanded]);
+  }, [showDropdown, floatingPanelExpanded, isScrolling]);
 
   // Handle scroll begin drag - close dropdown
   const handleScrollBeginDrag = useCallback(() => {
@@ -2254,7 +2262,7 @@ export default function HomeScreen() {
     
     scrollTimeoutRef.current = setTimeout(() => {
       setIsScrolling(false);
-    }, 150); // Reduced timeout for faster response
+    }, 300); // Increased timeout to prevent accidental opens during scroll momentum
   }, []);
 
   // ============================================================================
@@ -2269,22 +2277,23 @@ export default function HomeScreen() {
     }
     
     Haptics.selectionAsync();
-    setShowDropdown(prev => !prev);
+    setShowDropdown(prev => {
+      // Extra safety: never open during scroll
+      if (isScrolling && !prev) {
+        return false;
+      }
+      return !prev;
+    });
   }, [isScrolling]);
 
-  // Close dropdown when clicking outside
+  // Cleanup on unmount
   useEffect(() => {
-    const closeDropdown = () => {
-      if (showDropdown) {
-        setShowDropdown(false);
+    return () => {
+      if (dailyTaskDebounceRef.current) {
+        clearTimeout(dailyTaskDebounceRef.current);
       }
     };
-
-    // Add a small delay to ensure this runs after the click event
-    const timer = setTimeout(closeDropdown, 0);
-    
-    return () => clearTimeout(timer);
-  }, [showDropdown]);
+  }, []);
 
   // ============================================================================
   // DAILY TASK BUTTON FIX
@@ -2297,9 +2306,28 @@ export default function HomeScreen() {
       return;
     }
     
+    // Prevent multiple rapid taps (debounce)
+    if (isDailyTaskOpening) {
+      console.log('Daily task blocked - already opening');
+      return;
+    }
+    
+    // Set debounce flag
+    setIsDailyTaskOpening(true);
+    
+    // Clear any existing debounce timer
+    if (dailyTaskDebounceRef.current) {
+      clearTimeout(dailyTaskDebounceRef.current);
+    }
+    
+    // Reset debounce flag after 500ms
+    dailyTaskDebounceRef.current = setTimeout(() => {
+      setIsDailyTaskOpening(false);
+    }, 500);
+    
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowDailyTask(true);
-  }, [isScrolling]);
+  }, [isScrolling, isDailyTaskOpening]);
 
   // ============================================================================
   // MAIN RENDER
@@ -2380,7 +2408,7 @@ export default function HomeScreen() {
               transform: [{ translateY: controlsTranslateY }],
             },
           ]}
-          pointerEvents="auto"
+          pointerEvents={isScrolling ? "none" : "auto"}
         >
         <View 
           style={styles.dropdownContainer} 
@@ -2437,7 +2465,7 @@ export default function HomeScreen() {
                 style={styles.dailyTaskButton}
                 onPress={openDailyTask} // Use the fixed handler
                 activeOpacity={0.7}
-                disabled={isScrolling}
+                disabled={isScrolling || isDailyTaskOpening}
               >
               <LinearGradient
                 colors={[COLORS.gold, '#D97706'] as const}
@@ -2600,10 +2628,29 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={styles.floatingDailyTask}
               onPress={() => {
+                // Prevent multiple rapid taps
+                if (isDailyTaskOpening || isScrolling) {
+                  return;
+                }
+                
+                // Set debounce flag
+                setIsDailyTaskOpening(true);
+                
+                // Clear any existing debounce timer
+                if (dailyTaskDebounceRef.current) {
+                  clearTimeout(dailyTaskDebounceRef.current);
+                }
+                
+                // Reset debounce flag after 500ms
+                dailyTaskDebounceRef.current = setTimeout(() => {
+                  setIsDailyTaskOpening(false);
+                }, 500);
+                
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setShowDailyTask(true);
                 setFloatingPanelExpanded(false);
               }}
+              disabled={isDailyTaskOpening || isScrolling}
             >
               <LinearGradient
                 colors={[COLORS.gold, '#D97706'] as const}
@@ -2653,6 +2700,13 @@ export default function HomeScreen() {
           </Animated.View>
           <View style={{ height: 100 }} />
         </ScrollView>
+      )}
+
+      {/* Dropdown Overlay - Close dropdown when touching outside */}
+      {showDropdown && (
+        <TouchableWithoutFeedback onPress={() => setShowDropdown(false)}>
+          <View style={styles.dropdownOverlay} />
+        </TouchableWithoutFeedback>
       )}
     </View>
 
@@ -3474,6 +3528,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 24,
     elevation: 10,
+    zIndex: 1001,
     borderWidth: 1,
     borderColor: COLORS.gray[200],
   },
@@ -3506,6 +3561,14 @@ const styles = StyleSheet.create({
   dropdownItemTextActive: {
     color: COLORS.primary,
     fontWeight: '700',
+  },
+  dropdownOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
   },
   dailyTaskButton: {
     borderRadius: 14,
