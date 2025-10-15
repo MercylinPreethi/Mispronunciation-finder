@@ -590,7 +590,7 @@ export default function HomeScreen() {
   const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
   const [floatingPanelExpanded, setFloatingPanelExpanded] = useState(false);
   const isScrollingRef = useRef(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const initializeOnceRef = useRef(false);
   const loadingRef = useRef(false);
