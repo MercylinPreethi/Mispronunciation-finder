@@ -8,8 +8,8 @@
 //    to prevent unnecessary re-renders and expensive calculations
 // 3. ANIMATION OPTIMIZATION: Pulse animations moved to dedicated useEffect with proper
 //    cleanup, ensuring only the current word animates (not all words)
-// 4. SCROLLVIEW PERFORMANCE: Added removeClippedSubviews, maxToRenderPerBatch, 
-//    updateCellsBatchingPeriod, and windowSize props for better scrolling performance
+// 4. SCROLLVIEW PERFORMANCE: Added removeClippedSubviews for better memory management
+//    and optimized scroll event throttling for smooth 60fps scrolling
 // 5. COMPONENT MEMOIZATION: ProgressCircle wrapped with React.memo to prevent
 //    unnecessary re-renders of child components
 // 6. HAPTIC FEEDBACK: Consistent haptic feedback across all interactive elements
@@ -2543,9 +2543,6 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
           removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          updateCellsBatchingPeriod={50}
-          windowSize={21}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { y: scrollY } } }],
             { 
