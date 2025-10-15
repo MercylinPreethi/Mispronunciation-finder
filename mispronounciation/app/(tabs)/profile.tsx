@@ -15,6 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import LearningPathBackground from '../../components/LearningPathBackground';
 import * as Haptics from 'expo-haptics';
 import { auth, database } from '../../lib/firebase';
 import { ref, get } from 'firebase/database';
@@ -983,6 +984,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
+      <LearningPathBackground />
       {/* Header with Refresh */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
