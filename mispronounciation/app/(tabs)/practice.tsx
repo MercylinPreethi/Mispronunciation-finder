@@ -206,7 +206,7 @@ export default function PracticeScreen() {
     } else {
       Animated.timing(statsAnim, {
         toValue: 0,
-        duration: 200,
+        duration: 150,
         useNativeDriver: true,
       }).start();
     }
@@ -705,47 +705,49 @@ export default function PracticeScreen() {
         </LinearGradient>
       </Animated.View>
 
-      {/* Quick Stats Bar */}
-      <Animated.View 
-        style={[
-          styles.statsBar,
-          {
-            opacity: statsAnim,
-            transform: [{
-              translateY: statsAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [-30, 0],
-              }),
-            }],
-          }
-        ]}
-      >
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Icon name="check-circle" size={20} color="#10B981" />
-            <Text style={styles.statValue}>
-              {sessions.filter(s => s.attempts[0]?.scores.accuracy >= 0.8).length}
-            </Text>
-            <Text style={styles.statLabel}>Mastered</Text>
+      {/* Quick Stats Bar - Only show when stats are visible */}
+      {showStats && (
+        <Animated.View 
+          style={[
+            styles.statsBar,
+            {
+              opacity: statsAnim,
+              transform: [{
+                translateY: statsAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-30, 0],
+                }),
+              }],
+            }
+          ]}
+        >
+          <View style={styles.statsContainer}>
+            <View style={styles.statCard}>
+              <Icon name="check-circle" size={20} color="#10B981" />
+              <Text style={styles.statValue}>
+                {sessions.filter(s => s.attempts[0]?.scores.accuracy >= 0.8).length}
+              </Text>
+              <Text style={styles.statLabel}>Mastered</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Icon name="warning" size={20} color="#F59E0B" />
+              <Text style={styles.statValue}>
+                {sessions.filter(s => s.attempts[0]?.mispronuncedWords.length > 0).length}
+              </Text>
+              <Text style={styles.statLabel}>Need Practice</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Icon name="trending-up" size={20} color="#6366F1" />
+              <Text style={styles.statValue}>
+                {sessions.reduce((acc, s) => acc + s.attempts.length, 0)}
+              </Text>
+              <Text style={styles.statLabel}>Total Attempts</Text>
+            </View>
           </View>
-          <View style={styles.statCard}>
-            <Icon name="warning" size={20} color="#F59E0B" />
-            <Text style={styles.statValue}>
-              {sessions.filter(s => s.attempts[0]?.mispronuncedWords.length > 0).length}
-            </Text>
-            <Text style={styles.statLabel}>Need Practice</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Icon name="trending-up" size={20} color="#6366F1" />
-            <Text style={styles.statValue}>
-              {sessions.reduce((acc, s) => acc + s.attempts.length, 0)}
-            </Text>
-            <Text style={styles.statLabel}>Total Attempts</Text>
-          </View>
-        </View>
-      </Animated.View>
+        </Animated.View>
+      )}
 
-      {/* Filter Tabs */}
+      {/* Filter Tabs - Immediately below header or stats */}
       <Animated.View 
         style={[
           styles.filterContainer,
@@ -799,7 +801,7 @@ export default function PracticeScreen() {
         </ScrollView>
       </Animated.View>
 
-      {/* Enhanced Search Bar and New Button */}
+      {/* Enhanced Search Bar and New Button - Immediately below filter tabs */}
       <Animated.View 
         style={[
           styles.searchContainer, 
@@ -1030,7 +1032,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   header: {
-    paddingBottom: 16,
+    paddingBottom: 12,
     paddingHorizontal: 20,
   },
   headerGradient: {
@@ -1088,24 +1090,24 @@ const styles = StyleSheet.create({
   },
   statsBar: {
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 8,
   },
   statsContainer: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 16,
+    padding: 12,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 4,
-    gap: 16,
+    gap: 12,
   },
   statCard: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   statValue: {
     fontSize: 20,
@@ -1122,10 +1124,11 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 8,
   },
   filterScrollContent: {
     paddingRight: 20,
+    paddingLeft: 0,
   },
   filterTab: {
     flexDirection: 'row',
@@ -1154,7 +1157,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 8,
     gap: 12,
   },
   searchBlur: {
@@ -1221,9 +1224,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    paddingTop: 8,
   },
   listContent: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 8,
     paddingBottom: 40,
   },
   sessionCardContainer: {
