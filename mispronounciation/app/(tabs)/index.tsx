@@ -240,6 +240,17 @@ export default function HomeScreen() {
   const pulseAnims = useRef<Record<string, Animated.Value>>({}).current;
   const rotateAnims = useRef<Record<string, Animated.Value>>({}).current;
   
+  // Enhanced animation refs
+  const headerAnim = useRef(new Animated.Value(0)).current;
+  const contentAnim = useRef(new Animated.Value(0)).current;
+  const floatingAnim = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const dailyTaskAnim = useRef(new Animated.Value(0)).current;
+  const difficultyAnim = useRef(new Animated.Value(0)).current;
+  const wordPathAnim = useRef(new Animated.Value(0)).current;
+  const statsAnim = useRef(new Animated.Value(0)).current;
+  const refreshAnim = useRef(new Animated.Value(0)).current;
+  
   // Scroll animation tracking
   const scrollY = useRef(new Animated.Value(0)).current;
   const SCROLL_THRESHOLD = 100; // Distance to trigger full collapse
@@ -259,6 +270,31 @@ export default function HomeScreen() {
     words: {},
     progress: {}
   });
+
+  // Enhanced refresh functionality
+  const handleRefresh = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Animate refresh button
+    Animated.sequence([
+      Animated.timing(refreshAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(refreshAnim, {
+        toValue: 0,
+        duration: 0,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Refresh data
+    const user = auth.currentUser;
+    if (user) {
+      await loadUserDataFast(user.uid);
+    }
+  }, []);
 
   const getTodayDateString = () => {
     const today = new Date();
@@ -949,28 +985,93 @@ export default function HomeScreen() {
       loadUserDataFast(user.uid);
     }
 
-    // Fast badge animations
-    badgeAnims.forEach((anim, index) => {
-      Animated.spring(anim, {
+    // Enhanced staggered entrance animations
+    Animated.sequence([
+      // Header slides down
+      Animated.timing(headerAnim, {
         toValue: 1,
-        tension: 60, // Increased tension for faster animation
-        friction: 5, // Reduced friction for faster animation
-        delay: index * 80, // Reduced delay
+        duration: 600,
         useNativeDriver: true,
-      }).start();
-    });
+      }),
+      // Stats badges animate in with stagger
+      Animated.stagger(120, [
+        Animated.spring(badgeAnims[0], {
+          toValue: 1,
+          tension: 50,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+        Animated.spring(badgeAnims[1], {
+          toValue: 1,
+          tension: 50,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+        Animated.spring(badgeAnims[2], {
+          toValue: 1,
+          tension: 50,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+      ]),
+      // Content elements fade in
+      Animated.parallel([
+        Animated.timing(contentAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(progressAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(dailyTaskAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(difficultyAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]),
+      // Word path animates in
+      Animated.timing(wordPathAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
-    // Daily task pulse
+    // Floating background elements
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatingAnim, {
+          toValue: 1,
+          duration: 4000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatingAnim, {
+          toValue: 0,
+          duration: 4000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Daily task pulse animation
     Animated.loop(
       Animated.sequence([
         Animated.timing(dailyTaskPulse, {
           toValue: 1.1,
-          duration: 1000,
+          duration: 2000,
           useNativeDriver: true,
         }),
         Animated.timing(dailyTaskPulse, {
           toValue: 1,
-          duration: 1000,
+          duration: 2000,
           useNativeDriver: true,
         }),
       ])
@@ -1375,16 +1476,43 @@ export default function HomeScreen() {
           Animated.loop(
             Animated.sequence([
               Animated.timing(pulseAnimValue, {
-                toValue: 1.15,
-                duration: 1500,
+                toValue: 1.2,
+                duration: 1200,
                 useNativeDriver: true,
               }),
               Animated.timing(pulseAnimValue, {
                 toValue: 1,
-                duration: 1500,
+                duration: 1200,
                 useNativeDriver: true,
               }),
             ])
+          ).start();
+        }
+
+        // Glow animation for mastered words
+        if (isMastered) {
+          Animated.loop(
+            Animated.sequence([
+              Animated.timing(glowAnim, {
+                toValue: 1,
+                duration: 2000,
+                useNativeDriver: true,
+              }),
+              Animated.timing(glowAnim, {
+                toValue: 0.3,
+                duration: 2000,
+                useNativeDriver: true,
+              }),
+            ])
+          ).start();
+
+          // Slow rotation for mastered words
+          Animated.loop(
+            Animated.timing(rotateAnims[word.id] || new Animated.Value(0), {
+              toValue: 1,
+              duration: 10000,
+              useNativeDriver: true,
+            })
           ).start();
         }
 
@@ -1450,7 +1578,7 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* Word Node Container */}
+            {/* Enhanced Word Node Container */}
             <Animated.View 
               style={[
                 styles.wordNodeContainer,
@@ -1460,7 +1588,13 @@ export default function HomeScreen() {
                   opacity: opacity,
                   transform: [
                     { scale: scale },
-                    { scale: isCurrent ? pulseAnimValue : 1 }
+                    { scale: isCurrent ? pulseAnimValue : 1 },
+                    {
+                      rotate: isMastered ? rotateAnims[word.id]?.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '360deg'],
+                      }) : '0deg'
+                    }
                   ]
                 }
               ]}
@@ -1827,35 +1961,70 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header - Animated for scroll collapse */}
+      {/* Enhanced Header - Animated for scroll collapse */}
       <Animated.View 
         style={[
           styles.header,
           {
             paddingBottom: headerPaddingBottom,
+            opacity: headerAnim,
+            transform: [{
+              translateY: headerAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-50, 0],
+              }),
+            }],
           },
         ]}
       >
         <View style={styles.headerTop}>
           <Text style={styles.userName}>Hi, {userName}! </Text>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+            activeOpacity={0.8}
+          >
+            <Animated.View style={{
+              transform: [{
+                rotate: refreshAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0deg', '360deg'],
+                }),
+              }],
+            }}>
+              <Icon name="refresh" size={24} color={COLORS.primary} />
+            </Animated.View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.badgesContainer}>
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[0] }] }]}>
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.secondary] as const}
-              style={styles.badgeGradient}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                // Add refresh functionality
+              }}
             >
-              <Icon name="menu-book" size={24} color={COLORS.white} />
-              <View style={styles.badgeInfo}>
-                <Text style={styles.badgeValue}>{stats.totalWords}</Text>
-                <Text style={styles.badgeLabel}>Words</Text>
-              </View>
-            </LinearGradient>
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.secondary] as const}
+                style={styles.badgeGradient}
+              >
+                <Icon name="menu-book" size={24} color={COLORS.white} />
+                <View style={styles.badgeInfo}>
+                  <Text style={styles.badgeValue}>{stats.totalWords}</Text>
+                  <Text style={styles.badgeLabel}>Words</Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
           </Animated.View>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[1] }] }]}>
-            <TouchableOpacity onPress={openStreakCalendar} activeOpacity={0.8}>
+            <TouchableOpacity 
+              onPress={openStreakCalendar} 
+              activeOpacity={0.8}
+              style={styles.badgeTouchable}
+            >
               <LinearGradient
                 colors={['#F59E0B', '#D97706'] as const}
                 style={styles.badgeGradient}
@@ -1870,32 +2039,70 @@ export default function HomeScreen() {
           </Animated.View>
 
           <Animated.View style={[styles.badge, { transform: [{ scale: badgeAnims[2] }] }]}>
-            <LinearGradient
-              colors={[COLORS.success, '#059669'] as const}
-              style={styles.badgeGradient}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                // Add accuracy details modal
+              }}
             >
-              <Icon name="check-circle" size={24} color={COLORS.white} />
-              <View style={styles.badgeInfo}>
-                <Text style={styles.badgeValue}>{Math.round(stats.accuracy * 100)}%</Text>
-                <Text style={styles.badgeLabel}>Accuracy</Text>
-              </View>
-            </LinearGradient>
+              <LinearGradient
+                colors={[COLORS.success, '#059669'] as const}
+                style={styles.badgeGradient}
+              >
+                <Icon name="check-circle" size={24} color={COLORS.white} />
+                <View style={styles.badgeInfo}>
+                  <Text style={styles.badgeValue}>{Math.round(stats.accuracy * 100)}%</Text>
+                  <Text style={styles.badgeLabel}>Accuracy</Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
           </Animated.View>
         </View>
       </Animated.View>
 
-      {/* Content Area with Background */}
-      <View style={styles.contentWrapper}>
+      {/* Enhanced Content Area with Background */}
+      <Animated.View 
+        style={[
+          styles.contentWrapper,
+          {
+            opacity: contentAnim,
+            transform: [{
+              translateY: contentAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [30, 0],
+              }),
+            }],
+          },
+        ]}
+      >
         {/* Learning Path Background - covers entire area below header */}
-        <LearningPathBackground />
+        <Animated.View
+          style={{
+            opacity: floatingAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.8, 1],
+            }),
+          }}
+        >
+          <LearningPathBackground />
+        </Animated.View>
 
-        {/* Controls - Fades out when scrolling */}
+        {/* Enhanced Controls - Fades out when scrolling */}
         <Animated.View 
           style={[
             styles.controls,
             {
-              opacity: controlsOpacity,
-              transform: [{ translateY: controlsTranslateY }],
+              opacity: Animated.multiply(controlsOpacity, difficultyAnim),
+              transform: [
+                { translateY: controlsTranslateY },
+                {
+                  scale: difficultyAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.95, 1],
+                  }),
+                },
+              ],
             },
           ]}
           pointerEvents="box-none"
@@ -1945,14 +2152,30 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Daily Task Button */}
-        <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
+        {/* Enhanced Daily Task Button */}
+        <Animated.View 
+          style={[
+            { 
+              transform: [
+                { scale: Animated.multiply(dailyTaskPulse, dailyTaskAnim) },
+                {
+                  translateY: dailyTaskAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [20, 0],
+                  }),
+                },
+              ],
+              opacity: dailyTaskAnim,
+            }
+          ]}
+        >
           <TouchableOpacity
             style={styles.dailyTaskButton}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               setShowDailyTask(true);
             }}
+            activeOpacity={0.8}
           >
             <LinearGradient
               colors={[COLORS.gold, '#D97706'] as const}
@@ -1969,14 +2192,22 @@ export default function HomeScreen() {
         </Animated.View>
       </Animated.View>
 
-      {/* Progress Indicator - Fades out when scrolling */}
+      {/* Enhanced Progress Indicator - Fades out when scrolling */}
       {allWords.length > 0 && (
         <Animated.View 
           style={[
             styles.progressContainer,
             {
-              opacity: progressOpacity,
-              transform: [{ translateY: progressTranslateY }],
+              opacity: Animated.multiply(progressOpacity, progressAnim),
+              transform: [
+                { translateY: progressTranslateY },
+                {
+                  scale: progressAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.95, 1],
+                  }),
+                },
+              ],
             },
           ]}
           pointerEvents="box-none"
@@ -2017,13 +2248,21 @@ export default function HomeScreen() {
         </Animated.View>
       )}
 
-      {/* Floating Control Panel - appears when scrolled */}
+      {/* Enhanced Floating Control Panel - appears when scrolled */}
       <Animated.View 
         style={[
           styles.floatingPanel,
           {
             opacity: floatingPanelOpacity,
-            transform: [{ translateY: floatingPanelTranslateY }],
+            transform: [
+              { translateY: floatingPanelTranslateY },
+              {
+                scale: floatingPanelOpacity.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.95, 1],
+                }),
+              },
+            ],
           },
         ]}
         pointerEvents="box-none"
@@ -2143,7 +2382,20 @@ export default function HomeScreen() {
           <Text style={styles.loadingText}>Loading your progress...</Text>
         </View>
       ) : (
-        <View style={styles.scrollContainer}>
+        <Animated.View 
+          style={[
+            styles.scrollContainer,
+            {
+              opacity: wordPathAnim,
+              transform: [{
+                translateY: wordPathAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [30, 0],
+                }),
+              }],
+            },
+          ]}
+        >
           <ScrollView 
             ref={scrollViewRef}
             style={styles.scrollView}
@@ -2155,26 +2407,52 @@ export default function HomeScreen() {
               { useNativeDriver: false }
             )}
           >
-            <View style={styles.pathContainer}>
+            <Animated.View 
+              style={[
+                styles.pathContainer,
+                {
+                  opacity: wordPathAnim,
+                  transform: [{
+                    scale: wordPathAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.98, 1],
+                    }),
+                  }],
+                },
+              ]}
+            >
               {renderWordPath()}
-            </View>
+            </Animated.View>
             <View style={{ height: 100 }} />
           </ScrollView>
           
-          {/* Scroll to Current Position Button */}
+          {/* Enhanced Scroll to Current Position Button */}
           {allWords.length > 0 && (
-            <TouchableOpacity 
-              style={styles.scrollToCurrentButton}
-              onPress={scrollToCurrentPosition}
+            <Animated.View
+              style={{
+                opacity: wordPathAnim,
+                transform: [{
+                  scale: wordPathAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.8, 1],
+                  }),
+                }],
+              }}
             >
-              <LinearGradient
-                colors={[COLORS.primary, COLORS.secondary] as const}
-                style={styles.scrollToCurrentGradient}
+              <TouchableOpacity 
+                style={styles.scrollToCurrentButton}
+                onPress={scrollToCurrentPosition}
+                activeOpacity={0.8}
               >
-                <Icon name="my-location" size={20} color={COLORS.white} />
-                {/* <Text style={styles.scrollToCurrentText}>Current Level</Text> */}
-              </LinearGradient>
-            </TouchableOpacity>
+                <LinearGradient
+                  colors={[COLORS.primary, COLORS.secondary] as const}
+                  style={styles.scrollToCurrentGradient}
+                >
+                  <Icon name="my-location" size={20} color={COLORS.white} />
+                  {/* <Text style={styles.scrollToCurrentText}>Current Level</Text> */}
+                </LinearGradient>
+              </TouchableOpacity>
+            </Animated.View>
           )}
         </View>
       )}
@@ -2727,10 +3005,10 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 32,
     zIndex: 10,
     shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 28,
+    elevation: 12,
   },
   floatingPanel: {
     position: 'absolute',
@@ -2874,7 +3152,20 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
+  },
+  refreshButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.2)',
   },
   userName: {
     fontSize: 32,
@@ -2898,6 +3189,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 6,
+  },
+  badgeTouchable: {
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   badgeGradient: {
     flexDirection: 'row',
@@ -3004,17 +3299,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   dailyTaskButton: {
-    borderRadius: 14,
+    borderRadius: 18,
     overflow: 'hidden',
     shadowColor: COLORS.gold,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
   },
   dailyTaskGradient: {
-    width: 56,
-    height: 56,
+    width: 60,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -3185,24 +3480,24 @@ const styles = StyleSheet.create({
   },
   wordNodeContainer: {
     position: 'absolute',
-    width: 104,
-    height: 104,
+    width: 108,
+    height: 108,
     zIndex: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   wordNodeBackground: {
     position: 'absolute',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     backgroundColor: COLORS.white,
-    opacity: 0.6,
+    opacity: 0.8,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 6,
   },
   wordGlowOuter: {
     position: 'absolute',
