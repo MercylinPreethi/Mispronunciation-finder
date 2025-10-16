@@ -215,6 +215,9 @@ export default function PracticeScreen() {
   // Debug modal state
   useEffect(() => {
     console.log('Modal state changed:', newSessionModalVisible);
+    if (newSessionModalVisible) {
+      console.log('Modal should be visible now - check screen');
+    }
   }, [newSessionModalVisible]);
 
   useEffect(() => {
@@ -952,12 +955,10 @@ export default function PracticeScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
-          <TouchableOpacity 
-            style={styles.modalBackdrop}
-            activeOpacity={1}
-            onPress={handleCancelModal}
-          />
           <View style={styles.modalContainer}>
+            <Text style={{ color: 'white', fontSize: 24, textAlign: 'center', padding: 20 }}>
+              MODAL IS VISIBLE - DEBUG
+            </Text>
             <LinearGradient
               colors={['#6366F1', '#8B5CF6']}
               start={{ x: 0, y: 0 }}
@@ -1437,10 +1438,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalOverlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
+    backgroundColor: 'rgba(255, 0, 0, 0.3)', // Red background for debugging
   },
   modalBackdrop: {
     flex: 1,
@@ -1450,8 +1456,11 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   modalContainer: {
-    width: '90%',
-    maxWidth: 420,
+    position: 'absolute',
+    top: '20%',
+    left: '5%',
+    right: '5%',
+    height: '60%',
     borderRadius: 32,
     overflow: 'hidden',
     shadowColor: '#000000',
@@ -1460,7 +1469,7 @@ const styles = StyleSheet.create({
     shadowRadius: 32,
     elevation: 16,
     zIndex: 1001,
-    backgroundColor: '#FFFFFF', // Add solid background
+    backgroundColor: '#FF0000', // Bright red background for debugging
   },
   modalGradient: {
     padding: 32,
