@@ -17,6 +17,7 @@ import {
   ScrollView,
   Modal,
   KeyboardAvoidingView,
+  PanResponder,
 } from 'react-native';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import * as DocumentPicker from 'expo-document-picker';
@@ -30,6 +31,7 @@ import { auth, database } from '@/lib/firebase';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import LearningPathBackground from '../../components/LearningPathBackground';
 
 const audioRecorderPlayer = new AudioRecorderPlayer();
@@ -141,14 +143,80 @@ export default function PracticeScreen() {
   const [userId, setUserId] = useState<string>('');
   const [newSessionModalVisible, setNewSessionModalVisible] = useState(false);
   const [newSessionText, setNewSessionText] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'recent' | 'high-accuracy' | 'needs-practice'>('all');
+  
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const modalAnim = useRef(new Animated.Value(0)).current;
+  const headerAnim = useRef(new Animated.Value(0)).current;
+  const searchAnim = useRef(new Animated.Value(0)).current;
+  const cardAnimations = useRef(new Map()).current;
+  const statsAnim = useRef(new Animated.Value(0)).current;
+  const filterAnim = useRef(new Animated.Value(0)).current;
+  const refreshAnim = useRef(new Animated.Value(0)).current;
+  const floatingAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
+    // Staggered entrance animations
+    Animated.sequence([
+      Animated.timing(headerAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(searchAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Floating animation for background elements
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatingAnim, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatingAnim, {
+          toValue: 0,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  useEffect(() => {
+    if (showStats) {
+      Animated.spring(statsAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(statsAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [showStats]);
+
+  useEffect(() => {
+    Animated.spring(filterAnim, {
       toValue: 1,
-      duration: 600,
+      tension: 50,
+      friction: 8,
       useNativeDriver: true,
     }).start();
   }, []);
@@ -182,15 +250,36 @@ export default function PracticeScreen() {
   }, []);
 
   useEffect(() => {
+    let filtered = sessions;
+
+    // Apply search filter
     if (searchQuery.trim()) {
-      const filtered = sessions.filter(session =>
+      filtered = filtered.filter(session =>
         session.referenceText.toLowerCase().includes(searchQuery.toLowerCase())
       );
-      setFilteredSessions(filtered);
-    } else {
-      setFilteredSessions(sessions);
     }
-  }, [searchQuery, sessions]);
+
+    // Apply category filter
+    switch (selectedFilter) {
+      case 'recent':
+        filtered = filtered.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 10);
+        break;
+      case 'high-accuracy':
+        filtered = filtered.filter(session => {
+          const latestAttempt = session.attempts[0];
+          return latestAttempt && latestAttempt.scores.accuracy >= 0.8;
+        });
+        break;
+      case 'needs-practice':
+        filtered = filtered.filter(session => {
+          const latestAttempt = session.attempts[0];
+          return latestAttempt && latestAttempt.mispronuncedWords.length > 0;
+        });
+        break;
+    }
+
+    setFilteredSessions(filtered);
+  }, [searchQuery, sessions, selectedFilter]);
 
   const loadUserSessions = async (userIdParam: string) => {
     try {
@@ -277,7 +366,39 @@ export default function PracticeScreen() {
     });
   };
 
+  const handleRefresh = async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Animate refresh button
+    Animated.sequence([
+      Animated.timing(refreshAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(refreshAnim, {
+        toValue: 0,
+        duration: 0,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Refresh data
+    if (currentUser) {
+      await loadUserSessions(currentUser.uid);
+    }
+    
+    setTimeout(() => {
+      setIsRefreshing(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, 1000);
+  };
+
   const handleNewSession = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setNewSessionText('');
     setNewSessionModalVisible(true);
     Animated.spring(modalAnim, {
@@ -334,67 +455,156 @@ export default function PracticeScreen() {
     return '#EF4444';
   };
 
-  const renderSessionCard = ({ item: session }: { item: SentenceSession }) => {
+  const getCardAnimation = (sessionId: string) => {
+    if (!cardAnimations.has(sessionId)) {
+      cardAnimations.set(sessionId, {
+        scale: new Animated.Value(0.95),
+        opacity: new Animated.Value(0),
+        translateY: new Animated.Value(20),
+      });
+    }
+    return cardAnimations.get(sessionId);
+  };
+
+  const renderSessionCard = ({ item: session, index }: { item: SentenceSession; index: number }) => {
     const latestAttempt = session.attempts[0];
     const accuracy = latestAttempt ? latestAttempt.scores.accuracy : 0;
     const accuracyPercent = (accuracy * 100).toFixed(0);
+    const animation = getCardAnimation(session.id);
+
+    // Animate card entrance with stagger
+    React.useEffect(() => {
+      Animated.sequence([
+        Animated.delay(index * 100),
+        Animated.parallel([
+          Animated.spring(animation.scale, {
+            toValue: 1,
+            tension: 50,
+            friction: 8,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animation.opacity, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animation.translateY, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+    }, []);
+
+    const handlePressIn = () => {
+      Animated.spring(animation.scale, {
+        toValue: 0.98,
+        tension: 300,
+        friction: 10,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(animation.scale, {
+        toValue: 1,
+        tension: 300,
+        friction: 10,
+        useNativeDriver: true,
+      }).start();
+    };
 
     return (
-      <TouchableOpacity
-        style={styles.sessionCard}
-        onPress={() => handleSessionPress(session)}
-        activeOpacity={0.7}
+      <Animated.View
+        style={[
+          styles.sessionCardContainer,
+          {
+            opacity: animation.opacity,
+            transform: [
+              { scale: animation.scale },
+              { translateY: animation.translateY }
+            ],
+          },
+        ]}
       >
-        <LinearGradient
-          colors={['rgba(99, 102, 241, 0.05)', 'rgba(139, 92, 246, 0.05)']}
-          style={styles.sessionGradient}
+        <TouchableOpacity
+          style={styles.sessionCard}
+          onPress={() => handleSessionPress(session)}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          activeOpacity={1}
         >
-          <View style={styles.sessionHeader}>
-            <View style={styles.sessionTitleContainer}>
-              <Text style={styles.sessionTitle} numberOfLines={2}>
-                {session.referenceText}
-              </Text>
-              <Text style={styles.sessionDate}>
-                {session.createdAt.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-              </Text>
-            </View>
-            <Icon name="chevron-right" size={24} color="#9CA3AF" />
-          </View>
-
-          <View style={styles.sessionStats}>
-            <View style={styles.statItem}>
-              <Icon name="history" size={18} color="#6B7280" />
-              <Text style={styles.statText}>{session.attempts.length} attempts</Text>
-            </View>
-            
-            {latestAttempt && (
-              <View style={styles.statItem}>
+          <LinearGradient
+            colors={['rgba(99, 102, 241, 0.08)', 'rgba(139, 92, 246, 0.08)']}
+            style={styles.sessionGradient}
+          >
+            {/* Progress Ring */}
+            <View style={styles.progressRingContainer}>
+              <View style={styles.progressRing}>
                 <View style={[
-                  styles.accuracyDot,
-                  { backgroundColor: getAccuracyColor(accuracy) }
+                  styles.progressFill,
+                  { 
+                    transform: [{ rotate: `${(accuracy * 360) - 90}deg` }],
+                    backgroundColor: getAccuracyColor(accuracy)
+                  }
                 ]} />
-                <Text style={styles.statText}>Latest: {accuracyPercent}%</Text>
-              </View>
-            )}
-          </View>
-
-          {latestAttempt && latestAttempt.mispronuncedWords.length > 0 && (
-            <View style={styles.wordsPreview}>
-              <Text style={styles.wordsPreviewLabel}>Needs practice:</Text>
-              <View style={styles.wordsChips}>
-                {latestAttempt.mispronuncedWords.slice(0, 3).map((word, index) => (
-                  <View key={index} style={styles.wordChip}>
-                    <Text style={styles.wordChipText}>{word}</Text>
-                  </View>
-                ))}
-                {latestAttempt.mispronuncedWords.length > 3 && (
-                  <Text style={styles.moreWords}>+{latestAttempt.mispronuncedWords.length - 3}</Text>
-                )}
+                <View style={styles.progressInner}>
+                  <Text style={styles.progressText}>{accuracyPercent}%</Text>
+                </View>
               </View>
             </View>
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
+
+            <View style={styles.sessionContent}>
+              <View style={styles.sessionHeader}>
+                <View style={styles.sessionTitleContainer}>
+                  <Text style={styles.sessionTitle} numberOfLines={2}>
+                    {session.referenceText}
+                  </Text>
+                  <Text style={styles.sessionDate}>
+                    {session.createdAt.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </Text>
+                </View>
+                <View style={styles.sessionActions}>
+                  <Icon name="chevron-right" size={24} color="#9CA3AF" />
+                </View>
+              </View>
+
+              <View style={styles.sessionStats}>
+                <View style={styles.statItem}>
+                  <View style={styles.statIconContainer}>
+                    <Icon name="history" size={16} color="#6366F1" />
+                  </View>
+                  <Text style={styles.statText}>{session.attempts.length} attempts</Text>
+                </View>
+                
+                <View style={styles.statItem}>
+                  <View style={styles.statIconContainer}>
+                    <Icon name="trending-up" size={16} color="#10B981" />
+                  </View>
+                  <Text style={styles.statText}>Latest: {accuracyPercent}%</Text>
+                </View>
+              </View>
+
+              {latestAttempt && latestAttempt.mispronuncedWords.length > 0 && (
+                <View style={styles.wordsPreview}>
+                  <Text style={styles.wordsPreviewLabel}>Needs practice:</Text>
+                  <View style={styles.wordsChips}>
+                    {latestAttempt.mispronuncedWords.slice(0, 3).map((word, index) => (
+                      <View key={index} style={styles.wordChip}>
+                        <Text style={styles.wordChipText}>{word}</Text>
+                      </View>
+                    ))}
+                    {latestAttempt.mispronuncedWords.length > 3 && (
+                      <Text style={styles.moreWords}>+{latestAttempt.mispronuncedWords.length - 3}</Text>
+                    )}
+                  </View>
+                </View>
+              )}
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
     );
   };
 
@@ -423,36 +633,196 @@ export default function PracticeScreen() {
       <LearningPathBackground />
       <StatusBar barStyle="dark-content" />
       
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+      {/* Enhanced Header */}
+      <Animated.View 
+        style={[
+          styles.header, 
+          { 
+            paddingTop: insets.top + 16,
+            opacity: headerAnim,
+            transform: [{
+              translateY: headerAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-50, 0],
+              }),
+            }],
+          }
+        ]}
+      >
         <LinearGradient
-          colors={['#6366F1', '#8B5CF6']}
+          colors={['#6366F1', '#8B5CF6', '#EC4899']}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={styles.headerGradient}
         >
-          <Text style={styles.headerTitle}>Practice Sessions</Text>
-          <Text style={styles.headerSubtitle}>{filteredSessions.length} total sessions</Text>
+          <View style={styles.headerContent}>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.headerTitle}>Practice Sessions</Text>
+              <Text style={styles.headerSubtitle}>{filteredSessions.length} total sessions</Text>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                style={styles.statsButton}
+                onPress={() => setShowStats(!showStats)}
+                activeOpacity={0.8}
+              >
+                <Icon name="analytics" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.refreshButton}
+                onPress={handleRefresh}
+                activeOpacity={0.8}
+              >
+                <Animated.View style={{
+                  transform: [{
+                    rotate: refreshAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  }],
+                }}>
+                  <Icon name="refresh" size={24} color="#FFFFFF" />
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
+          </View>
         </LinearGradient>
-      </View>
+      </Animated.View>
 
-      {/* Search Bar and New Button */}
-      <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
-        <View style={styles.searchInputContainer}>
-          <Icon name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search sessions..."
-            placeholderTextColor="#9CA3AF"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Icon name="close" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
+      {/* Quick Stats Bar */}
+      <Animated.View 
+        style={[
+          styles.statsBar,
+          {
+            opacity: statsAnim,
+            transform: [{
+              translateY: statsAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-30, 0],
+              }),
+            }],
+          }
+        ]}
+      >
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <Icon name="check-circle" size={20} color="#10B981" />
+            <Text style={styles.statValue}>
+              {sessions.filter(s => s.attempts[0]?.scores.accuracy >= 0.8).length}
+            </Text>
+            <Text style={styles.statLabel}>Mastered</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Icon name="warning" size={20} color="#F59E0B" />
+            <Text style={styles.statValue}>
+              {sessions.filter(s => s.attempts[0]?.mispronuncedWords.length > 0).length}
+            </Text>
+            <Text style={styles.statLabel}>Need Practice</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Icon name="trending-up" size={20} color="#6366F1" />
+            <Text style={styles.statValue}>
+              {sessions.reduce((acc, s) => acc + s.attempts.length, 0)}
+            </Text>
+            <Text style={styles.statLabel}>Total Attempts</Text>
+          </View>
         </View>
+      </Animated.View>
+
+      {/* Filter Tabs */}
+      <Animated.View 
+        style={[
+          styles.filterContainer,
+          {
+            opacity: filterAnim,
+            transform: [{
+              translateY: filterAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-20, 0],
+              }),
+            }],
+          }
+        ]}
+      >
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScrollContent}
+        >
+          {[
+            { key: 'all', label: 'All', icon: 'apps' },
+            { key: 'recent', label: 'Recent', icon: 'schedule' },
+            { key: 'high-accuracy', label: 'Mastered', icon: 'star' },
+            { key: 'needs-practice', label: 'Practice', icon: 'fitness-center' },
+          ].map((filter) => (
+            <TouchableOpacity
+              key={filter.key}
+              style={[
+                styles.filterTab,
+                selectedFilter === filter.key && styles.filterTabActive
+              ]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setSelectedFilter(filter.key as any);
+              }}
+              activeOpacity={0.8}
+            >
+              <Icon 
+                name={filter.icon} 
+                size={18} 
+                color={selectedFilter === filter.key ? '#FFFFFF' : '#6B7280'} 
+              />
+              <Text style={[
+                styles.filterTabText,
+                selectedFilter === filter.key && styles.filterTabTextActive
+              ]}>
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </Animated.View>
+
+      {/* Enhanced Search Bar and New Button */}
+      <Animated.View 
+        style={[
+          styles.searchContainer, 
+          { 
+            opacity: searchAnim,
+            transform: [{
+              translateY: searchAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-30, 0],
+              }),
+            }],
+          }
+        ]}
+      >
+        <BlurView intensity={95} tint="light" style={styles.searchBlur}>
+          <View style={styles.searchInputContainer}>
+            <View style={styles.searchIconContainer}>
+              <Icon name="search" size={20} color="#6366F1" />
+            </View>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search sessions..."
+              placeholderTextColor="#9CA3AF"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity 
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSearchQuery('');
+                }}
+                style={styles.clearButton}
+              >
+                <Icon name="close" size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </BlurView>
 
         <TouchableOpacity
           style={styles.newButton}
@@ -464,11 +834,12 @@ export default function PracticeScreen() {
             style={styles.newButtonGradient}
           >
             <Icon name="add" size={24} color="#FFFFFF" />
+            <View style={styles.newButtonPulse} />
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Sessions List */}
+      {/* Enhanced Sessions List */}
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         {filteredSessions.length > 0 ? (
           <FlatList
@@ -477,10 +848,44 @@ export default function PracticeScreen() {
             renderItem={renderSessionCard}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            onRefresh={handleRefresh}
+            refreshing={isRefreshing}
+            refreshControl={
+              <Animated.View style={styles.refreshControl}>
+                <ActivityIndicator size="small" color="#6366F1" />
+              </Animated.View>
+            }
           />
         ) : (
-          <View style={styles.emptyState}>
-            <Icon name="mic-off" size={64} color="#D1D5DB" />
+          <Animated.View 
+            style={[
+              styles.emptyState,
+              {
+                opacity: fadeAnim,
+                transform: [{
+                  scale: fadeAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.9, 1],
+                  }),
+                }],
+              }
+            ]}
+          >
+            <Animated.View 
+              style={[
+                styles.emptyIconContainer,
+                {
+                  transform: [{
+                    rotate: floatingAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '10deg'],
+                    }),
+                  }],
+                }
+              ]}
+            >
+              <Icon name="mic-off" size={64} color="#D1D5DB" />
+            </Animated.View>
             <Text style={styles.emptyTitle}>
               {searchQuery ? 'No sessions found' : 'No practice sessions yet'}
             </Text>
@@ -490,11 +895,21 @@ export default function PracticeScreen() {
                 : 'Create your first session to start practicing'}
             </Text>
             {!searchQuery && (
-              <TouchableOpacity style={styles.emptyButton} onPress={handleNewSession}>
-                <Text style={styles.emptyButtonText}>Create New Session</Text>
+              <TouchableOpacity 
+                style={styles.emptyButton} 
+                onPress={handleNewSession}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['#6366F1', '#8B5CF6']}
+                  style={styles.emptyButtonGradient}
+                >
+                  <Icon name="add" size={20} color="#FFFFFF" />
+                  <Text style={styles.emptyButtonText}>Create New Session</Text>
+                </LinearGradient>
               </TouchableOpacity>
             )}
-          </View>
+          </Animated.View>
         )}
       </Animated.View>
 
@@ -606,21 +1021,119 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 24,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTextContainer: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 28,
     fontWeight: '900',
     color: '#FFFFFF',
     marginBottom: 4,
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '600',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  statsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  refreshButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  statsBar: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    gap: 16,
+  },
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1F2937',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  filterContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  filterScrollContent: {
+    paddingRight: 20,
+  },
+  filterTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 6,
+  },
+  filterTabActive: {
+    backgroundColor: '#6366F1',
+    borderColor: '#6366F1',
+  },
+  filterTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  filterTabTextActive: {
+    color: '#FFFFFF',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -628,24 +1141,28 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 12,
   },
+  searchBlur: {
+    flex: 1,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
   searchInputContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    paddingVertical: 14,
+    gap: 12,
   },
-  searchIcon: {
-    marginRight: 10,
+  searchIconContainer: {
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   searchInput: {
     flex: 1,
@@ -653,20 +1170,38 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     fontWeight: '500',
   },
-  newButton: {
-    borderRadius: 18,
-    overflow: 'hidden',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  newButtonGradient: {
-    width: 56,
-    height: 56,
+  clearButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  newButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+    position: 'relative',
+  },
+  newButtonGradient: {
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  newButtonPulse: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#6366F1',
+    opacity: 0.2,
   },
   content: {
     flex: 1,
@@ -675,19 +1210,66 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
-  sessionCard: {
+  sessionCardContainer: {
     marginBottom: 16,
+  },
+  sessionCard: {
     borderRadius: 24,
     overflow: 'hidden',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   sessionGradient: {
     backgroundColor: '#FFFFFF',
+    padding: 0,
+    flexDirection: 'row',
+  },
+  progressRingContainer: {
     padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressRing: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  progressFill: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 4,
+    borderColor: 'transparent',
+    borderTopColor: 'currentColor',
+    transform: [{ rotate: '-90deg' }],
+  },
+  progressInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#1F2937',
+  },
+  sessionContent: {
+    flex: 1,
+    padding: 20,
+    paddingLeft: 0,
   },
   sessionHeader: {
     flexDirection: 'row',
@@ -710,6 +1292,10 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontWeight: '600',
   },
+  sessionActions: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   sessionStats: {
     flexDirection: 'row',
     gap: 20,
@@ -718,17 +1304,20 @@ const styles = StyleSheet.create({
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+  },
+  statIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   statText: {
     fontSize: 14,
     color: '#6B7280',
     fontWeight: '600',
-  },
-  accuracyDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
   wordsPreview: {
     marginTop: 8,
@@ -776,36 +1365,48 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     paddingTop: 60,
   },
+  emptyIconContainer: {
+    marginBottom: 20,
+  },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
     color: '#1F2937',
-    marginTop: 20,
-    marginBottom: 8,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   emptyText: {
-    fontSize: 15,
+    fontSize: 16,
     color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 24,
     fontWeight: '500',
+    marginBottom: 32,
   },
   emptyButton: {
-    marginTop: 24,
-    backgroundColor: '#6366F1',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 18,
+    borderRadius: 20,
+    overflow: 'hidden',
     shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  emptyButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 16,
+    gap: 10,
   },
   emptyButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  refreshControl: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
   modalOverlay: {
     flex: 1,
@@ -814,74 +1415,75 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
   },
   modalContainer: {
-    width: '85%',
-    maxWidth: 400,
-    borderRadius: 28,
+    width: '90%',
+    maxWidth: 420,
+    borderRadius: 32,
     overflow: 'hidden',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.4,
+    shadowRadius: 32,
+    elevation: 16,
   },
   modalGradient: {
-    padding: 28,
+    padding: 32,
   },
   modalHeader: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '900',
     color: '#FFFFFF',
-    marginTop: 12,
+    marginTop: 16,
     letterSpacing: -0.5,
   },
   modalContent: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 24,
+    padding: 24,
+    backdropFilter: 'blur(20px)',
   },
   modalLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 12,
-    opacity: 0.9,
+    marginBottom: 16,
+    opacity: 0.95,
   },
   modalInput: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     fontSize: 16,
     color: '#1F2937',
     fontWeight: '500',
-    minHeight: 100,
-    marginBottom: 20,
+    minHeight: 120,
+    marginBottom: 24,
     borderWidth: 2,
     borderColor: 'transparent',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
   },
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 16,
   },
   modalCancelButton: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 16,
-    paddingVertical: 14,
+    borderRadius: 20,
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -894,23 +1496,23 @@ const styles = StyleSheet.create({
   },
   modalCreateButton: {
     flex: 1.5,
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
     shadowColor: '#FFFFFF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 6,
   },
   modalCreateGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    gap: 8,
+    paddingVertical: 16,
+    gap: 10,
   },
   modalCreateText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#6366F1',
   },
