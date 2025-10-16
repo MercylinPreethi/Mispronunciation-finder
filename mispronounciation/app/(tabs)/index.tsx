@@ -24,6 +24,7 @@ import axios from 'axios';
 import ProgressCircle from '../../components/ProgressCircle';
 import LearningPathBackground from '../../components/LearningPathBackground';
 import EnhancedStreakCalendar from '../../components/EnhancedStreakCalendar';
+import EnhancedWordPracticeModal from '../../components/EnhancedWordPracticeModal';
 import AudioRecorderPlayer, {
   AVEncoderAudioQualityIOSType,
   AVEncodingOption,
@@ -2500,207 +2501,21 @@ export default function HomeScreen() {
         </Modal>
       )}
 
-      {/* PRACTICE MODAL */}
-      {selectedWord && (
-        <Modal
-          visible={showPracticeModal}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={closePracticeModal}
-        >
-          <View style={styles.modalOverlay}>
-            <Animated.View 
-              style={[
-                styles.modalContainer,
-                {
-                  opacity: modalAnim,
-                  transform: [{ scale: modalScale }]
-                }
-              ]}
-            >
-              <ScrollView
-                style={styles.practiceModalScroll}
-                contentContainerStyle={styles.practiceModalScrollContent}
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-              >
-                <View style={styles.modalCard}>
-                {!showResult ? (
-                  <>
-                    <View style={styles.modalHeader}>
-                      <TouchableOpacity 
-                        style={styles.closeButton}
-                        onPress={closePracticeModal}
-                      >
-                        <Icon name="close" size={24} color={COLORS.gray[600]} />
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.modalWordDisplay}>
-                      <Text style={styles.modalWord}>{selectedWord.word}</Text>
-                      <Text style={styles.modalPhonetic}>{selectedWord.phonetic}</Text>
-                    </View>
-
-                    <View style={styles.modalMeaning}>
-                      <Icon name="book" size={20} color={COLORS.primary} />
-                      <Text style={styles.modalMeaningText}>{selectedWord.meaning}</Text>
-                    </View>
-
-                    <View style={styles.modalExample}>
-                      <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
-                      <Text style={styles.modalExampleText}>{selectedWord.example}</Text>
-                    </View>
-
-                    <View style={styles.modalTip}>
-                      <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
-                      <Text style={styles.modalTipText}>{selectedWord.tip}</Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.modalListenButton}
-                      onPress={() => playWordPronunciation(selectedWord.word)}
-                      disabled={playingAudio}
-                    >
-                      <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color={COLORS.white} />
-                      <Text style={styles.modalListenText}>
-                        {playingAudio ? 'Playing...' : 'Listen'}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.modalRecordSection}>
-                      {isProcessing ? (
-                        <View style={styles.modalProcessing}>
-                          <ActivityIndicator size="large" color={COLORS.primary} />
-                          <Text style={styles.modalProcessingText}>Analyzing...</Text>
-                        </View>
-                      ) : (
-                        <>
-                          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                            <TouchableOpacity
-                              style={styles.modalRecordButton}
-                              onPress={handleRecord}
-                              activeOpacity={0.9}
-                            >
-                              <LinearGradient
-                                colors={isRecording ? [COLORS.error, '#DC2626'] as const : [COLORS.primary, COLORS.secondary] as const}
-                                style={styles.modalRecordCircle}
-                              >
-                                <Icon 
-                                  name={isRecording ? 'stop' : 'mic'} 
-                                  size={40} 
-                                  color={COLORS.white} 
-                                />
-                              </LinearGradient>
-                            </TouchableOpacity>
-                          </Animated.View>
-                          
-                          {isRecording && (
-                            <Text style={styles.modalRecordingTime}>{recordingTime}</Text>
-                          )}
-                          
-                          <Text style={styles.modalRecordHint}>
-                            {isRecording ? 'Tap to stop' : 'Tap to record'}
-                          </Text>
-                        </>
-                      )}
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    {/* Result Screen */}
-                    <View style={styles.modalHeader}>
-                      <TouchableOpacity 
-                        style={styles.closeButton}
-                        onPress={closePracticeModal}
-                      >
-                        <Icon name="close" size={24} color={COLORS.gray[600]} />
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.resultContent}>
-                        <LinearGradient
-                          colors={result && result.accuracy >= 0.8 
-                            ? [COLORS.success, '#059669'] as const
-                            : [COLORS.warning, '#D97706'] as const
-                          }
-                          style={styles.resultIconCircle}
-                        >
-                          <Icon 
-                            name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} 
-                            size={64} 
-                            color={COLORS.white} 
-                          />
-                        </LinearGradient>
-                        
-                        <Text style={styles.resultTitle}>
-                          {result && result.accuracy >= 0.9 ? 'Perfect!' :
-                           result && result.accuracy >= 0.8 ? 'Excellent!' :
-                           result && result.accuracy >= 0.7 ? 'Good Job!' : 'Keep Trying!'}
-                        </Text>
-
-                        <View style={styles.xpEarned}>
-                          <Icon name="stars" size={24} color={COLORS.gold} />
-                          <Text style={styles.xpEarnedText}>
-                            +{result && Math.round(result.accuracy * 10)} XP
-                          </Text>
-                        </View>
-
-                        <View style={styles.scoreDisplay}>
-                          <Text style={styles.scoreText}>{result && Math.round(result.accuracy * 100)}%</Text>
-                          <Text style={styles.scoreLabel}>Accuracy</Text>
-                        </View>
-
-                        <View style={styles.resultStats}>
-                          <View style={styles.resultStatItem}>
-                            <Icon name="check-circle" size={24} color={COLORS.success} />
-                            <Text style={styles.resultStatValue}>{result?.correct_phonemes || 0}</Text>
-                            <Text style={styles.resultStatLabel}>Correct</Text>
-                          </View>
-                          <View style={styles.resultStatDivider} />
-                          <View style={styles.resultStatItem}>
-                            <Icon name="cancel" size={24} color={COLORS.error} />
-                            <Text style={styles.resultStatValue}>
-                              {result ? result.total_phonemes - result.correct_phonemes : 0}
-                            </Text>
-                            <Text style={styles.resultStatLabel}>Errors</Text>
-                          </View>
-                        </View>
-
-                        <View style={styles.resultFeedback}>
-                          <Text style={styles.resultFeedbackTitle}>Feedback</Text>
-                          <Text style={styles.resultFeedbackText}>{result?.feedback}</Text>
-                        </View>
-
-                        <View style={styles.resultActions}>
-                          <TouchableOpacity 
-                            style={styles.resultTryAgain}
-                            onPress={() => setShowResult(false)}
-                          >
-                            <Icon name="refresh" size={24} color={COLORS.primary} />
-                            <Text style={styles.resultTryAgainText}>Try Again</Text>
-                          </TouchableOpacity>
-                          
-                          <TouchableOpacity 
-                            style={styles.resultContinue}
-                            onPress={closePracticeModal}
-                          >
-                            <LinearGradient
-                              colors={[COLORS.primary, COLORS.secondary] as const}
-                              style={styles.resultContinueGradient}
-                            >
-                              <Text style={styles.resultContinueText}>Continue</Text>
-                            </LinearGradient>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                  </>
-                )}
-              </View>
-              </ScrollView>
-            </Animated.View>
-          </View>
-        </Modal>
-      )}
+      {/* ENHANCED PRACTICE MODAL */}
+      <EnhancedWordPracticeModal
+        visible={showPracticeModal}
+        word={selectedWord}
+        onClose={closePracticeModal}
+        onRecord={handleRecord}
+        onPlayPronunciation={() => selectedWord && playWordPronunciation(selectedWord.word)}
+        isRecording={isRecording}
+        isProcessing={isProcessing}
+        playingAudio={playingAudio}
+        recordingTime={recordingTime}
+        showResult={showResult}
+        result={result}
+        onTryAgain={() => setShowResult(false)}
+      />
 
       {/* STREAK CALENDAR MODAL */}
       <EnhancedStreakCalendar 
