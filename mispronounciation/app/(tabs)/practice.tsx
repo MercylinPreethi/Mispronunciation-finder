@@ -948,69 +948,72 @@ export default function PracticeScreen() {
         animationType="none"
         onRequestClose={handleCancelModal}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <TouchableOpacity 
             style={styles.modalBackdrop}
             activeOpacity={1}
             onPress={handleCancelModal}
           />
           <View style={styles.modalContainer}>
-                <LinearGradient
-                  colors={['#6366F1', '#8B5CF6']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.modalGradient}
+            <LinearGradient
+              colors={['#6366F1', '#8B5CF6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.modalGradient}
+            >
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderLeft}>
+                  <Icon name="add-circle-outline" size={32} color="#FFFFFF" />
+                  <Text style={styles.modalTitle}>New Practice Session</Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={handleCancelModal}
+                  style={styles.modalCloseButton}
                 >
-                  <View style={styles.modalHeader}>
-                    <View style={styles.modalHeaderLeft}>
-                      <Icon name="add-circle-outline" size={32} color="#FFFFFF" />
-                      <Text style={styles.modalTitle}>New Practice Session</Text>
-                    </View>
-                    <TouchableOpacity 
-                      onPress={handleCancelModal}
-                      style={styles.modalCloseButton}
-                    >
-                      <Icon name="close" size={24} color="#FFFFFF" />
-                    </TouchableOpacity>
-                  </View>
+                  <Icon name="close" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
 
-                  <View style={styles.modalContent}>
-                    <Text style={styles.modalLabel}>Enter the sentence you want to practice:</Text>
-                    <TextInput
-                      style={styles.modalInput}
-                      value={newSessionText}
-                      onChangeText={setNewSessionText}
-                      placeholder="Type your sentence here..."
-                      placeholderTextColor="rgba(99, 102, 241, 0.4)"
-                      multiline
-                      numberOfLines={3}
-                      autoFocus
-                      textAlignVertical="top"
-                    />
-                    
-                    <View style={styles.modalActions}>
-                      <TouchableOpacity 
-                        style={styles.modalCancelButton}
-                        onPress={handleCancelModal}
-                      >
-                        <Text style={styles.modalCancelText}>Cancel</Text>
-                      </TouchableOpacity>
-                      
-                      <TouchableOpacity 
-                        style={styles.modalCreateButton}
-                        onPress={handleCreateSession}
-                      >
-                        <LinearGradient
-                          colors={['#FFFFFF', '#F3F4F6']}
-                          style={styles.modalCreateGradient}
-                        >
-                          <Icon name="arrow-forward" size={20} color="#6366F1" />
-                          <Text style={styles.modalCreateText}>Create Session</Text>
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </LinearGradient>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalLabel}>Enter the sentence you want to practice:</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={newSessionText}
+                  onChangeText={setNewSessionText}
+                  placeholder="Type your sentence here..."
+                  placeholderTextColor="rgba(99, 102, 241, 0.4)"
+                  multiline
+                  numberOfLines={3}
+                  autoFocus
+                  textAlignVertical="top"
+                />
+                
+                <View style={styles.modalActions}>
+                  <TouchableOpacity 
+                    style={styles.modalCancelButton}
+                    onPress={handleCancelModal}
+                  >
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.modalCreateButton}
+                    onPress={handleCreateSession}
+                  >
+                    <LinearGradient
+                      colors={['#FFFFFF', '#F3F4F6']}
+                      style={styles.modalCreateGradient}
+                    >
+                      <Icon name="arrow-forward" size={20} color="#6366F1" />
+                      <Text style={styles.modalCreateText}>Create Session</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </LinearGradient>
           </View>
         </KeyboardAvoidingView>
       </Modal>
