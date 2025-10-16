@@ -407,7 +407,7 @@ export default function EnhancedWordPracticeModal({
     );
   };
 
-  // Don't render if word is not available
+  // Don't render if word is not provided
   if (!word) {
     return null;
   }
