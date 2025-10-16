@@ -43,12 +43,12 @@ const COLORS = {
   white: '#FFFFFF',
   background: '#F8F9FE',
   gradients: {
-    primary: ['#6366F1', '#8B5CF6', '#EC4899'],
-    success: ['#10B981', '#059669', '#047857'],
-    warning: ['#F59E0B', '#D97706', '#B45309'],
-    error: ['#EF4444', '#DC2626', '#B91C1C'],
-    gold: ['#FFC800', '#F59E0B', '#D97706'],
-    blue: ['#3B82F6', '#2563EB', '#1D4ED8'],
+    primary: ['#6366F1', '#8B5CF6', '#EC4899'] as const,
+    success: ['#10B981', '#059669', '#047857'] as const,
+    warning: ['#F59E0B', '#D97706', '#B45309'] as const,
+    error: ['#EF4444', '#DC2626', '#B91C1C'] as const,
+    gold: ['#FFC800', '#F59E0B', '#D97706'] as const,
+    blue: ['#3B82F6', '#2563EB', '#1D4ED8'] as const,
   },
 };
 
@@ -292,7 +292,7 @@ export default function EnhancedWordPracticeModal({
           {/* Background circle */}
           <View style={[styles.ringBackground, { width: radius * 2, height: radius * 2 }]}>
             <LinearGradient
-              colors={[COLORS.gray[100], COLORS.gray[50]]}
+              colors={[COLORS.gray[100], COLORS.gray[50]] as const}
               style={StyleSheet.absoluteFillObject}
             />
           </View>
@@ -317,10 +317,10 @@ export default function EnhancedWordPracticeModal({
               <LinearGradient
                 colors={
                   result.accuracy >= 0.8 
-                    ? COLORS.gradients.success
+                    ? [...COLORS.gradients.success]
                     : result.accuracy >= 0.6
-                    ? COLORS.gradients.warning
-                    : COLORS.gradients.error
+                    ? [...COLORS.gradients.warning]
+                    : [...COLORS.gradients.error]
                 }
                 style={styles.ringGradient}
                 start={{ x: 0, y: 0 }}
@@ -450,7 +450,7 @@ export default function EnhancedWordPracticeModal({
                   <View style={styles.header}>
                     <View style={styles.headerDeco}>
                       <LinearGradient
-                        colors={COLORS.gradients.primary}
+                        colors={[...COLORS.gradients.primary]}
                         style={styles.headerGradient}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
@@ -468,7 +468,7 @@ export default function EnhancedWordPracticeModal({
                   <View style={styles.wordDisplayContainer}>
                     <View style={styles.wordBadge}>
                       <LinearGradient
-                        colors={COLORS.gradients.primary}
+                        colors={[...COLORS.gradients.primary]}
                         style={styles.wordBadgeGradient}
                       >
                         <Icon name="school" size={20} color={COLORS.white} />
@@ -485,7 +485,7 @@ export default function EnhancedWordPracticeModal({
                       ]}
                     >
                       <LinearGradient
-                        colors={[COLORS.white, COLORS.gray[50]]}
+                        colors={[COLORS.white, COLORS.gray[50]] as const}
                         style={styles.wordCardGradient}
                       >
                         <Text style={styles.wordText}>{word.word}</Text>
@@ -500,7 +500,7 @@ export default function EnhancedWordPracticeModal({
                       <View style={styles.detailHeader}>
                         <View style={styles.detailIconWrapper}>
                           <LinearGradient
-                            colors={[COLORS.primary, COLORS.secondary]}
+                            colors={[COLORS.primary, COLORS.secondary] as const}
                             style={styles.detailIconGradient}
                           >
                             <Icon name="book" size={18} color={COLORS.white} />
@@ -515,7 +515,7 @@ export default function EnhancedWordPracticeModal({
                       <View style={styles.detailHeader}>
                         <View style={styles.detailIconWrapper}>
                           <LinearGradient
-                            colors={[COLORS.secondary, COLORS.tertiary]}
+                            colors={[COLORS.secondary, COLORS.tertiary] as const}
                             style={styles.detailIconGradient}
                           >
                             <Icon name="format-quote" size={18} color={COLORS.white} />
@@ -530,7 +530,7 @@ export default function EnhancedWordPracticeModal({
                       <View style={styles.detailHeader}>
                         <View style={styles.detailIconWrapper}>
                           <LinearGradient
-                            colors={[COLORS.gold, COLORS.warning]}
+                            colors={[COLORS.gold, COLORS.warning] as const}
                             style={styles.detailIconGradient}
                           >
                             <Icon name="lightbulb" size={18} color={COLORS.white} />
@@ -549,7 +549,7 @@ export default function EnhancedWordPracticeModal({
                     disabled={playingAudio}
                   >
                     <LinearGradient
-                      colors={playingAudio ? COLORS.gradients.blue : COLORS.gradients.primary}
+                      colors={playingAudio ? [...COLORS.gradients.blue] : [...COLORS.gradients.primary]}
                       style={styles.listenGradient}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
@@ -576,11 +576,11 @@ export default function EnhancedWordPracticeModal({
                     </Text>
 
                     {isProcessing ? (
-                      <View style={styles.processingContainer}>
-                        <LinearGradient
-                          colors={COLORS.gradients.primary}
-                          style={styles.processingGradient}
-                        >
+                        <View style={styles.processingContainer}>
+                          <LinearGradient
+                            colors={[...COLORS.gradients.primary]}
+                            style={styles.processingGradient}
+                          >
                           <ActivityIndicator size="large" color={COLORS.white} />
                           <Text style={styles.processingText}>Analyzing your pronunciation...</Text>
                           <Text style={styles.processingSubtext}>Please wait</Text>
@@ -602,7 +602,7 @@ export default function EnhancedWordPracticeModal({
                             activeOpacity={0.8}
                           >
                             <LinearGradient
-                              colors={isRecording ? COLORS.gradients.error : COLORS.gradients.primary}
+                              colors={isRecording ? [...COLORS.gradients.error] : [...COLORS.gradients.primary]}
                               style={styles.recordButtonGradient}
                             >
                               {isRecording && (
@@ -663,10 +663,10 @@ export default function EnhancedWordPracticeModal({
                       <LinearGradient
                         colors={
                           result && result.accuracy >= 0.8 
-                            ? COLORS.gradients.success
+                            ? [...COLORS.gradients.success]
                             : result && result.accuracy >= 0.6
-                            ? COLORS.gradients.warning
-                            : COLORS.gradients.error
+                            ? [...COLORS.gradients.warning]
+                            : [...COLORS.gradients.error]
                         }
                         style={styles.resultIconCircle}
                       >
@@ -690,7 +690,7 @@ export default function EnhancedWordPracticeModal({
 
                       <View style={styles.xpBadge}>
                         <LinearGradient
-                          colors={COLORS.gradients.gold}
+                          colors={[...COLORS.gradients.gold]}
                           style={styles.xpBadgeGradient}
                         >
                           <Icon name="stars" size={20} color={COLORS.white} />
@@ -723,7 +723,7 @@ export default function EnhancedWordPracticeModal({
                     >
                       <View style={styles.statCard}>
                         <LinearGradient
-                          colors={COLORS.gradients.success}
+                          colors={[...COLORS.gradients.success]}
                           style={styles.statCardGradient}
                         >
                           <Icon name="check-circle" size={32} color={COLORS.white} />
@@ -734,7 +734,7 @@ export default function EnhancedWordPracticeModal({
 
                       <View style={styles.statCard}>
                         <LinearGradient
-                          colors={COLORS.gradients.error}
+                          colors={[...COLORS.gradients.error]}
                           style={styles.statCardGradient}
                         >
                           <Icon name="cancel" size={32} color={COLORS.white} />
@@ -784,7 +784,7 @@ export default function EnhancedWordPracticeModal({
                         onPress={handleClose}
                       >
                         <LinearGradient
-                          colors={COLORS.gradients.primary}
+                          colors={[...COLORS.gradients.primary]}
                           style={styles.continueGradient}
                         >
                           <Text style={styles.continueText}>Continue Learning</Text>
