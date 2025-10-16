@@ -276,9 +276,6 @@ export default function EnhancedWordPracticeModal({
     onTryAgain();
   };
 
-  // Early return must be after all hooks
-  if (!word) return null;
-
   const renderAccuracyRing = () => {
     if (!result) return null;
     
@@ -409,6 +406,11 @@ export default function EnhancedWordPracticeModal({
       </View>
     );
   };
+
+  // Don't render if word is not available
+  if (!word) {
+    return null;
+  }
 
   return (
     <Modal
