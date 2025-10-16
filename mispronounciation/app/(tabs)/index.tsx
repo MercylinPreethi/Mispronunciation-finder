@@ -2011,7 +2011,7 @@ export default function HomeScreen() {
               return prog && prog.bestScore >= 0.8; // Mastered count
             }).length} mastered · {allWords.filter(w => {
               const prog = wordProgress[w.id];
-              return prog && prog.bestScore >= 0.5 && prog.bestScore < 0.8; // Completed but not mastered
+              return prog && prog.bestScore >= 0.5 && prog.bestScore < 0.8; 
             }).length} completed · Word {currentWordIndex + 1} active
           </Text>
         </Animated.View>
