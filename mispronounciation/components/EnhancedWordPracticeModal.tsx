@@ -113,11 +113,6 @@ export default function EnhancedWordPracticeModal({
   const [waveformBars, setWaveformBars] = useState<number[]>([]);
   const [accuracyRingProgress, setAccuracyRingProgress] = useState(0);
 
-  // Safety check
-  if (!visible || !word) {
-    return null;
-  }
-
   useEffect(() => {
     if (visible) {
       // Entry animations
@@ -280,6 +275,9 @@ export default function EnhancedWordPracticeModal({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onTryAgain();
   };
+
+  // Early return must be after all hooks
+  if (!word) return null;
 
   const renderAccuracyRing = () => {
     if (!result) return null;
