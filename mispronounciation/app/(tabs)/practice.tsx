@@ -149,7 +149,7 @@ export default function PracticeScreen() {
   
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const modalAnim = useRef(new Animated.Value(0)).current;
+  const modalAnim = useRef(new Animated.Value(1)).current;
   const headerAnim = useRef(new Animated.Value(0)).current;
   const searchAnim = useRef(new Animated.Value(0)).current;
   const cardAnimations = useRef(new Map()).current;
@@ -211,6 +211,11 @@ export default function PracticeScreen() {
       }).start();
     }
   }, [showStats]);
+
+  // Debug modal state
+  useEffect(() => {
+    console.log('Modal state changed:', newSessionModalVisible);
+  }, [newSessionModalVisible]);
 
   useEffect(() => {
     Animated.spring(filterAnim, {
@@ -435,15 +440,13 @@ export default function PracticeScreen() {
   };
 
   const handleNewSession = () => {
+    console.log('handleNewSession called'); // Debug log
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setNewSessionText('');
     setNewSessionModalVisible(true);
-    Animated.spring(modalAnim, {
-      toValue: 1,
-      tension: 50,
-      friction: 7,
-      useNativeDriver: true,
-    }).start();
+    console.log('Modal should be visible now'); // Debug log
+    // Modal should be visible immediately
+    modalAnim.setValue(1);
   };
 
   const handleCreateSession = () => {
@@ -455,6 +458,8 @@ export default function PracticeScreen() {
         useNativeDriver: true,
       }).start(() => {
         setNewSessionModalVisible(false);
+        // Reset for next time
+        modalAnim.setValue(1);
         // Navigate to recording interface with new session
         router.push({
           pathname: '/(tabs)/explore',
@@ -474,6 +479,8 @@ export default function PracticeScreen() {
     }).start(() => {
       setNewSessionModalVisible(false);
       setNewSessionText('');
+      // Reset for next time
+      modalAnim.setValue(1);
     });
   };
 
@@ -844,7 +851,10 @@ export default function PracticeScreen() {
 
         <TouchableOpacity
           style={styles.newButton}
-          onPress={handleNewSession}
+          onPress={() => {
+            console.log('Plus button clicked!');
+            handleNewSession();
+          }}
           activeOpacity={0.8}
         >
           <LinearGradient
@@ -935,28 +945,16 @@ export default function PracticeScreen() {
       <Modal
         visible={newSessionModalVisible}
         transparent={true}
-        animationType="fade"
+        animationType="none"
         onRequestClose={handleCancelModal}
       >
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
+        <View style={styles.modalOverlay}>
           <TouchableOpacity 
             style={styles.modalBackdrop}
             activeOpacity={1}
             onPress={handleCancelModal}
-          >
-            <Animated.View 
-              style={[
-                styles.modalContainer,
-                {
-                  opacity: modalAnim,
-                  transform: [{ scale: modalScale }]
-                }
-              ]}
-            >
-              <TouchableOpacity activeOpacity={1}>
+          />
+          <View style={styles.modalContainer}>
                 <LinearGradient
                   colors={['#6366F1', '#8B5CF6']}
                   start={{ x: 0, y: 0 }}
@@ -964,8 +962,16 @@ export default function PracticeScreen() {
                   style={styles.modalGradient}
                 >
                   <View style={styles.modalHeader}>
-                    <Icon name="add-circle-outline" size={32} color="#FFFFFF" />
-                    <Text style={styles.modalTitle}>New Practice Session</Text>
+                    <View style={styles.modalHeaderLeft}>
+                      <Icon name="add-circle-outline" size={32} color="#FFFFFF" />
+                      <Text style={styles.modalTitle}>New Practice Session</Text>
+                    </View>
+                    <TouchableOpacity 
+                      onPress={handleCancelModal}
+                      style={styles.modalCloseButton}
+                    >
+                      <Icon name="close" size={24} color="#FFFFFF" />
+                    </TouchableOpacity>
                   </View>
 
                   <View style={styles.modalContent}>
@@ -1005,9 +1011,7 @@ export default function PracticeScreen() {
                     </View>
                   </View>
                 </LinearGradient>
-              </TouchableOpacity>
-            </Animated.View>
-          </TouchableOpacity>
+          </View>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -1433,6 +1437,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 1000,
   },
   modalBackdrop: {
     flex: 1,
@@ -1451,13 +1456,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 32,
     elevation: 16,
+    zIndex: 1001,
+    backgroundColor: '#FFFFFF', // Add solid background
   },
   modalGradient: {
     padding: 32,
   },
   modalHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 28,
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalCloseButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   modalTitle: {
     fontSize: 24,
