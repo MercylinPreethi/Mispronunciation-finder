@@ -212,13 +212,6 @@ export default function PracticeScreen() {
     }
   }, [showStats]);
 
-  // Debug modal state
-  useEffect(() => {
-    console.log('Modal state changed:', newSessionModalVisible);
-    if (newSessionModalVisible) {
-      console.log('Modal should be visible now - check screen');
-    }
-  }, [newSessionModalVisible]);
 
   useEffect(() => {
     Animated.spring(filterAnim, {
@@ -443,18 +436,11 @@ export default function PracticeScreen() {
   };
 
   const handleNewSession = () => {
-    console.log('handleNewSession called'); // Debug log
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setNewSessionText('');
     setNewSessionModalVisible(true);
-    console.log('Modal should be visible now'); // Debug log
     // Modal should be visible immediately
     modalAnim.setValue(1);
-    
-    // Add a delay to prevent immediate closing
-    setTimeout(() => {
-      console.log('Modal should still be visible after delay');
-    }, 1000);
   };
 
   const handleCreateSession = () => {
@@ -480,7 +466,6 @@ export default function PracticeScreen() {
   };
 
   const handleCancelModal = () => {
-    console.log('handleCancelModal called - modal closing');
     Animated.timing(modalAnim, {
       toValue: 0,
       duration: 200,
@@ -860,10 +845,7 @@ export default function PracticeScreen() {
 
         <TouchableOpacity
           style={styles.newButton}
-          onPress={() => {
-            console.log('Plus button clicked!');
-            handleNewSession();
-          }}
+          onPress={handleNewSession}
           activeOpacity={0.8}
         >
           <LinearGradient
@@ -953,27 +935,78 @@ export default function PracticeScreen() {
       {/* New Session Modal */}
       <Modal
         visible={newSessionModalVisible}
-        transparent={false}
-        animationType="slide"
-        onRequestClose={() => {
-          console.log('onRequestClose triggered');
-          // Don't close immediately, just log
-        }}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelModal}
       >
-        <View style={{ flex: 1, backgroundColor: '#FF0000', justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: 'white', fontSize: 32, textAlign: 'center' }}>
-            MODAL IS VISIBLE - DEBUG
-          </Text>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <TouchableOpacity 
-            onPress={() => {
-              console.log('Close button pressed');
-              setNewSessionModalVisible(false);
-            }}
-            style={{ backgroundColor: 'white', padding: 20, marginTop: 20, borderRadius: 10 }}
-          >
-            <Text style={{ color: 'black', fontSize: 18 }}>Close Modal</Text>
-          </TouchableOpacity>
-        </View>
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={handleCancelModal}
+          />
+          <View style={styles.modalContainer}>
+            <LinearGradient
+              colors={['#6366F1', '#8B5CF6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.modalGradient}
+            >
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderLeft}>
+                  <Icon name="add-circle-outline" size={32} color="#FFFFFF" />
+                  <Text style={styles.modalTitle}>New Practice Session</Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={handleCancelModal}
+                  style={styles.modalCloseButton}
+                >
+                  <Icon name="close" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalContent}>
+                <Text style={styles.modalLabel}>Enter the sentence you want to practice:</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={newSessionText}
+                  onChangeText={setNewSessionText}
+                  placeholder="Type your sentence here..."
+                  placeholderTextColor="rgba(99, 102, 241, 0.4)"
+                  multiline
+                  numberOfLines={3}
+                  autoFocus
+                  textAlignVertical="top"
+                />
+                
+                <View style={styles.modalActions}>
+                  <TouchableOpacity 
+                    style={styles.modalCancelButton}
+                    onPress={handleCancelModal}
+                  >
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.modalCreateButton}
+                    onPress={handleCreateSession}
+                  >
+                    <LinearGradient
+                      colors={['#FFFFFF', '#F3F4F6']}
+                      style={styles.modalCreateGradient}
+                    >
+                      <Icon name="arrow-forward" size={20} color="#6366F1" />
+                      <Text style={styles.modalCreateText}>Create Session</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1395,30 +1428,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
-    backgroundColor: 'rgba(255, 0, 0, 0.3)', // Red background for debugging
   },
   modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
-  },
-  modalContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  modalContainer: {
+    width: '90%',
+    maxWidth: 420,
+    borderRadius: 32,
     overflow: 'hidden',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 16 },
@@ -1426,7 +1452,6 @@ const styles = StyleSheet.create({
     shadowRadius: 32,
     elevation: 16,
     zIndex: 1001,
-    backgroundColor: '#FF0000', // Bright red background for debugging
   },
   modalGradient: {
     padding: 32,
