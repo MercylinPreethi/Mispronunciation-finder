@@ -221,6 +221,43 @@ export default function PracticeScreen() {
     }).start();
   }, []);
 
+  // Animate cards when filteredSessions change
+  useEffect(() => {
+    filteredSessions.forEach((session, index) => {
+      let animation = cardAnimations.get(session.id);
+      if (!animation) {
+        animation = {
+          scale: new Animated.Value(0.95),
+          opacity: new Animated.Value(0),
+          translateY: new Animated.Value(20),
+        };
+        cardAnimations.set(session.id, animation);
+      }
+      
+      Animated.sequence([
+        Animated.delay(index * 100),
+        Animated.parallel([
+          Animated.spring(animation.scale, {
+            toValue: 1,
+            tension: 50,
+            friction: 8,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animation.opacity, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animation.translateY, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+    });
+  }, [filteredSessions]);
+
   useEffect(() => {
     setIsAuthenticating(true);
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -455,47 +492,26 @@ export default function PracticeScreen() {
     return '#EF4444';
   };
 
-  const getCardAnimation = (sessionId: string) => {
-    if (!cardAnimations.has(sessionId)) {
-      cardAnimations.set(sessionId, {
-        scale: new Animated.Value(0.95),
-        opacity: new Animated.Value(0),
-        translateY: new Animated.Value(20),
-      });
-    }
-    return cardAnimations.get(sessionId);
-  };
+  // Card animation helper function - no longer needed as a hook
 
   const renderSessionCard = ({ item: session, index }: { item: SentenceSession; index: number }) => {
     const latestAttempt = session.attempts[0];
     const accuracy = latestAttempt ? latestAttempt.scores.accuracy : 0;
     const accuracyPercent = (accuracy * 100).toFixed(0);
-    const animation = getCardAnimation(session.id);
+    
+    // Get animation values directly from the Map
+    let animation = cardAnimations.get(session.id);
+    if (!animation) {
+      animation = {
+        scale: new Animated.Value(0.95),
+        opacity: new Animated.Value(0),
+        translateY: new Animated.Value(20),
+      };
+      cardAnimations.set(session.id, animation);
+    }
 
-    // Animate card entrance with stagger
-    React.useEffect(() => {
-      Animated.sequence([
-        Animated.delay(index * 100),
-        Animated.parallel([
-          Animated.spring(animation.scale, {
-            toValue: 1,
-            tension: 50,
-            friction: 8,
-            useNativeDriver: true,
-          }),
-          Animated.timing(animation.opacity, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.timing(animation.translateY, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-        ]),
-      ]).start();
-    }, []);
+    // Animate card entrance with stagger - moved outside of render function
+    // This will be handled by the parent component
 
     const handlePressIn = () => {
       Animated.spring(animation.scale, {
