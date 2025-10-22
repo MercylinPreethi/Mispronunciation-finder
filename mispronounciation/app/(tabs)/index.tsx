@@ -680,7 +680,7 @@ export default function HomeScreen() {
         existingProgress = snapshot.val();
       } else {
         existingProgress = {
-          word: todayWord.word,
+          word: todayWord?.word || 'Unknown',
           date: today,
           completed: false,
           mastered: false, // NEW
@@ -2380,8 +2380,10 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={styles.startDailyButton}
                     onPress={() => {
-                      setShowDailyTask(false);
-                      openPracticeModalFast(todayWord, true);
+                      if (todayWord) {
+                        setShowDailyTask(false);
+                        openPracticeModalFast(todayWord, true);
+                      }
                     }}
                   >
                     <LinearGradient
