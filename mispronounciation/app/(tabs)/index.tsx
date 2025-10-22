@@ -63,14 +63,6 @@ const COLORS = {
   },
   white: '#FFFFFF',
   background: '#F8F9FE',
-  gradients: {
-    primary: ['#6366F1', '#8B5CF6', '#EC4899'],
-    success: ['#10B981', '#059669', '#047857'],
-    warning: ['#F59E0B', '#D97706', '#B45309'],
-    error: ['#EF4444', '#DC2626', '#B91C1C'],
-    gold: ['#FFC800', '#F59E0B', '#D97706'],
-    blue: ['#3B82F6', '#2563EB', '#1D4ED8'],
-  },
 };
 
 interface Word {
@@ -1115,7 +1107,7 @@ export default function HomeScreen() {
                 ]}
               >
                 <LinearGradient
-                  colors={COLORS.gradients.primary}
+                  colors={[COLORS.primary, COLORS.secondary, COLORS.tertiary]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.progressGradient}
@@ -1150,7 +1142,7 @@ export default function HomeScreen() {
           {todayWord && (
             <DailyWordCard
               word={todayWord}
-              progress={todayProgress}
+              progress={todayProgress || undefined}
               onStartPractice={() => {
                 setShowDailyTask(false);
                 openPracticeModalFast(todayWord, true);
@@ -1193,7 +1185,7 @@ export default function HomeScreen() {
                   return 'mispronounced';
                 })(),
                 phoneme_errors: [],
-                per: { per: 0 },
+                per: 0,
                 accuracy: wordProgress[word.id]?.bestScore || 0,
               }))}
               audioData={undefined}

@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import axios from 'axios';
 import RNFS from 'react-native-fs';
+import RNFS from 'react-native-fs';
 
 const { width } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
