@@ -416,7 +416,7 @@ export default function DailyWordCard({
             <View style={styles.feedbackSection}>
               <Text style={styles.feedbackTitle}>Latest Feedback</Text>
               <Text style={styles.feedbackText}>
-                {progress.attemptHistory[progress.attemptHistory.length - 1].feedback}
+                {progress.attemptHistory[progress.attemptHistory.length - 1]?.feedback || 'No feedback available'}
               </Text>
             </View>
           )}

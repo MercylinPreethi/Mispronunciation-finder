@@ -52,7 +52,7 @@ interface WordPhonemeData {
   aligned_predicted: string[];
   status: 'correct' | 'partial' | 'mispronounced';
   phoneme_errors: any[];
-  per: number;
+  per: { per: number };
   accuracy?: number;
 }
 

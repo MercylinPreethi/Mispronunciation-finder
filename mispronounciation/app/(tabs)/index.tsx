@@ -141,7 +141,7 @@ interface WordPhonemeData {
   aligned_predicted: string[];
   status: 'correct' | 'partial' | 'mispronounced';
   phoneme_errors: any[];
-  per: number;
+  per: { per: number };
   accuracy?: number;
 }
 
@@ -620,7 +620,7 @@ export default function HomeScreen() {
         completed: accuracy >= 0.5,
         mastered: accuracy >= 0.8,
         attemptHistory: [
-          ...existingProgress.attemptHistory,
+          ...(existingProgress.attemptHistory || []),
           newAttempt
         ].slice(-10),
       };
@@ -1185,7 +1185,7 @@ export default function HomeScreen() {
                   return 'mispronounced';
                 })(),
                 phoneme_errors: [],
-                per: 0,
+                per: { per: 0 },
                 accuracy: wordProgress[word.id]?.bestScore || 0,
               }))}
               audioData={undefined}
