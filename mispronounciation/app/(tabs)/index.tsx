@@ -24,12 +24,22 @@ import axios from 'axios';
 import ProgressCircle from '../../components/ProgressCircle';
 import LearningPathBackground from '../../components/LearningPathBackground';
 import EnhancedStreakCalendar from '../../components/EnhancedStreakCalendar';
+import EnhancedPhonemeAnalysisCard from '../../components/EnhancedPhonemeAnalysisCard';
 import AudioRecorderPlayer, {
   AVEncoderAudioQualityIOSType,
   AVEncodingOption,
   AudioEncoderAndroidType,
   AudioSourceAndroidType,
 } from 'react-native-audio-recorder-player';
+import phonemeFirebaseService, {
+  PhonemeAnalysis as FirebasePhonemeAnalysis,
+  PhonemePracticeData,
+  saveWordPhonemeData,
+  saveDailyWordData,
+  savePhonemeAttempt,
+  getAllPhonemeData,
+  updateWordProgressWithPhonemes,
+} from '../../services/phonemeFirebaseService';
 
 const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
@@ -895,8 +905,8 @@ export default function HomeScreen() {
     initializeOnceRef.current = true;
 
     try {
-      // Load everything in parallel
-      const [statsPromise, dailyWordPromise, progressPromise, dailyProgressPromise] = await Promise.allSettled([
+      // Load everything in parallel including phoneme data
+      const [statsPromise, dailyWordPromise, progressPromise, dailyProgressPromise, phonemePromise] = await Promise.allSettled([
         // Stats
         (async () => {
           const statsRef = ref(database, `users/${userId}/stats`);
@@ -920,8 +930,18 @@ export default function HomeScreen() {
         loadAllDataFast(selectedDifficulty),
 
         // Daily word progress
-        loadDailyWordProgress(userId)
+        loadDailyWordProgress(userId),
+        
+        // Phoneme practice data
+        getAllPhonemeData()
       ]);
+
+      // Handle phoneme practice data
+      if (phonemePromise.status === 'fulfilled') {
+        const phonemeData = phonemePromise.value;
+        setPhonemePractices(phonemeData);
+        console.log('✅ Loaded phoneme practice data:', Object.keys(phonemeData).length, 'phonemes');
+      }
 
       // Set up daily words listener (non-blocking)
       const dailyWordsRef = ref(database, `users/${userId}/dailyWords`);
@@ -995,6 +1015,23 @@ export default function HomeScreen() {
     if (user) {
       setUserName(user.displayName || 'User');
       loadUserDataFast(user.uid);
+      
+      // Set up real-time phoneme data listener
+      const phonemeDataPath = `users/${user.uid}/phonemeData/phonemePractices`;
+      const phonemeRef = ref(database, phonemeDataPath);
+      
+      const unsubscribe = onValue(phonemeRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const phonemeData = snapshot.val();
+          setPhonemePractices(phonemeData);
+          console.log('📊 Real-time phoneme data updated:', Object.keys(phonemeData).length, 'phonemes');
+        }
+      });
+      
+      // Cleanup listener on unmount
+      return () => {
+        off(phonemeRef, 'value', unsubscribe);
+      };
     }
 
     // Fast badge animations
@@ -1227,35 +1264,52 @@ export default function HomeScreen() {
 
       if (response.data.success) {
         const { accuracy, status, feedback, analysis } = response.data;
+        const timestamp = new Date().toISOString();
         
-        // Update phoneme practice data
-        const attemptId = Date.now().toString();
+        // Create attempt object for Firebase
         const newAttempt = {
-          id: attemptId,
-          timestamp: new Date(),
-          audioPath,
+          timestamp,
           accuracy,
-          status,
           feedback,
-          analysis
+          predicted_phoneme: analysis?.predicted_phoneme || phoneme,
+          reference_phoneme: phoneme,
         };
 
-        setPhonemePractices(prev => ({
-          ...prev,
-          [phoneme]: {
+        // Save to Firebase
+        await savePhonemeAttempt(phoneme, selectedWord.word, newAttempt);
+
+        // Update local state
+        setPhonemePractices(prev => {
+          const existingData = prev[phoneme] || {
             phoneme,
             word: selectedWord.word,
-            attempts: [...(prev[phoneme]?.attempts || []), newAttempt],
-            bestScore: Math.max(prev[phoneme]?.bestScore || 0, accuracy),
-            mastered: accuracy >= 0.8
-          }
-        }));
+            attempts: [],
+            bestScore: 0,
+            totalAttempts: 0,
+            mastered: false,
+            lastAttempted: timestamp,
+          };
+
+          return {
+            ...prev,
+            [phoneme]: {
+              ...existingData,
+              attempts: [newAttempt, ...existingData.attempts].slice(0, 10),
+              bestScore: Math.max(existingData.bestScore, accuracy),
+              totalAttempts: existingData.totalAttempts + 1,
+              mastered: Math.max(existingData.bestScore, accuracy) >= 0.9,
+              lastAttempted: timestamp,
+            }
+          };
+        });
 
         Alert.alert(
           status === 'correct' ? '🎉 Perfect!' : status === 'partial' ? '👍 Good!' : '💪 Keep Trying',
           `Phoneme: /${phoneme}/\nScore: ${Math.round(accuracy * 100)}%\n\n${feedback}`,
           [{ text: 'Continue' }]
         );
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
       console.error('Phoneme processing error:', error);
@@ -1520,32 +1574,74 @@ export default function HomeScreen() {
           correct_phonemes: analysisResult.correct_phonemes,
           total_phonemes: analysisResult.total_phonemes,
           feedback: response.data.feedback || 'Great job!',
-          predicted_phonemes: analysisResult.predicted_phonemes, // ADDED
-          reference_phonemes: analysisResult.reference_phonemes, // ADDED
+          predicted_phonemes: analysisResult.predicted_phonemes,
+          reference_phonemes: analysisResult.reference_phonemes,
+          aligned_predicted: analysisResult.aligned_predicted,
+          aligned_reference: analysisResult.aligned_reference,
         };
         
         setResult(resultData);
         setShowResult(true);
         
-        // Check if this is a daily word or practice word
-        if (isPracticingDaily) {
-          // DAILY WORD: Save to daily word attempts only
-          await saveDailyWordAttempt(
-            resultData.accuracy,
-            resultData.feedback,
-            resultData.correct_phonemes,
-            resultData.total_phonemes
-          );
-          // Note: saveDailyWordAttempt already handles streak update
-        } else {
-          // PRACTICE WORD: Save to practice word attempts only
-          await updateWordProgressFast(resultData.accuracy);
-          
-          // Also update streak since user practiced today
-          const user = auth.currentUser;
-          if (user) {
+        // ============================================================================
+        // FIREBASE PERSISTENCE: Save phoneme-level data
+        // ============================================================================
+        if (selectedWord) {
+          // Save to Firebase with phoneme data
+          if (isPracticingDaily) {
+            // DAILY WORD: Save to daily word data with phonemes
             const today = getTodayDateString();
-            await updateStreakForToday(user.uid, today);
+            await saveDailyWordData(today, {
+              word: selectedWord.word,
+              phonetic: selectedWord.phonetic,
+              accuracy: resultData.accuracy,
+              reference_phonemes: resultData.reference_phonemes,
+              predicted_phonemes: resultData.predicted_phonemes,
+              aligned_reference: resultData.aligned_reference,
+              aligned_predicted: resultData.aligned_predicted,
+              phoneme_breakdown: getPhonemeBreakdown(resultData),
+            } as any);
+            
+            // Also save to local state
+            await saveDailyWordAttempt(
+              resultData.accuracy,
+              resultData.feedback,
+              resultData.correct_phonemes,
+              resultData.total_phonemes
+            );
+          } else {
+            // PRACTICE WORD: Save to word progress with phonemes
+            await updateWordProgressWithPhonemes(
+              selectedDifficulty,
+              selectedWord.id,
+              resultData
+            );
+            
+            // Save word phoneme data
+            await saveWordPhonemeData(selectedWord.id, {
+              word: selectedWord.word,
+              wordId: selectedWord.id,
+              difficulty: selectedDifficulty,
+              phonetic: selectedWord.phonetic,
+              reference_phonemes: resultData.reference_phonemes || [],
+              predicted_phonemes: resultData.predicted_phonemes || [],
+              aligned_reference: resultData.aligned_reference || [],
+              aligned_predicted: resultData.aligned_predicted || [],
+              status: resultData.accuracy >= 0.9 ? 'correct' : 
+                      resultData.accuracy >= 0.7 ? 'partial' : 'mispronounced',
+              accuracy: resultData.accuracy,
+              phoneme_breakdown: getPhonemeBreakdown(resultData),
+            } as any);
+            
+            // Also update local state
+            await updateWordProgressFast(resultData.accuracy);
+            
+            // Update streak
+            const user = auth.currentUser;
+            if (user) {
+              const today = getTodayDateString();
+              await updateStreakForToday(user.uid, today);
+            }
           }
         }
         
@@ -2849,130 +2945,31 @@ export default function HomeScreen() {
                     <Text style={styles.phonemePhonetic}>{selectedWord.phonetic}</Text>
                   </View>
 
-                  {/* Phoneme Breakdown */}
+                  {/* Phoneme Breakdown - Using Enhanced Cards */}
                   <View style={styles.phonemeBreakdownSection}>
                     <Text style={styles.sectionTitle}>Phoneme Breakdown</Text>
-                    <View style={styles.phonemeGrid}>
+                    <View style={styles.phonemeList}>
                       {currentPhonemeAnalysis.map((phoneme, index) => {
                         const practiceData = phonemePractices[phoneme.phoneme];
-                        const latestAttempt = practiceData?.attempts?.[0];
                         
                         return (
-                          <View key={index} style={styles.phonemeCard}>
-                            {/* Phoneme Symbol */}
-                            <View style={styles.phonemeSymbolContainer}>
-                              <Text style={styles.phonemeSymbol}>/{phoneme.phoneme}/</Text>
-                              <View style={[
-                                styles.statusIndicator,
-                                { backgroundColor: 
-                                  phoneme.status === 'correct' ? COLORS.success :
-                                  phoneme.status === 'partial' ? COLORS.warning : COLORS.error
-                                }
-                              ]} />
-                            </View>
-
-                            {/* Accuracy */}
-                            <View style={styles.accuracyContainer}>
-                              <Text style={styles.accuracyLabel}>Accuracy</Text>
-                              <Text style={[
-                                styles.accuracyValue,
-                                { color: 
-                                  phoneme.accuracy >= 0.8 ? COLORS.success :
-                                  phoneme.accuracy >= 0.5 ? COLORS.warning : COLORS.error
-                                }
-                              ]}>
-                                {Math.round(phoneme.accuracy * 100)}%
-                              </Text>
-                            </View>
-
-                            {/* Practice Progress */}
-                            {latestAttempt && (
-                              <View style={styles.practiceProgress}>
-                                <Text style={styles.practiceLabel}>Best Practice</Text>
-                                <Text style={[
-                                  styles.practiceValue,
-                                  { color: 
-                                    latestAttempt.accuracy >= 0.8 ? COLORS.success :
-                                    latestAttempt.accuracy >= 0.5 ? COLORS.warning : COLORS.error
-                                  }
-                                ]}>
-                                  {Math.round(latestAttempt.accuracy * 100)}%
-                                </Text>
-                              </View>
-                            )}
-
-                            {/* Actions */}
-                            <View style={styles.phonemeActions}>
-                              <TouchableOpacity
-                                style={[
-                                  styles.phonemeActionButton,
-                                  styles.listenButton,
-                                  playingPhoneme === phoneme.phoneme && styles.actionButtonActive
-                                ]}
-                                onPress={() => playPhonemeAudio(phoneme.phoneme)}
-                              >
-                                <Icon 
-                                  name={playingPhoneme === phoneme.phoneme ? "volume-up" : "volume-down"} 
-                                  size={16} 
-                                  color={COLORS.white} 
-                                />
-                                <Text style={styles.actionButtonText}>
-                                  {playingPhoneme === phoneme.phoneme ? 'Playing' : 'Listen'}
-                                </Text>
-                              </TouchableOpacity>
-
-                              <TouchableOpacity
-                                style={[
-                                  styles.phonemeActionButton,
-                                  styles.practiceButton,
-                                  isRecordingPhoneme && practicingPhoneme === phoneme.phoneme && styles.recordingButton
-                                ]}
-                                onPress={() => {
-                                  if (isRecordingPhoneme && practicingPhoneme === phoneme.phoneme) {
-                                    stopPhonemeRecording();
-                                  } else {
-                                    startPhonemeRecording(phoneme.phoneme);
-                                  }
-                                }}
-                                disabled={isRecordingPhoneme && practicingPhoneme !== phoneme.phoneme}
-                              >
-                                <Icon 
-                                  name={isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? "stop" : "mic"} 
-                                  size={16} 
-                                  color={COLORS.white} 
-                                />
-                                <Text style={styles.actionButtonText}>
-                                  {isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? 
-                                    `Recording ${phonemeRecordingTime}` : 'Practice'}
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            {/* Feedback */}
-                            <Text style={styles.phonemeFeedback}>{phoneme.feedback}</Text>
-
-                            {/* Practice History */}
-                            {practiceData && practiceData.attempts.length > 0 && (
-                              <View style={styles.practiceHistory}>
-                                <Text style={styles.historyTitle}>
-                                  Practice History ({practiceData.attempts.length})
-                                </Text>
-                                {practiceData.attempts.slice(0, 3).map((attempt, idx) => (
-                                  <View key={idx} style={styles.historyItem}>
-                                    <Text style={styles.historyScore}>
-                                      {Math.round(attempt.accuracy * 100)}%
-                                    </Text>
-                                    <Text style={styles.historyTime}>
-                                      {attempt.timestamp.toLocaleTimeString([], { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit' 
-                                      })}
-                                    </Text>
-                                  </View>
-                                ))}
-                              </View>
-                            )}
-                          </View>
+                          <EnhancedPhonemeAnalysisCard
+                            key={index}
+                            phoneme={phoneme}
+                            practiceData={practiceData}
+                            onPlayPhoneme={playPhonemeAudio}
+                            onPracticePhoneme={(ph) => {
+                              if (isRecordingPhoneme && practicingPhoneme === ph) {
+                                stopPhonemeRecording();
+                              } else {
+                                startPhonemeRecording(ph);
+                              }
+                            }}
+                            isPlaying={playingPhoneme === phoneme.phoneme}
+                            isPracticing={practicingPhoneme === phoneme.phoneme}
+                            isRecording={isRecordingPhoneme && practicingPhoneme === phoneme.phoneme}
+                            recordingTime={phonemeRecordingTime}
+                          />
                         );
                       })}
                     </View>
@@ -3540,6 +3537,9 @@ const styles = StyleSheet.create({
   },
   phonemeBreakdownSection: {
     marginBottom: 24,
+  },
+  phonemeList: {
+    gap: 12,
   },
   sectionTitle: {
     fontSize: 20,
