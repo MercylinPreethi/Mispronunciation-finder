@@ -24,6 +24,7 @@ import axios from 'axios';
 import ProgressCircle from '../../components/ProgressCircle';
 import LearningPathBackground from '../../components/LearningPathBackground';
 import EnhancedStreakCalendar from '../../components/EnhancedStreakCalendar';
+import EnhancedPracticeModal from '../../components/EnhancedPracticeModal';
 import AudioRecorderPlayer, {
   AVEncoderAudioQualityIOSType,
   AVEncodingOption,
@@ -189,6 +190,8 @@ export default function HomeScreen() {
   
   const [todayWord, setTodayWord] = useState<Word | null>(null);
   const [todayProgress, setTodayProgress] = useState<DailyWordProgress | null>(null);
+  const [dailyWordLoading, setDailyWordLoading] = useState(true);
+  const [dailyWordError, setDailyWordError] = useState<string | null>(null);
   
   const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel>('easy');
   const [wordProgress, setWordProgress] = useState<{ [key: string]: WordProgress }>({});
@@ -598,12 +601,40 @@ export default function HomeScreen() {
 
   const fetchDailyWord = async () => {
     try {
+      setDailyWordLoading(true);
+      setDailyWordError(null);
+      
+      console.log('Fetching daily word from:', `${API_BASE_URL}/api/daily-word-consistent`);
       const response = await axios.get(`${API_BASE_URL}/api/daily-word-consistent`);
+      console.log('Daily word API response:', response.data);
+      
       if (response.data.success) {
+        console.log('Setting today word:', response.data.word);
         setTodayWord(response.data.word);
+        setDailyWordError(null);
+      } else {
+        console.error('Daily word API returned success: false');
+        setDailyWordError('Failed to load daily word');
       }
     } catch (error) {
       console.error('Error fetching daily word:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      setDailyWordError(error.response?.data?.error || error.message || 'Failed to load daily word');
+      
+      // Fallback: Use a hardcoded word for testing
+      console.log('Using fallback daily word for testing');
+      setTodayWord({
+        id: 'fallback-daily',
+        word: 'pronunciation',
+        phonetic: '/prəˌnʌnsiˈeɪʃən/',
+        meaning: 'The way in which a word is pronounced',
+        example: 'Her pronunciation of the word was perfect.',
+        tip: 'Break it into syllables: pro-nun-ci-a-tion',
+        difficulty: 'intermediate'
+      });
+      setDailyWordError(null);
+    } finally {
+      setDailyWordLoading(false);
     }
   };
 
@@ -649,7 +680,7 @@ export default function HomeScreen() {
         existingProgress = snapshot.val();
       } else {
         existingProgress = {
-          word: todayWord.word,
+          word: todayWord?.word || 'Unknown',
           date: today,
           completed: false,
           mastered: false, // NEW
@@ -2114,18 +2145,27 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={styles.floatingDailyTask}
               onPress={() => {
+                if (dailyWordLoading) return;
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setShowDailyTask(true);
                 setFloatingPanelExpanded(false);
               }}
             >
               <LinearGradient
-                colors={[COLORS.gold, '#D97706'] as const}
+                colors={dailyWordError ? [COLORS.error, '#DC2626'] as const : [COLORS.gold, '#D97706'] as const}
                 style={styles.floatingDailyTaskGradient}
               >
-                <Icon name="wb-sunny" size={20} color={COLORS.white} />
-                <Text style={styles.floatingDailyTaskText}>Today's Challenge</Text>
-                {!todayProgress?.completed && (
+                {dailyWordLoading ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Icon name="wb-sunny" size={20} color={COLORS.white} />
+                )}
+                <Text style={styles.floatingDailyTaskText}>
+                  {dailyWordLoading ? 'Loading...' : 
+                   dailyWordError ? 'Daily Word Error' : 
+                   todayWord ? `Today: ${todayWord.word}` : 'Today\'s Challenge'}
+                </Text>
+                {!dailyWordLoading && !dailyWordError && !todayProgress?.completed && (
                   <View style={styles.floatingDailyTaskBadge}>
                     <Text style={styles.floatingDailyTaskBadgeText}>!</Text>
                   </View>
@@ -2181,7 +2221,7 @@ export default function HomeScreen() {
       </View>
 
       {/* DAILY TASK MODAL */}
-      {todayWord && (
+      {(todayWord || dailyWordError) && (
         <Modal
           visible={showDailyTask}
           transparent={true}
@@ -2212,8 +2252,35 @@ export default function HomeScreen() {
                 </LinearGradient>
 
                 <View style={styles.dailyTaskContent}>
-                  <Text style={styles.dailyWordText}>{todayWord.word}</Text>
-                  <Text style={styles.dailyPhonetic}>{todayWord.phonetic}</Text>
+                  {dailyWordError ? (
+                    <View style={styles.dailyWordErrorContainer}>
+                      <Icon name="error-outline" size={48} color={COLORS.error} />
+                      <Text style={styles.dailyWordErrorTitle}>Daily Word Unavailable</Text>
+                      <Text style={styles.dailyWordErrorText}>{dailyWordError}</Text>
+                      <TouchableOpacity
+                        style={styles.retryButton}
+                        onPress={() => fetchDailyWord()}
+                      >
+                        <LinearGradient
+                          colors={[COLORS.primary, COLORS.secondary] as const}
+                          style={styles.retryButtonGradient}
+                        >
+                          <Icon name="refresh" size={20} color={COLORS.white} />
+                          <Text style={styles.retryButtonText}>Retry</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  ) : todayWord ? (
+                    <>
+                      <Text style={styles.dailyWordText}>{todayWord.word}</Text>
+                      <Text style={styles.dailyPhonetic}>{todayWord.phonetic}</Text>
+                    </>
+                  ) : (
+                    <View style={styles.dailyWordLoadingContainer}>
+                      <ActivityIndicator size="large" color={COLORS.primary} />
+                      <Text style={styles.dailyWordLoadingText}>Loading daily word...</Text>
+                    </View>
+                  )}
                   
                   {/* Show Latest Attempt Feedback */}
                   {todayProgress && todayProgress.attemptHistory && todayProgress.attemptHistory.length > 0 && (
@@ -2313,8 +2380,10 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={styles.startDailyButton}
                     onPress={() => {
-                      setShowDailyTask(false);
-                      openPracticeModalFast(todayWord, true);
+                      if (todayWord) {
+                        setShowDailyTask(false);
+                        openPracticeModalFast(todayWord, true);
+                      }
                     }}
                   >
                     <LinearGradient
@@ -2500,207 +2569,26 @@ export default function HomeScreen() {
         </Modal>
       )}
 
-      {/* PRACTICE MODAL */}
-      {selectedWord && (
-        <Modal
-          visible={showPracticeModal}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={closePracticeModal}
-        >
-          <View style={styles.modalOverlay}>
-            <Animated.View 
-              style={[
-                styles.modalContainer,
-                {
-                  opacity: modalAnim,
-                  transform: [{ scale: modalScale }]
-                }
-              ]}
-            >
-              <ScrollView
-                style={styles.practiceModalScroll}
-                contentContainerStyle={styles.practiceModalScrollContent}
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-              >
-                <View style={styles.modalCard}>
-                {!showResult ? (
-                  <>
-                    <View style={styles.modalHeader}>
-                      <TouchableOpacity 
-                        style={styles.closeButton}
-                        onPress={closePracticeModal}
-                      >
-                        <Icon name="close" size={24} color={COLORS.gray[600]} />
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.modalWordDisplay}>
-                      <Text style={styles.modalWord}>{selectedWord.word}</Text>
-                      <Text style={styles.modalPhonetic}>{selectedWord.phonetic}</Text>
-                    </View>
-
-                    <View style={styles.modalMeaning}>
-                      <Icon name="book" size={20} color={COLORS.primary} />
-                      <Text style={styles.modalMeaningText}>{selectedWord.meaning}</Text>
-                    </View>
-
-                    <View style={styles.modalExample}>
-                      <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
-                      <Text style={styles.modalExampleText}>{selectedWord.example}</Text>
-                    </View>
-
-                    <View style={styles.modalTip}>
-                      <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
-                      <Text style={styles.modalTipText}>{selectedWord.tip}</Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.modalListenButton}
-                      onPress={() => playWordPronunciation(selectedWord.word)}
-                      disabled={playingAudio}
-                    >
-                      <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color={COLORS.white} />
-                      <Text style={styles.modalListenText}>
-                        {playingAudio ? 'Playing...' : 'Listen'}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.modalRecordSection}>
-                      {isProcessing ? (
-                        <View style={styles.modalProcessing}>
-                          <ActivityIndicator size="large" color={COLORS.primary} />
-                          <Text style={styles.modalProcessingText}>Analyzing...</Text>
-                        </View>
-                      ) : (
-                        <>
-                          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                            <TouchableOpacity
-                              style={styles.modalRecordButton}
-                              onPress={handleRecord}
-                              activeOpacity={0.9}
-                            >
-                              <LinearGradient
-                                colors={isRecording ? [COLORS.error, '#DC2626'] as const : [COLORS.primary, COLORS.secondary] as const}
-                                style={styles.modalRecordCircle}
-                              >
-                                <Icon 
-                                  name={isRecording ? 'stop' : 'mic'} 
-                                  size={40} 
-                                  color={COLORS.white} 
-                                />
-                              </LinearGradient>
-                            </TouchableOpacity>
-                          </Animated.View>
-                          
-                          {isRecording && (
-                            <Text style={styles.modalRecordingTime}>{recordingTime}</Text>
-                          )}
-                          
-                          <Text style={styles.modalRecordHint}>
-                            {isRecording ? 'Tap to stop' : 'Tap to record'}
-                          </Text>
-                        </>
-                      )}
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    {/* Result Screen */}
-                    <View style={styles.modalHeader}>
-                      <TouchableOpacity 
-                        style={styles.closeButton}
-                        onPress={closePracticeModal}
-                      >
-                        <Icon name="close" size={24} color={COLORS.gray[600]} />
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.resultContent}>
-                        <LinearGradient
-                          colors={result && result.accuracy >= 0.8 
-                            ? [COLORS.success, '#059669'] as const
-                            : [COLORS.warning, '#D97706'] as const
-                          }
-                          style={styles.resultIconCircle}
-                        >
-                          <Icon 
-                            name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} 
-                            size={64} 
-                            color={COLORS.white} 
-                          />
-                        </LinearGradient>
-                        
-                        <Text style={styles.resultTitle}>
-                          {result && result.accuracy >= 0.9 ? 'Perfect!' :
-                           result && result.accuracy >= 0.8 ? 'Excellent!' :
-                           result && result.accuracy >= 0.7 ? 'Good Job!' : 'Keep Trying!'}
-                        </Text>
-
-                        <View style={styles.xpEarned}>
-                          <Icon name="stars" size={24} color={COLORS.gold} />
-                          <Text style={styles.xpEarnedText}>
-                            +{result && Math.round(result.accuracy * 10)} XP
-                          </Text>
-                        </View>
-
-                        <View style={styles.scoreDisplay}>
-                          <Text style={styles.scoreText}>{result && Math.round(result.accuracy * 100)}%</Text>
-                          <Text style={styles.scoreLabel}>Accuracy</Text>
-                        </View>
-
-                        <View style={styles.resultStats}>
-                          <View style={styles.resultStatItem}>
-                            <Icon name="check-circle" size={24} color={COLORS.success} />
-                            <Text style={styles.resultStatValue}>{result?.correct_phonemes || 0}</Text>
-                            <Text style={styles.resultStatLabel}>Correct</Text>
-                          </View>
-                          <View style={styles.resultStatDivider} />
-                          <View style={styles.resultStatItem}>
-                            <Icon name="cancel" size={24} color={COLORS.error} />
-                            <Text style={styles.resultStatValue}>
-                              {result ? result.total_phonemes - result.correct_phonemes : 0}
-                            </Text>
-                            <Text style={styles.resultStatLabel}>Errors</Text>
-                          </View>
-                        </View>
-
-                        <View style={styles.resultFeedback}>
-                          <Text style={styles.resultFeedbackTitle}>Feedback</Text>
-                          <Text style={styles.resultFeedbackText}>{result?.feedback}</Text>
-                        </View>
-
-                        <View style={styles.resultActions}>
-                          <TouchableOpacity 
-                            style={styles.resultTryAgain}
-                            onPress={() => setShowResult(false)}
-                          >
-                            <Icon name="refresh" size={24} color={COLORS.primary} />
-                            <Text style={styles.resultTryAgainText}>Try Again</Text>
-                          </TouchableOpacity>
-                          
-                          <TouchableOpacity 
-                            style={styles.resultContinue}
-                            onPress={closePracticeModal}
-                          >
-                            <LinearGradient
-                              colors={[COLORS.primary, COLORS.secondary] as const}
-                              style={styles.resultContinueGradient}
-                            >
-                              <Text style={styles.resultContinueText}>Continue</Text>
-                            </LinearGradient>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                  </>
-                )}
-              </View>
-              </ScrollView>
-            </Animated.View>
-          </View>
-        </Modal>
-      )}
+      {/* ENHANCED PRACTICE MODAL */}
+      <EnhancedPracticeModal
+        visible={showPracticeModal}
+        word={selectedWord}
+        onClose={closePracticeModal}
+        onSaveAttempt={async (result) => {
+          // Save the attempt to Firebase
+          if (isPracticingDaily) {
+            await saveDailyWordAttempt(
+              result.accuracy,
+              result.feedback,
+              result.correct_phonemes,
+              result.total_phonemes
+            );
+          } else if (selectedWord) {
+            await updateWordProgressFast(result.accuracy);
+          }
+        }}
+        isDailyWord={isPracticingDaily}
+      />
 
       {/* STREAK CALENDAR MODAL */}
       <EnhancedStreakCalendar 
@@ -2867,6 +2755,49 @@ const styles = StyleSheet.create({
   floatingDailyTaskBadgeText: {
     fontSize: 12,
     fontWeight: '900',
+    color: COLORS.white,
+  },
+  dailyWordErrorContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  dailyWordErrorTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.error,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  dailyWordErrorText: {
+    fontSize: 16,
+    color: COLORS.gray[600],
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  dailyWordLoadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  dailyWordLoadingText: {
+    fontSize: 16,
+    color: COLORS.gray[600],
+    marginTop: 16,
+  },
+  retryButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  retryButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
     color: COLORS.white,
   },
   contentWrapper: {
