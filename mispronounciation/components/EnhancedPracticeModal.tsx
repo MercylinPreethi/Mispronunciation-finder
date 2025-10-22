@@ -14,7 +14,12 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
-import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import AudioRecorderPlayer, {
+  AVEncoderAudioQualityIOSType,
+  AVEncodingOption,
+  AudioEncoderAndroidType,
+  AudioSourceAndroidType,
+} from 'react-native-audio-recorder-player';
 import axios from 'axios';
 import RNFS from 'react-native-fs';
 
@@ -197,11 +202,11 @@ export default function EnhancedPracticeModal({
       // Start recording
       try {
         const audioSet = {
-          AudioEncoderAndroid: 'AAC',
-          AudioSourceAndroid: 'MIC',
-          AVEncoderAudioQualityKeyIOS: 'high',
-          AVNumberOfChannelsKeyIOS: 2,
-          AVFormatIDKeyIOS: 'aac',
+          AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
+          AudioSourceAndroid: AudioSourceAndroidType.MIC,
+          AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
+          AVNumberOfChannelsKeyIOS: 1,
+          AVFormatIDKeyIOS: AVEncodingOption.lpcm,
         };
     
         const result = await audioRecorderPlayer.startRecorder(undefined, audioSet);
