@@ -17,6 +17,10 @@ import * as Haptics from 'expo-haptics';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import axios from 'axios';
 import RNFS from 'react-native-fs';
+import { 
+  PhonemePracticeAttempt, 
+  PhonemePracticeData 
+} from '../services/phonemeFirebaseService';
 
 const { width } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
@@ -53,21 +57,7 @@ interface PhonemeAnalysis {
   predicted_phoneme: string;
 }
 
-interface PhonemePracticeAttempt {
-  timestamp: string;
-  accuracy: number;
-  feedback: string;
-}
-
-interface PhonemePracticeData {
-  phoneme: string;
-  word: string;
-  attempts: PhonemePracticeAttempt[];
-  bestScore: number;
-  totalAttempts: number;
-  mastered: boolean;
-  lastAttempted: string;
-}
+// PhonemePracticeAttempt and PhonemePracticeData are imported at the top from phonemeFirebaseService
 
 interface EnhancedPhonemeAnalysisCardProps {
   phoneme: PhonemeAnalysis;

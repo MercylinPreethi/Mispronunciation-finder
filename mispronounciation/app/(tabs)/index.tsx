@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { ref, onValue, set, get } from 'firebase/database';
+import { ref, onValue, set, get, off } from 'firebase/database';
 import { auth, database } from '../../lib/firebase';
 import * as Haptics from 'expo-haptics';
 import RNFS from 'react-native-fs';
@@ -34,6 +34,7 @@ import AudioRecorderPlayer, {
 import phonemeFirebaseService, {
   PhonemeAnalysis as FirebasePhonemeAnalysis,
   PhonemePracticeData,
+  PhonemePracticeAttempt,
   saveWordPhonemeData,
   saveDailyWordData,
   savePhonemeAttempt,
@@ -204,22 +205,7 @@ interface PhonemeAnalysis {
   predicted_phoneme: string;
 }
 
-interface PhonemePracticeData {
-  phoneme: string;
-  word: string;
-  attempts: {
-    id: string;
-    timestamp: Date;
-    audioPath: string;
-    audioUrl?: string;
-    accuracy: number;
-    status: 'correct' | 'partial' | 'mispronounced';
-    feedback: string;
-    analysis?: any;
-  }[];
-  bestScore: number;
-  mastered: boolean;
-}
+// Note: PhonemePracticeData is imported from phonemeFirebaseService
 
 type DifficultyLevel = 'easy' | 'intermediate' | 'hard';
 
@@ -1020,7 +1006,7 @@ export default function HomeScreen() {
       const phonemeDataPath = `users/${user.uid}/phonemeData/phonemePractices`;
       const phonemeRef = ref(database, phonemeDataPath);
       
-      const unsubscribe = onValue(phonemeRef, (snapshot) => {
+      onValue(phonemeRef, (snapshot) => {
         if (snapshot.exists()) {
           const phonemeData = snapshot.val();
           setPhonemePractices(phonemeData);
@@ -1030,7 +1016,7 @@ export default function HomeScreen() {
       
       // Cleanup listener on unmount
       return () => {
-        off(phonemeRef, 'value', unsubscribe);
+        off(phonemeRef);
       };
     }
 
@@ -1267,7 +1253,7 @@ export default function HomeScreen() {
         const timestamp = new Date().toISOString();
         
         // Create attempt object for Firebase
-        const newAttempt = {
+        const newAttempt: PhonemePracticeAttempt = {
           timestamp,
           accuracy,
           feedback,
@@ -1278,9 +1264,9 @@ export default function HomeScreen() {
         // Save to Firebase
         await savePhonemeAttempt(phoneme, selectedWord.word, newAttempt);
 
-        // Update local state
+        // Update local state with proper typing
         setPhonemePractices(prev => {
-          const existingData = prev[phoneme] || {
+          const existingData: PhonemePracticeData = prev[phoneme] || {
             phoneme,
             word: selectedWord.word,
             attempts: [],
@@ -1290,16 +1276,18 @@ export default function HomeScreen() {
             lastAttempted: timestamp,
           };
 
+          const updatedData: PhonemePracticeData = {
+            ...existingData,
+            attempts: [newAttempt, ...existingData.attempts].slice(0, 10),
+            bestScore: Math.max(existingData.bestScore, accuracy),
+            totalAttempts: existingData.totalAttempts + 1,
+            mastered: Math.max(existingData.bestScore, accuracy) >= 0.9,
+            lastAttempted: timestamp,
+          };
+
           return {
             ...prev,
-            [phoneme]: {
-              ...existingData,
-              attempts: [newAttempt, ...existingData.attempts].slice(0, 10),
-              bestScore: Math.max(existingData.bestScore, accuracy),
-              totalAttempts: existingData.totalAttempts + 1,
-              mastered: Math.max(existingData.bestScore, accuracy) >= 0.9,
-              lastAttempted: timestamp,
-            }
+            [phoneme]: updatedData,
           };
         });
 
