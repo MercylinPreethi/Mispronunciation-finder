@@ -375,8 +375,15 @@ export default function EnhancedPracticeModal({
     return COLORS.error;
   };
 
-  if (!word) return null;
+  if (!word) {
+    console.log('EnhancedPracticeModal: word is null, not rendering modal');
+    return null;
+  }
+  
+  console.log('EnhancedPracticeModal: rendering with word:', word);
 
+  console.log('EnhancedPracticeModal: visible =', visible, 'word =', word);
+  
   return (
     <Modal
       visible={visible}
@@ -384,54 +391,350 @@ export default function EnhancedPracticeModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <Animated.View 
-        style={[
-          styles.modalOverlay,
-          { opacity: modalAnim }
-        ]}
-      >
-        <View style={styles.modalContainer}>
+      <View style={{
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+      }}>
+        <View style={{
+          width: '90%',
+          maxWidth: 400,
+          backgroundColor: 'white',
+          borderRadius: 20,
+          padding: 20,
+          zIndex: 10000,
+        }}>
+          {/* DEBUG: Simple test text */}
+          <Text style={{color: 'red', fontSize: 16, padding: 10, backgroundColor: 'yellow'}}>
+            DEBUG: Modal is rendering - Word: {word?.word || 'NO WORD'}
+          </Text>
+          
           {/* Header */}
-          <LinearGradient
-            colors={[COLORS.primary, COLORS.secondary]}
-            style={styles.modalHeader}
-          >
-            <Text style={styles.modalTitle}>
+          <View style={{
+            backgroundColor: COLORS.primary,
+            padding: 20,
+            borderRadius: 10,
+            marginBottom: 20,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <Text style={{color: 'white', fontSize: 18, fontWeight: 'bold'}}>
               {isDailyWord ? "Today's Challenge" : "Practice Word"}
             </Text>
             <TouchableOpacity 
-              style={styles.modalCloseButton}
               onPress={onClose}
             >
-              <Icon name="close" size={24} color={COLORS.white} />
+              <Icon name="close" size={24} color="white" />
             </TouchableOpacity>
-          </LinearGradient>
+          </View>
 
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            {/* Word Display */}
-            <View style={styles.wordSection}>
-              <Text style={styles.wordText}>{word.word}</Text>
-              <Text style={styles.phoneticText}>{word.phonetic}</Text>
-              
-              <View style={styles.wordActions}>
-                <TouchableOpacity
-                  style={styles.playButton}
-                  onPress={handlePlayWord}
-                >
-                  <Icon 
-                    name={playingAudio ? "pause" : "play-arrow"} 
-                    size={24} 
-                    color={COLORS.primary} 
-                  />
-                  <Text style={styles.playButtonText}>
-                    {playingAudio ? 'Playing...' : 'Listen'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+          {/* DEBUG: Simple content test */}
+          <View style={{padding: 20, backgroundColor: 'lightblue', marginBottom: 20}}>
+            <Text style={{fontSize: 24, fontWeight: 'bold'}}>Word: {word.word}</Text>
+            <Text style={{fontSize: 18}}>Phonetic: {word.phonetic}</Text>
+            <Text style={{fontSize: 16}}>Meaning: {word.meaning}</Text>
+            <Text style={{fontSize: 14}}>Example: {word.example}</Text>
+            <Text style={{fontSize: 12}}>Tip: {word.tip}</Text>
+            
+            <TouchableOpacity 
+              style={{backgroundColor: 'red', padding: 10, marginTop: 10, borderRadius: 5}}
+              onPress={() => {
+                console.log('Test button pressed!');
+                Alert.alert('Test', 'Modal is working!');
+              }}
+            >
+              <Text style={{color: 'white', textAlign: 'center'}}>TEST BUTTON</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* Simple practice button */}
+          <TouchableOpacity 
+            style={{
+              backgroundColor: COLORS.primary,
+              padding: 15,
+              borderRadius: 10,
+              marginBottom: 10,
+            }}
+            onPress={() => {
+              console.log('Practice button pressed!');
+              Alert.alert('Practice', 'Starting practice session...');
+            }}
+          >
+            <Text style={{color: 'white', textAlign: 'center', fontSize: 16, fontWeight: 'bold'}}>
+              START PRACTICE
+            </Text>
+          </TouchableOpacity>
+          
+          {/* Close button */}
+          <TouchableOpacity 
+            style={{
+              backgroundColor: COLORS.gray[400],
+              padding: 15,
+              borderRadius: 10,
+            }}
+            onPress={onClose}
+          >
+            <Text style={{color: 'white', textAlign: 'center', fontSize: 16, fontWeight: 'bold'}}>
+              CLOSE
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
-            {/* Recording Section */}
-            {!showResult ? (
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  modalContainer: {
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+    zIndex: 10000,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    flex: 1,
+  },
+  wordSection: {
+    padding: 20,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[200],
+  },
+  wordText: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: COLORS.gray[900],
+    marginBottom: 8,
+  },
+  phoneticText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginBottom: 16,
+  },
+  wordActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  playButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray[100],
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  playButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  recordingSection: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  recordButton: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    overflow: 'hidden',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+    marginBottom: 16,
+  },
+  recordButtonGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.gray[700],
+    marginBottom: 8,
+  },
+  recordingTime: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.error,
+  },
+  processingContainer: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  processingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.gray[700],
+    marginTop: 12,
+  },
+  resultSection: {
+    padding: 20,
+  },
+  overallResult: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  resultTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.gray[900],
+    marginBottom: 8,
+  },
+  resultAccuracy: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  resultFeedback: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: COLORS.gray[600],
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  phonemeSection: {
+    marginBottom: 20,
+  },
+  phonemeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[200],
+  },
+  phonemeTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.gray[800],
+  },
+  phonemeContent: {
+    overflow: 'hidden',
+  },
+  wordPhonemeContainer: {
+    marginTop: 16,
+  },
+  wordPhonemeTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.gray[800],
+    marginBottom: 12,
+  },
+  phonemeRow: {
+    marginBottom: 12,
+  },
+  phonemeLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+    marginBottom: 8,
+  },
+  phonemeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  phonemeBox: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 32,
+    alignItems: 'center',
+  },
+  phonemeText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  legend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[200],
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  legendText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+  },
+  actionButtons: {
+    marginTop: 20,
+  },
+  tryAgainButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  tryAgainButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  tryAgainText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+});
               <View style={styles.recordingSection}>
                 <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
                   <TouchableOpacity
@@ -638,6 +941,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 9999,
+    elevation: 9999,
   },
   modalContainer: {
     width: '90%',
@@ -651,6 +956,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 8,
+    zIndex: 10000,
   },
   modalHeader: {
     flexDirection: 'row',
