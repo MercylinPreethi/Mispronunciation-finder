@@ -122,6 +122,7 @@ interface WordProgress {
   bestScore: number;
   lastAttempted: string;
   attemptHistory?: PracticeWordAttempt[];
+  scores?: AnalysisResult; // ADDED: Add scores to WordProgress
 }
 
 interface PracticeWordAttempt {
@@ -130,6 +131,7 @@ interface PracticeWordAttempt {
   feedback: string;
   correct_phonemes: number;
   total_phonemes: number;
+  scores?: AnalysisResult; // ADDED: Add scores to PracticeWordAttempt
 }
 
 interface DailyWordProgress {
@@ -141,6 +143,7 @@ interface DailyWordProgress {
   attempts: number;
   bestScore: number;
   attemptHistory?: DailyWordAttempt[];
+  scores?: AnalysisResult; // ADDED: Add scores to DailyWordProgress
 }
 
 interface DailyWordAttempt {
@@ -149,6 +152,7 @@ interface DailyWordAttempt {
   feedback: string;
   correct_phonemes: number;
   total_phonemes: number;
+  scores?: AnalysisResult; // ADDED: Add scores to DailyWordAttempt
 }
 
 interface UserStats {
@@ -163,6 +167,10 @@ interface AnalysisResult {
   correct_phonemes: number;
   total_phonemes: number;
   feedback: string;
+  predicted_phonemes?: string[];
+  reference_phonemes?: string[];
+  aligned_predicted?: string[];    // ADD THIS
+  aligned_reference?: string[];    // ADD THIS
 }
 
 interface UserProgressResponse {
@@ -174,6 +182,33 @@ interface UserProgressResponse {
   completed_count: number;
   completion_percentage: number;
   all_completed: boolean;
+}
+
+// ADDED: Phoneme Analysis Interfaces
+interface PhonemeAnalysis {
+  phoneme: string;
+  status: 'correct' | 'partial' | 'mispronounced';
+  accuracy: number;
+  feedback: string;
+  reference_phoneme: string;
+  predicted_phoneme: string;
+}
+
+interface PhonemePracticeData {
+  phoneme: string;
+  word: string;
+  attempts: {
+    id: string;
+    timestamp: Date;
+    audioPath: string;
+    audioUrl?: string;
+    accuracy: number;
+    status: 'correct' | 'partial' | 'mispronounced';
+    feedback: string;
+    analysis?: any;
+  }[];
+  bestScore: number;
+  mastered: boolean;
 }
 
 type DifficultyLevel = 'easy' | 'intermediate' | 'hard';
@@ -217,6 +252,15 @@ export default function HomeScreen() {
   const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
   const [showPracticeWordFeedback, setShowPracticeWordFeedback] = useState(false);
   const [selectedWordProgress, setSelectedWordProgress] = useState<WordProgress | null>(null);
+
+  // ADDED: Phoneme Analysis States
+  const [showPhonemeAnalysis, setShowPhonemeAnalysis] = useState(false);
+  const [currentPhonemeAnalysis, setCurrentPhonemeAnalysis] = useState<PhonemeAnalysis[]>([]);
+  const [phonemePractices, setPhonemePractices] = useState<{[key: string]: PhonemePracticeData}>({});
+  const [practicingPhoneme, setPracticingPhoneme] = useState<string | null>(null);
+  const [isRecordingPhoneme, setIsRecordingPhoneme] = useState(false);
+  const [phonemeRecordingTime, setPhonemeRecordingTime] = useState('00:00');
+  const [playingPhoneme, setPlayingPhoneme] = useState<string | null>(null);
 
   // Streak Calendar State
   const [showStreakCalendar, setShowStreakCalendar] = useState(false);
@@ -493,6 +537,7 @@ export default function HomeScreen() {
         feedback: result.feedback,
         correct_phonemes: result.correct_phonemes,
         total_phonemes: result.total_phonemes,
+        scores: result, // ADDED: Store scores in attempt
       };
 
       // Get existing progress and add new attempt to history
@@ -513,6 +558,7 @@ export default function HomeScreen() {
         bestScore: newBestScore,
         lastAttempted: timestamp,
         attemptHistory: attemptHistory,
+        scores: result, // ADDED: Store scores in progress
       };
 
       setWordProgress(prev => ({ ...prev, [wordId]: newProgress }));
@@ -638,6 +684,7 @@ export default function HomeScreen() {
         feedback,
         correct_phonemes,
         total_phonemes,
+        scores: result || undefined, // ADDED: Store scores in attempt
       };
 
       // Get existing progress or create new
@@ -673,6 +720,7 @@ export default function HomeScreen() {
         completed: accuracy >= 0.5 || existingProgress.completed,
         mastered: accuracy >= 0.8 || existingProgress.mastered, // NEW: Mastery tracking
         attemptHistory,
+        scores: result || existingProgress.scores, // ADDED: Store scores in progress
       };
 
       // Save to Firebase
@@ -1027,6 +1075,249 @@ export default function HomeScreen() {
   }, [isRecording]);
 
   // ============================================================================
+  // PHONEME ANALYSIS FUNCTIONS
+  // ============================================================================
+
+  // ADDED: Function to extract phoneme breakdown from analysis
+  const getPhonemeBreakdown = (scores: AnalysisResult): PhonemeAnalysis[] => {
+    if (!scores.reference_phonemes || !scores.predicted_phonemes) {
+      return [];
+    }
+
+    const breakdown: PhonemeAnalysis[] = [];
+    const aligned_ref = scores.reference_phonemes;
+    const aligned_pred = scores.predicted_phonemes;
+
+    for (let i = 0; i < aligned_ref.length; i++) {
+      const ref = aligned_ref[i];
+      const pred = aligned_pred[i] || '';
+
+      let status: 'correct' | 'partial' | 'mispronounced' = 'mispronounced';
+      let accuracy = 0;
+      let feedback = '';
+
+      if (ref === pred) {
+        status = 'correct';
+        accuracy = 1.0;
+        feedback = 'Perfect pronunciation!';
+      } else if (pred && ref && pred.toLowerCase() === ref.toLowerCase()) {
+        status = 'partial';
+        accuracy = 0.5;
+        feedback = 'Close, but needs refinement';
+      } else {
+        accuracy = 0.0;
+        feedback = `Expected /${ref}/ but got /${pred || 'nothing'}/`;
+      }
+
+      breakdown.push({
+        phoneme: ref,
+        status,
+        accuracy,
+        feedback,
+        reference_phoneme: ref,
+        predicted_phoneme: pred
+      });
+    }
+
+    return breakdown;
+  };
+
+  // ADDED: Function to open phoneme analysis
+  const openPhonemeAnalysis = (word: Word, progress: WordProgress | DailyWordProgress) => {
+    if (!progress.scores) {
+      Alert.alert('No Analysis Data', 'No phoneme analysis data available for this word yet.');
+      return;
+    }
+    
+    const phonemeBreakdown = getPhonemeBreakdown(progress.scores);
+    setCurrentPhonemeAnalysis(phonemeBreakdown);
+    setSelectedWord(word);
+    setShowPhonemeAnalysis(true);
+    
+    Animated.spring(modalAnim, {
+      toValue: 1,
+      tension: 70,
+      friction: 5,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  // ADDED: Function to close phoneme analysis
+  const closePhonemeAnalysis = () => {
+    Animated.timing(modalAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowPhonemeAnalysis(false);
+      setCurrentPhonemeAnalysis([]);
+      setPracticingPhoneme(null);
+      setIsRecordingPhoneme(false);
+      setPlayingPhoneme(null);
+    });
+  };
+
+  // ADDED: Phoneme recording functions
+  const startPhonemeRecording = async (phoneme: string) => {
+    try {
+      setIsRecordingPhoneme(true);
+      setPracticingPhoneme(phoneme);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      const path = `${RNFS.DocumentDirectoryPath}/phoneme_${phoneme}_${Date.now()}.wav`;
+      const audioSet = {
+        AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
+        AudioSourceAndroid: AudioSourceAndroidType.MIC,
+        AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
+        AVNumberOfChannelsKeyIOS: 1,
+        AVFormatIDKeyIOS: AVEncodingOption.lpcm,
+      };
+      
+      await audioRecorderPlayer.startRecorder(path, audioSet);
+      recordingPathRef.current = path;
+      
+      audioRecorderPlayer.addRecordBackListener((e: any) => {
+        const time = audioRecorderPlayer.mmssss(Math.floor(e.currentPosition));
+        setPhonemeRecordingTime(time);
+      });
+    } catch (error) {
+      console.error('Phoneme recording error:', error);
+      Alert.alert('Error', 'Failed to start phoneme recording');
+      setIsRecordingPhoneme(false);
+    }
+  };
+
+  const stopPhonemeRecording = async () => {
+    try {
+      const result = await audioRecorderPlayer.stopRecorder();
+      audioRecorderPlayer.removeRecordBackListener();
+      setIsRecordingPhoneme(false);
+      setPhonemeRecordingTime('00:00');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      if (practicingPhoneme) {
+        await processPhonemeAudio(result, practicingPhoneme);
+      }
+    } catch (error) {
+      console.error('Stop phoneme recording error:', error);
+      Alert.alert('Error', 'Failed to stop phoneme recording');
+      setIsRecordingPhoneme(false);
+    }
+  };
+
+  const processPhonemeAudio = async (audioPath: string, phoneme: string) => {
+    if (!selectedWord) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('audio_file', {
+        uri: Platform.OS === 'ios' ? audioPath : `file://${audioPath}`,
+        type: 'audio/wav',
+        name: `phoneme_${phoneme}.wav`,
+      } as any);
+      formData.append('phoneme', phoneme);
+      formData.append('word_context', selectedWord.word);
+
+      const response = await axios.post(`${API_BASE_URL}/analyze_phoneme_practice`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000,
+      });
+
+      if (response.data.success) {
+        const { accuracy, status, feedback, analysis } = response.data;
+        
+        // Update phoneme practice data
+        const attemptId = Date.now().toString();
+        const newAttempt = {
+          id: attemptId,
+          timestamp: new Date(),
+          audioPath,
+          accuracy,
+          status,
+          feedback,
+          analysis
+        };
+
+        setPhonemePractices(prev => ({
+          ...prev,
+          [phoneme]: {
+            phoneme,
+            word: selectedWord.word,
+            attempts: [...(prev[phoneme]?.attempts || []), newAttempt],
+            bestScore: Math.max(prev[phoneme]?.bestScore || 0, accuracy),
+            mastered: accuracy >= 0.8
+          }
+        }));
+
+        Alert.alert(
+          status === 'correct' ? '🎉 Perfect!' : status === 'partial' ? '👍 Good!' : '💪 Keep Trying',
+          `Phoneme: /${phoneme}/\nScore: ${Math.round(accuracy * 100)}%\n\n${feedback}`,
+          [{ text: 'Continue' }]
+        );
+      }
+    } catch (error) {
+      console.error('Phoneme processing error:', error);
+      Alert.alert('Error', 'Could not analyze phoneme pronunciation');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ADDED: Phoneme audio playback
+  const playPhonemeAudio = async (phoneme: string) => {
+    try {
+      Haptics.selectionAsync();
+      
+      if (playingPhoneme === phoneme) {
+        await audioRecorderPlayer.stopPlayer();
+        audioRecorderPlayer.removePlayBackListener();
+        setPlayingPhoneme(null);
+        return;
+      }
+
+      if (playingPhoneme) {
+        await audioRecorderPlayer.stopPlayer();
+        audioRecorderPlayer.removePlayBackListener();
+      }
+
+      const response = await axios.get(
+        `${API_BASE_URL}/get_phoneme_audio/${phoneme}`,
+        { responseType: 'arraybuffer', timeout: 10000 }
+      );
+
+      if (response.data) {
+        const uint8Array = new Uint8Array(response.data);
+        let binary = '';
+        for (let i = 0; i < uint8Array.byteLength; i++) {
+          binary += String.fromCharCode(uint8Array[i]);
+        }
+        const base64Audio = btoa(binary);
+
+        const tempPath = `${RNFS.DocumentDirectoryPath}/temp_phoneme_${phoneme}_${Date.now()}.wav`;
+        await RNFS.writeFile(tempPath, base64Audio, 'base64');
+
+        setPlayingPhoneme(phoneme);
+        await audioRecorderPlayer.startPlayer(tempPath);
+
+        audioRecorderPlayer.addPlayBackListener((e: any) => {
+          if (e.currentPosition >= e.duration) {
+            audioRecorderPlayer.stopPlayer();
+            audioRecorderPlayer.removePlayBackListener();
+            setPlayingPhoneme(null);
+            RNFS.unlink(tempPath).catch(() => {});
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error playing phoneme audio:', error);
+      setPlayingPhoneme(null);
+      Alert.alert('Audio Error', `Could not play phoneme /${phoneme}/`);
+    }
+  };
+
+  // ============================================================================
   // OPTIMIZED UI HANDLERS
   // ============================================================================
 
@@ -1229,6 +1520,8 @@ export default function HomeScreen() {
           correct_phonemes: analysisResult.correct_phonemes,
           total_phonemes: analysisResult.total_phonemes,
           feedback: response.data.feedback || 'Great job!',
+          predicted_phonemes: analysisResult.predicted_phonemes, // ADDED
+          reference_phonemes: analysisResult.reference_phonemes, // ADDED
         };
         
         setResult(resultData);
@@ -2480,6 +2773,20 @@ export default function HomeScreen() {
                       <Text style={styles.dailyTipText}>{selectedWord.tip}</Text>
                     </View>
 
+                    {/* ADDED: Phoneme Analysis Button */}
+                    <TouchableOpacity
+                      style={styles.phonemeAnalysisButton}
+                      onPress={() => openPhonemeAnalysis(selectedWord, selectedWordProgress)}
+                    >
+                      <LinearGradient
+                        colors={[COLORS.secondary, COLORS.primary] as const}
+                        style={styles.phonemeAnalysisGradient}
+                      >
+                        <Icon name="graphic-eq" size={20} color={COLORS.white} />
+                        <Text style={styles.phonemeAnalysisText}>Phoneme-Level Analysis</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+
                     <TouchableOpacity
                       style={styles.startDailyButton}
                       onPress={openPracticeFromFeedback}
@@ -2496,6 +2803,223 @@ export default function HomeScreen() {
                 </View>
               </ScrollView>
             </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* ADDED: PHONEME ANALYSIS MODAL */}
+      {showPhonemeAnalysis && selectedWord && (
+        <Modal
+          visible={showPhonemeAnalysis}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={closePhonemeAnalysis}
+        >
+          <View style={styles.modalOverlay}>
+            <Animated.View 
+              style={[
+                styles.modalContainer,
+                {
+                  opacity: modalAnim,
+                  transform: [{ scale: modalScale }]
+                }
+              ]}
+            >
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeader}>
+                  <View style={styles.modalTitleContainer}>
+                    <Text style={styles.modalTitle}>Phoneme Analysis</Text>
+                    <Text style={styles.modalSubtitle}>{selectedWord.word}</Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.closeButton}
+                    onPress={closePhonemeAnalysis}
+                  >
+                    <Icon name="close" size={24} color={COLORS.gray[600]} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView 
+                  style={styles.phonemeAnalysisScroll}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {/* Word Summary */}
+                  <View style={styles.phonemeWordSummary}>
+                    <Text style={styles.phonemeWordText}>{selectedWord.word}</Text>
+                    <Text style={styles.phonemePhonetic}>{selectedWord.phonetic}</Text>
+                  </View>
+
+                  {/* Phoneme Breakdown */}
+                  <View style={styles.phonemeBreakdownSection}>
+                    <Text style={styles.sectionTitle}>Phoneme Breakdown</Text>
+                    <View style={styles.phonemeGrid}>
+                      {currentPhonemeAnalysis.map((phoneme, index) => {
+                        const practiceData = phonemePractices[phoneme.phoneme];
+                        const latestAttempt = practiceData?.attempts?.[0];
+                        
+                        return (
+                          <View key={index} style={styles.phonemeCard}>
+                            {/* Phoneme Symbol */}
+                            <View style={styles.phonemeSymbolContainer}>
+                              <Text style={styles.phonemeSymbol}>/{phoneme.phoneme}/</Text>
+                              <View style={[
+                                styles.statusIndicator,
+                                { backgroundColor: 
+                                  phoneme.status === 'correct' ? COLORS.success :
+                                  phoneme.status === 'partial' ? COLORS.warning : COLORS.error
+                                }
+                              ]} />
+                            </View>
+
+                            {/* Accuracy */}
+                            <View style={styles.accuracyContainer}>
+                              <Text style={styles.accuracyLabel}>Accuracy</Text>
+                              <Text style={[
+                                styles.accuracyValue,
+                                { color: 
+                                  phoneme.accuracy >= 0.8 ? COLORS.success :
+                                  phoneme.accuracy >= 0.5 ? COLORS.warning : COLORS.error
+                                }
+                              ]}>
+                                {Math.round(phoneme.accuracy * 100)}%
+                              </Text>
+                            </View>
+
+                            {/* Practice Progress */}
+                            {latestAttempt && (
+                              <View style={styles.practiceProgress}>
+                                <Text style={styles.practiceLabel}>Best Practice</Text>
+                                <Text style={[
+                                  styles.practiceValue,
+                                  { color: 
+                                    latestAttempt.accuracy >= 0.8 ? COLORS.success :
+                                    latestAttempt.accuracy >= 0.5 ? COLORS.warning : COLORS.error
+                                  }
+                                ]}>
+                                  {Math.round(latestAttempt.accuracy * 100)}%
+                                </Text>
+                              </View>
+                            )}
+
+                            {/* Actions */}
+                            <View style={styles.phonemeActions}>
+                              <TouchableOpacity
+                                style={[
+                                  styles.phonemeActionButton,
+                                  styles.listenButton,
+                                  playingPhoneme === phoneme.phoneme && styles.actionButtonActive
+                                ]}
+                                onPress={() => playPhonemeAudio(phoneme.phoneme)}
+                              >
+                                <Icon 
+                                  name={playingPhoneme === phoneme.phoneme ? "volume-up" : "volume-down"} 
+                                  size={16} 
+                                  color={COLORS.white} 
+                                />
+                                <Text style={styles.actionButtonText}>
+                                  {playingPhoneme === phoneme.phoneme ? 'Playing' : 'Listen'}
+                                </Text>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={[
+                                  styles.phonemeActionButton,
+                                  styles.practiceButton,
+                                  isRecordingPhoneme && practicingPhoneme === phoneme.phoneme && styles.recordingButton
+                                ]}
+                                onPress={() => {
+                                  if (isRecordingPhoneme && practicingPhoneme === phoneme.phoneme) {
+                                    stopPhonemeRecording();
+                                  } else {
+                                    startPhonemeRecording(phoneme.phoneme);
+                                  }
+                                }}
+                                disabled={isRecordingPhoneme && practicingPhoneme !== phoneme.phoneme}
+                              >
+                                <Icon 
+                                  name={isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? "stop" : "mic"} 
+                                  size={16} 
+                                  color={COLORS.white} 
+                                />
+                                <Text style={styles.actionButtonText}>
+                                  {isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? 
+                                    `Recording ${phonemeRecordingTime}` : 'Practice'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            {/* Feedback */}
+                            <Text style={styles.phonemeFeedback}>{phoneme.feedback}</Text>
+
+                            {/* Practice History */}
+                            {practiceData && practiceData.attempts.length > 0 && (
+                              <View style={styles.practiceHistory}>
+                                <Text style={styles.historyTitle}>
+                                  Practice History ({practiceData.attempts.length})
+                                </Text>
+                                {practiceData.attempts.slice(0, 3).map((attempt, idx) => (
+                                  <View key={idx} style={styles.historyItem}>
+                                    <Text style={styles.historyScore}>
+                                      {Math.round(attempt.accuracy * 100)}%
+                                    </Text>
+                                    <Text style={styles.historyTime}>
+                                      {attempt.timestamp.toLocaleTimeString([], { 
+                                        hour: '2-digit', 
+                                        minute: '2-digit' 
+                                      })}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* Overall Progress */}
+                  {Object.keys(phonemePractices).length > 0 && (
+                    <View style={styles.overallProgressSection}>
+                      <Text style={styles.sectionTitle}>Overall Progress</Text>
+                      <View style={styles.progressStats}>
+                        <View style={styles.progressStat}>
+                          <Text style={styles.progressStatValue}>
+                            {Object.values(phonemePractices).filter(p => p.mastered).length}
+                          </Text>
+                          <Text style={styles.progressStatLabel}>Mastered</Text>
+                        </View>
+                        <View style={styles.progressStat}>
+                          <Text style={styles.progressStatValue}>
+                            {Object.values(phonemePractices).length}
+                          </Text>
+                          <Text style={styles.progressStatLabel}>Total</Text>
+                        </View>
+                        <View style={styles.progressStat}>
+                          <Text style={styles.progressStatValue}>
+                            {Math.round(
+                              (Object.values(phonemePractices).filter(p => p.mastered).length / 
+                               Object.values(phonemePractices).length) * 100
+                            )}%
+                          </Text>
+                          <Text style={styles.progressStatLabel}>Completion</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </ScrollView>
+
+                {/* Recording Indicator */}
+                {isRecordingPhoneme && (
+                  <View style={styles.recordingIndicator}>
+                    <View style={styles.recordingPulse} />
+                    <Text style={styles.recordingText}>
+                      Recording {practicingPhoneme}... {phonemeRecordingTime}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </Animated.View>
           </View>
         </Modal>
       )}
@@ -2908,6 +3432,28 @@ const styles = StyleSheet.create({
   badgeInfo: {
     flex: 1,
   },
+  phonemeAnalysisButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 16,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  phonemeAnalysisGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 10,
+  },
+  phonemeAnalysisText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.white,
+  },
   badgeValue: {
     fontSize: 20,
     fontWeight: '900',
@@ -2956,6 +3502,224 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: COLORS.gray[800],
+  },
+  phonemeAnalysisScroll: {
+    maxHeight: height * 0.7,
+  },
+  modalTitleContainer: {
+    flex: 1,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+  },
+  phonemeWordSummary: {
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray[200],
+  },
+  phonemeWordText: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: COLORS.gray[800],
+    marginBottom: 8,
+  },
+  phonemePhonetic: {
+    fontSize: 18,
+    color: COLORS.gray[600],
+    fontStyle: 'italic',
+  },
+  phonemeBreakdownSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+    marginBottom: 16,
+  },
+  phonemeGrid: {
+    gap: 12,
+  },
+  phonemeCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: COLORS.gray[100],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  phonemeSymbolContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  phonemeSymbol: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.gray[800],
+  },
+  statusIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  accuracyContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  accuracyLabel: {
+    fontSize: 14,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+  },
+  accuracyValue: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  practiceProgress: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  practiceLabel: {
+    fontSize: 14,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+  },
+  practiceValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  phonemeActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  phonemeActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    gap: 6,
+  },
+  listenButton: {
+    backgroundColor: COLORS.primary,
+  },
+  practiceButton: {
+    backgroundColor: COLORS.success,
+  },
+  recordingButton: {
+    backgroundColor: COLORS.error,
+  },
+  actionButtonActive: {
+    opacity: 0.8,
+    transform: [{ scale: 0.95 }],
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  phonemeFeedback: {
+    fontSize: 13,
+    color: COLORS.gray[700],
+    lineHeight: 18,
+    fontStyle: 'italic',
+    marginBottom: 12,
+  },
+  practiceHistory: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray[200],
+    paddingTop: 12,
+  },
+  historyTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.gray[600],
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  historyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  historyScore: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.gray[700],
+  },
+  historyTime: {
+    fontSize: 12,
+    color: COLORS.gray[500],
+  },
+  overallProgressSection: {
+    marginBottom: 24,
+  },
+  progressStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 16,
+    padding: 20,
+  },
+  progressStat: {
+    alignItems: 'center',
+  },
+  progressStatValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.primary,
+    marginBottom: 4,
+  },
+  progressStatLabel: {
+    fontSize: 12,
+    color: COLORS.gray[600],
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.error + '20',
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 16,
+    gap: 8,
+  },
+  recordingPulse: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.error,
+  },
+  recordingText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.error,
   },
   dropdownMenu: {
     position: 'absolute',
