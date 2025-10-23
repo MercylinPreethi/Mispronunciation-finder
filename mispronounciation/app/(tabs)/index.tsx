@@ -921,9 +921,23 @@ export default function HomeScreen() {
     try {
       // Load everything in parallel including phoneme data
       const [statsPromise, dailyWordPromise, progressPromise, dailyProgressPromise, phonemePromise] = await Promise.allSettled([
-        // Stats
+        // Stats - Load immediately and set up listener
         (async () => {
           const statsRef = ref(database, `users/${userId}/stats`);
+          
+          // First, load stats immediately
+          const snapshot = await get(statsRef);
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            setStats({
+              streak: data.streak || 0,
+              totalWords: data.totalWords || 0,
+              accuracy: data.accuracy || 0,
+              xp: data.xp || 0,
+            });
+          }
+          
+          // Then set up listener for updates
           onValue(statsRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
@@ -2735,23 +2749,61 @@ export default function HomeScreen() {
                     </View>
                   )}
                   
-                  <TouchableOpacity
-                    style={styles.startDailyButton}
-                    onPress={() => {
-                      setShowDailyTask(false);
-                      openPracticeModalFast(todayWord, true);
-                    }}
-                  >
-                    <LinearGradient
-                      colors={[COLORS.primary, COLORS.secondary] as const}
-                      style={styles.startDailyGradient}
+                  {/* Action Buttons Row - Show when user has attempted */}
+                  {todayProgress && todayProgress.attempts > 0 && todayProgress.scores && (
+                    <View style={styles.actionButtonsRow}>
+                      <TouchableOpacity
+                        style={[styles.phonemeAnalysisButton, { flex: 1 }]}
+                        onPress={() => {
+                          setShowDailyTask(false);
+                          openPhonemeAnalysis(todayWord, todayProgress);
+                        }}
+                      >
+                        <LinearGradient
+                          colors={[COLORS.secondary, COLORS.primary] as const}
+                          style={styles.phonemeAnalysisGradient}
+                        >
+                          <Icon name="graphic-eq" size={18} color={COLORS.white} />
+                          <Text style={styles.phonemeAnalysisText}>Phoneme Analysis</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.startDailyButton, { flex: 1 }]}
+                        onPress={() => {
+                          setShowDailyTask(false);
+                          openPracticeModalFast(todayWord, true);
+                        }}
+                      >
+                        <LinearGradient
+                          colors={[COLORS.primary, COLORS.secondary] as const}
+                          style={styles.startDailyGradient}
+                        >
+                          <Text style={styles.startDailyText}>Try Again</Text>
+                          <Icon name="refresh" size={18} color={COLORS.white} />
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  
+                  {/* Single button if no attempts yet */}
+                  {(!todayProgress || todayProgress.attempts === 0 || !todayProgress.scores) && (
+                    <TouchableOpacity
+                      style={[styles.startDailyButton, { marginTop: 16 }]}
+                      onPress={() => {
+                        setShowDailyTask(false);
+                        openPracticeModalFast(todayWord, true);
+                      }}
                     >
-                      <Text style={styles.startDailyText}>
-                        {todayProgress && todayProgress.attempts > 0 ? 'Try Again' : 'Start Challenge'}
-                      </Text>
-                      <Icon name={todayProgress && todayProgress.attempts > 0 ? "refresh" : "arrow-forward"} size={20} color={COLORS.white} />
-                    </LinearGradient>
-                  </TouchableOpacity>
+                      <LinearGradient
+                        colors={[COLORS.primary, COLORS.secondary] as const}
+                        style={styles.startDailyGradient}
+                      >
+                        <Text style={styles.startDailyText}>Start Challenge</Text>
+                        <Icon name="arrow-forward" size={18} color={COLORS.white} />
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
               </ScrollView>
@@ -2908,7 +2960,7 @@ export default function HomeScreen() {
                     {/* Action Buttons Side by Side */}
                     <View style={styles.actionButtonsRow}>
                       <TouchableOpacity
-                        style={styles.phonemeAnalysisButton}
+                        style={[styles.phonemeAnalysisButton, { flex: 1 }]}
                         onPress={() => openPhonemeAnalysis(selectedWord, selectedWordProgress)}
                       >
                         <LinearGradient
@@ -2921,7 +2973,7 @@ export default function HomeScreen() {
                       </TouchableOpacity>
 
                       <TouchableOpacity
-                        style={styles.startDailyButton}
+                        style={[styles.startDailyButton, { flex: 1 }]}
                         onPress={openPracticeFromFeedback}
                       >
                         <LinearGradient
@@ -3473,7 +3525,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   phonemeAnalysisButton: {
-    flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: COLORS.secondary,
@@ -4432,7 +4483,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   startDailyButton: {
-    flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: COLORS.primary,
