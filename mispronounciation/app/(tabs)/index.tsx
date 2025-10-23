@@ -25,6 +25,7 @@ import ProgressCircle from '../../components/ProgressCircle';
 import LearningPathBackground from '../../components/LearningPathBackground';
 import EnhancedStreakCalendar from '../../components/EnhancedStreakCalendar';
 import EnhancedPhonemeAnalysisCard from '../../components/EnhancedPhonemeAnalysisCard';
+import PhonemeVisualization from '../../components/PhonemeVisualization';
 import AudioRecorderPlayer, {
   AVEncoderAudioQualityIOSType,
   AVEncodingOption,
@@ -3035,34 +3036,103 @@ export default function HomeScreen() {
                     <Text style={styles.phonemePhonetic}>{selectedWord.phonetic}</Text>
                   </View>
 
-                  {/* Phoneme Breakdown - Using Enhanced Cards */}
-                  <View style={styles.phonemeBreakdownSection}>
-                    <Text style={styles.sectionTitle}>Phoneme Breakdown</Text>
-                    <View style={styles.phonemeList}>
-                      {currentPhonemeAnalysis.map((phoneme, index) => {
-                        const practiceData = phonemePractices[phoneme.phoneme];
-                        
-                        return (
-                          <EnhancedPhonemeAnalysisCard
-                            key={index}
-                            phoneme={phoneme}
-                            practiceData={practiceData}
-                            onPlayPhoneme={playPhonemeAudio}
-                            onPracticePhoneme={(ph) => {
-                              if (isRecordingPhoneme && practicingPhoneme === ph) {
-                                stopPhonemeRecording();
-                              } else {
-                                startPhonemeRecording(ph);
-                              }
-                            }}
-                            isPlaying={playingPhoneme === phoneme.phoneme}
-                            isPracticing={practicingPhoneme === phoneme.phoneme}
-                            isRecording={isRecordingPhoneme && practicingPhoneme === phoneme.phoneme}
-                            recordingTime={phonemeRecordingTime}
-                          />
-                        );
-                      })}
+                  {/* Phoneme Visualization */}
+                  {currentPhonemeAnalysis.length > 0 && (
+                    <PhonemeVisualization
+                      referencePhonemes={currentPhonemeAnalysis.map(p => p.reference_phoneme)}
+                      predictedPhonemes={currentPhonemeAnalysis.map(p => p.predicted_phoneme)}
+                      showLabel={true}
+                      animated={true}
+                    />
+                  )}
+
+                  {/* Phoneme Practice Table */}
+                  <View style={styles.phonemePracticeSection}>
+                    <Text style={styles.sectionTitle}>Individual Phoneme Practice</Text>
+                    
+                    {/* Table Header */}
+                    <View style={styles.tableHeader}>
+                      <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>Phoneme</Text>
+                      <Text style={[styles.tableHeaderText, { flex: 1 }]}>Status</Text>
+                      <Text style={[styles.tableHeaderText, { flex: 1 }]}>Score</Text>
+                      <Text style={[styles.tableHeaderText, { flex: 1 }]}>Attempts</Text>
+                      <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>Actions</Text>
                     </View>
+
+                    {/* Table Rows */}
+                    {currentPhonemeAnalysis.map((phoneme, index) => {
+                      const practiceData = phonemePractices[phoneme.phoneme];
+                      const statusColor = 
+                        phoneme.status === 'correct' ? COLORS.success :
+                        phoneme.status === 'partial' ? COLORS.warning : COLORS.error;
+                      const accuracy = practiceData?.bestScore ?? phoneme.accuracy;
+                      
+                      return (
+                        <View key={index} style={styles.tableRow}>
+                          <View style={[styles.tableCell, { flex: 1.5 }]}>
+                            <Text style={styles.phonemeSymbol}>/{phoneme.phoneme}/</Text>
+                            {practiceData?.mastered && (
+                              <Icon name="verified" size={14} color={COLORS.gold} />
+                            )}
+                          </View>
+                          
+                          <View style={[styles.tableCell, { flex: 1 }]}>
+                            <View style={[
+                              styles.statusDot,
+                              { backgroundColor: statusColor }
+                            ]} />
+                          </View>
+                          
+                          <View style={[styles.tableCell, { flex: 1 }]}>
+                            <Text style={[
+                              styles.tableCellText,
+                              { color: accuracy >= 0.8 ? COLORS.success : accuracy >= 0.5 ? COLORS.warning : COLORS.error }
+                            ]}>
+                              {Math.round(accuracy * 100)}%
+                            </Text>
+                          </View>
+                          
+                          <View style={[styles.tableCell, { flex: 1 }]}>
+                            <Text style={styles.tableCellText}>
+                              {practiceData?.totalAttempts || 0}
+                            </Text>
+                          </View>
+                          
+                          <View style={[styles.tableCell, { flex: 1.5, flexDirection: 'row', gap: 4 }]}>
+                            <TouchableOpacity
+                              style={styles.tableActionButton}
+                              onPress={() => playPhonemeAudio(phoneme.phoneme)}
+                            >
+                              <Icon 
+                                name={playingPhoneme === phoneme.phoneme ? "volume-up" : "volume-down"} 
+                                size={16} 
+                                color={COLORS.primary} 
+                              />
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                              style={[
+                                styles.tableActionButton,
+                                isRecordingPhoneme && practicingPhoneme === phoneme.phoneme && styles.recordingButton
+                              ]}
+                              onPress={() => {
+                                if (isRecordingPhoneme && practicingPhoneme === phoneme.phoneme) {
+                                  stopPhonemeRecording();
+                                } else {
+                                  startPhonemeRecording(phoneme.phoneme);
+                                }
+                              }}
+                            >
+                              <Icon 
+                                name={isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? "stop" : "mic"} 
+                                size={16} 
+                                color={isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? COLORS.error : COLORS.primary} 
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })}
                   </View>
 
                   {/* Overall Progress */}
@@ -3276,6 +3346,20 @@ export default function HomeScreen() {
                             <Text style={styles.resultStatLabel}>Errors</Text>
                           </View>
                         </View>
+
+                        {/* Phoneme Visualization */}
+                        {result && result.reference_phonemes && result.predicted_phonemes && (
+                          <View style={styles.phonemeVisualizationContainer}>
+                            <PhonemeVisualization
+                              referencePhonemes={result.reference_phonemes}
+                              predictedPhonemes={result.predicted_phonemes}
+                              alignedReference={result.aligned_reference}
+                              alignedPredicted={result.aligned_predicted}
+                              showLabel={true}
+                              animated={true}
+                            />
+                          </View>
+                        )}
 
                         <View style={styles.resultFeedback}>
                           <Text style={styles.resultFeedbackTitle}>Feedback</Text>
@@ -3636,6 +3720,65 @@ const styles = StyleSheet.create({
   phonemeList: {
     gap: 12,
   },
+  phonemePracticeSection: {
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.gray[100],
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  tableHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.gray[700],
+    textAlign: 'center',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    alignItems: 'center',
+  },
+  tableCell: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tableCellText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.gray[800],
+  },
+  phonemeSymbol: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.gray[800],
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  tableActionButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingButton: {
+    backgroundColor: COLORS.error + '20',
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '800',
@@ -3663,7 +3806,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  phonemeSymbol: {
+  phonemeSymbolOld: {
     fontSize: 24,
     fontWeight: '800',
     color: COLORS.gray[800],
@@ -4919,6 +5062,12 @@ const styles = StyleSheet.create({
     width: 2,
     height: 60,
     backgroundColor: COLORS.gray[300],
+  },
+  phonemeVisualizationContainer: {
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 16,
+    padding: 16,
+    marginVertical: 16,
   },
   resultFeedback: {
     width: '100%',
