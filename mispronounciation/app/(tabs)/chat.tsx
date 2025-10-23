@@ -366,6 +366,9 @@ export default function CoachScreen() {
     if (message && message.feedback) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setLatestFeedback(message.feedback);
+      
+      // Reset animation to 0 before opening
+      practiceModalAnim.setValue(0);
       setWordPracticeVisible(true);
       
       // Animate modal opening
