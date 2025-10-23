@@ -26,6 +26,8 @@ import LearningPathBackground from '../../components/LearningPathBackground';
 import EnhancedStreakCalendar from '../../components/EnhancedStreakCalendar';
 import EnhancedPhonemeAnalysisCard from '../../components/EnhancedPhonemeAnalysisCard';
 import PhonemeVisualization from '../../components/PhonemeVisualization';
+import InAppNotificationBadge from '../../components/InAppNotificationBadge';
+import NotificationSettingsModal from '../../components/NotificationSettingsModal';
 import AudioRecorderPlayer, {
   AVEncoderAudioQualityIOSType,
   AVEncodingOption,
@@ -42,6 +44,15 @@ import phonemeFirebaseService, {
   getAllPhonemeData,
   updateWordProgressWithPhonemes,
 } from '../../services/phonemeFirebaseService';
+import notificationService, {
+  initializeNotifications,
+  checkAndScheduleStreakReminder,
+  sendStreakMilestoneNotification,
+  sendDailyCompleteNotification,
+  sendMotivationalNotification,
+  addNotificationReceivedListener,
+  addNotificationResponseListener,
+} from '../../services/notificationService';
 
 const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
@@ -262,6 +273,9 @@ export default function HomeScreen() {
   // Streak Calendar State
   const [showStreakCalendar, setShowStreakCalendar] = useState(false);
   const [streakDays, setStreakDays] = useState<string[]>([]);
+
+  // Notification State
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
 
   const recordSecsRef = useRef(0);
   const recordTimeRef = useRef('00:00');
@@ -752,6 +766,16 @@ export default function HomeScreen() {
       // Update streak if this is the first practice today
       await updateStreakForToday(user.uid, today);
       
+      // Send daily complete notification if completed
+      if (cleanedProgress.completed && cleanedProgress.attempts === 1) {
+        await sendDailyCompleteNotification();
+      }
+      
+      // Send mastery notification if mastered
+      if (cleanedProgress.mastered && !existingProgress.mastered) {
+        await sendMotivationalNotification('mastery_achieved', { word: todayWord.word });
+      }
+      
       // Reload the progress to ensure we have the latest data
       await loadDailyWordProgress(user.uid);
 
@@ -764,6 +788,8 @@ export default function HomeScreen() {
 
   const updateStreakForToday = async (userId: string, today: string) => {
     try {
+      const previousStreak = stats.streak;
+      
       // Check if user has any practice today (daily word or practice words)
       const dailyRef = ref(database, `users/${userId}/dailyWords/${today}`);
       const dailySnapshot = await get(dailyRef);
@@ -779,6 +805,16 @@ export default function HomeScreen() {
         
         if (allDailySnapshot.exists()) {
           await calculateStatsFromHistory(allDailySnapshot.val(), userId);
+          
+          // Check if streak increased (new day practiced)
+          const newStreak = stats.streak;
+          if (newStreak > previousStreak) {
+            // Send streak milestone notification if applicable
+            await sendStreakMilestoneNotification(newStreak);
+            
+            // Schedule streak risk notification for tomorrow
+            await checkAndScheduleStreakReminder(newStreak, today);
+          }
         }
       }
     } catch (error) {
@@ -1045,6 +1081,23 @@ export default function HomeScreen() {
       setUserName(user.displayName || 'User');
       loadUserDataFast(user.uid);
       
+      // Initialize notifications
+      initializeNotifications().then(initialized => {
+        if (initialized) {
+          console.log('✅ Notifications initialized');
+        }
+      });
+      
+      // Set up notification listeners
+      const notificationListener = addNotificationReceivedListener(notification => {
+        console.log('📬 Notification received:', notification);
+      });
+
+      const responseListener = addNotificationResponseListener(response => {
+        console.log('👆 Notification tapped:', response);
+        // Handle notification tap (e.g., navigate to practice screen)
+      });
+      
       // Set up real-time phoneme data listener
       const phonemeDataPath = `users/${user.uid}/phonemeData/phonemePractices`;
       const phonemeRef = ref(database, phonemeDataPath);
@@ -1057,9 +1110,11 @@ export default function HomeScreen() {
         }
       });
       
-      // Cleanup listener on unmount
+      // Cleanup listeners on unmount
       return () => {
         off(phonemeRef);
+        notificationListener.remove();
+        responseListener.remove();
       };
     }
 
@@ -2278,6 +2333,20 @@ export default function HomeScreen() {
       >
         <View style={styles.headerTop}>
           <Text style={styles.userName}>Hi, {userName}! </Text>
+          
+          {/* Notification Badge and Settings */}
+          <View style={styles.headerActions}>
+            <InAppNotificationBadge />
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowNotificationSettings(true);
+              }}
+            >
+              <Icon name="settings" size={24} color={COLORS.gray[600]} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.badgesContainer}>
@@ -3410,6 +3479,12 @@ export default function HomeScreen() {
         streakDays={streakDays}
         currentStreak={stats.streak}
       />
+
+      {/* NOTIFICATION SETTINGS MODAL */}
+      <NotificationSettingsModal
+        visible={showNotificationSettings}
+        onClose={() => setShowNotificationSettings(false)}
+      />
     </View>
   );
 }
@@ -3575,6 +3650,9 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
   userName: {
@@ -3585,6 +3663,20 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.05)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
+    flex: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  settingsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   badgesContainer: {
     flexDirection: 'row',
