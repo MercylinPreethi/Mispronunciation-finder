@@ -305,6 +305,26 @@ export default function HomeScreen() {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   };
 
+  // Helper function to remove undefined values from objects (Firebase doesn't allow undefined)
+  const cleanFirebaseData = <T extends Record<string, any>>(obj: T): T => {
+    const cleaned: any = {};
+    Object.keys(obj).forEach(key => {
+      const value = obj[key];
+      if (value !== undefined) {
+        if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+          cleaned[key] = cleanFirebaseData(value);
+        } else if (Array.isArray(value)) {
+          cleaned[key] = value.map(item => 
+            item && typeof item === 'object' ? cleanFirebaseData(item) : item
+          ).filter(item => item !== undefined);
+        } else {
+          cleaned[key] = value;
+        }
+      }
+    });
+    return cleaned as T;
+  };
+
   // ============================================================================
   // STREAK CALENDAR FUNCTIONS
   // ============================================================================
@@ -680,7 +700,7 @@ export default function HomeScreen() {
         feedback,
         correct_phonemes,
         total_phonemes,
-        scores: result || undefined, // ADDED: Store scores in attempt
+        ...(result && { scores: result }), // Only add scores if result exists
       };
 
       // Get existing progress or create new
@@ -695,7 +715,7 @@ export default function HomeScreen() {
           word: todayWord.word,
           date: today,
           completed: false,
-          mastered: false, // NEW
+          mastered: false,
           accuracy: 0,
           attempts: 0,
           bestScore: 0,
@@ -714,19 +734,27 @@ export default function HomeScreen() {
         accuracy: accuracy,
         bestScore: Math.max(existingProgress.bestScore, accuracy),
         completed: accuracy >= 0.5 || existingProgress.completed,
-        mastered: accuracy >= 0.8 || existingProgress.mastered, // NEW: Mastery tracking
+        mastered: accuracy >= 0.8 || existingProgress.mastered,
         attemptHistory,
-        scores: result || existingProgress.scores, // ADDED: Store scores in progress
+        ...(result && { scores: result }), // Only add scores if result exists
       };
 
+      // Clean data before saving to Firebase (remove undefined values)
+      const cleanedProgress = cleanFirebaseData(updatedProgress);
+      
       // Save to Firebase
-      await set(dailyRef, updatedProgress);
-      setTodayProgress(updatedProgress);
+      await set(dailyRef, cleanedProgress);
+      
+      // Update local state with the cleaned data
+      setTodayProgress(cleanedProgress as DailyWordProgress);
 
       // Update streak if this is the first practice today
       await updateStreakForToday(user.uid, today);
+      
+      // Reload the progress to ensure we have the latest data
+      await loadDailyWordProgress(user.uid);
 
-      return updatedProgress;
+      return cleanedProgress as DailyWordProgress;
     } catch (error) {
       console.error('Error saving daily word attempt:', error);
       throw error;
@@ -1579,16 +1607,36 @@ export default function HomeScreen() {
           if (isPracticingDaily) {
             // DAILY WORD: Save to daily word data with phonemes
             const today = getTodayDateString();
-            await saveDailyWordData(today, {
+            
+            // Create daily word data object with only defined values
+            const dailyWordData: any = {
               word: selectedWord.word,
               phonetic: selectedWord.phonetic,
               accuracy: resultData.accuracy,
-              reference_phonemes: resultData.reference_phonemes,
-              predicted_phonemes: resultData.predicted_phonemes,
-              aligned_reference: resultData.aligned_reference,
-              aligned_predicted: resultData.aligned_predicted,
-              phoneme_breakdown: getPhonemeBreakdown(resultData),
-            } as any);
+            };
+            
+            // Only add optional fields if they exist
+            if (resultData.reference_phonemes) {
+              dailyWordData.reference_phonemes = resultData.reference_phonemes;
+            }
+            if (resultData.predicted_phonemes) {
+              dailyWordData.predicted_phonemes = resultData.predicted_phonemes;
+            }
+            if (resultData.aligned_reference) {
+              dailyWordData.aligned_reference = resultData.aligned_reference;
+            }
+            if (resultData.aligned_predicted) {
+              dailyWordData.aligned_predicted = resultData.aligned_predicted;
+            }
+            
+            // Add phoneme breakdown if available
+            const phonemeBreakdown = getPhonemeBreakdown(resultData);
+            if (phonemeBreakdown && phonemeBreakdown.length > 0) {
+              dailyWordData.phoneme_breakdown = phonemeBreakdown;
+            }
+            
+            // Clean and save
+            await saveDailyWordData(today, cleanFirebaseData(dailyWordData));
             
             // Also save to local state
             await saveDailyWordAttempt(

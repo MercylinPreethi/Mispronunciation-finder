@@ -115,7 +115,10 @@ export const saveWordPhonemeData = async (
       ),
     } as WordPhonemeData;
 
-    await set(ref(database, wordPath), dataToSave);
+    // Clean undefined values before saving
+    const cleanedData = cleanFirebaseData(dataToSave);
+    
+    await set(ref(database, wordPath), cleanedData);
     console.log(`✅ Saved word phoneme data for: ${wordId}`);
     return true;
   } catch (error) {
@@ -222,7 +225,10 @@ export const savePhonemeAttempt = async (
     currentData.mastered = currentData.bestScore >= 0.9;
     currentData.word = word;
 
-    await set(ref(database, phonemePath), currentData);
+    // Clean undefined values before saving
+    const cleanedData = cleanFirebaseData(currentData);
+    
+    await set(ref(database, phonemePath), cleanedData);
     console.log(`✅ Saved phoneme practice for: ${phoneme}`);
     return true;
   } catch (error) {
@@ -276,6 +282,32 @@ export const getAllPhonemeData = async (): Promise<Record<string, PhonemePractic
 };
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Remove undefined values from objects (Firebase doesn't accept undefined)
+ */
+const cleanFirebaseData = <T extends Record<string, any>>(obj: T): T => {
+  const cleaned: any = {};
+  Object.keys(obj).forEach(key => {
+    const value = obj[key];
+    if (value !== undefined) {
+      if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+        cleaned[key] = cleanFirebaseData(value);
+      } else if (Array.isArray(value)) {
+        cleaned[key] = value.map(item => 
+          item && typeof item === 'object' ? cleanFirebaseData(item) : item
+        ).filter(item => item !== undefined);
+      } else {
+        cleaned[key] = value;
+      }
+    }
+  });
+  return cleaned as T;
+};
+
+// ============================================================================
 // DAILY WORD DATA
 // ============================================================================
 
@@ -310,7 +342,10 @@ export const saveDailyWordData = async (
       mastered: (dailyWordData.accuracy || 0) >= 0.9,
     } as DailyWordData;
 
-    await set(ref(database, dailyPath), dataToSave);
+    // Clean undefined values before saving
+    const cleanedData = cleanFirebaseData(dataToSave);
+    
+    await set(ref(database, dailyPath), cleanedData);
     console.log(`✅ Saved daily word data for: ${date}`);
     return true;
   } catch (error) {
@@ -392,18 +427,31 @@ export const updateWordProgressWithPhonemes = async (
     const progressPath = getWordProgressPath(user.uid, difficulty, wordId);
     const existingProgress = await get(ref(database, progressPath));
     
+    // Build scores object with only defined values
+    const scoresData: any = {
+      accuracy: scores.accuracy,
+      correct_phonemes: scores.correct_phonemes || 0,
+      total_phonemes: scores.total_phonemes || 0,
+      feedback: scores.feedback || '',
+    };
+    
+    // Only add arrays if they have values
+    if (scores.reference_phonemes && scores.reference_phonemes.length > 0) {
+      scoresData.reference_phonemes = scores.reference_phonemes;
+    }
+    if (scores.predicted_phonemes && scores.predicted_phonemes.length > 0) {
+      scoresData.predicted_phonemes = scores.predicted_phonemes;
+    }
+    if (scores.aligned_reference && scores.aligned_reference.length > 0) {
+      scoresData.aligned_reference = scores.aligned_reference;
+    }
+    if (scores.aligned_predicted && scores.aligned_predicted.length > 0) {
+      scoresData.aligned_predicted = scores.aligned_predicted;
+    }
+    
     const updatedProgress = {
       ...existingProgress.val(),
-      scores: {
-        accuracy: scores.accuracy,
-        correct_phonemes: scores.correct_phonemes || 0,
-        total_phonemes: scores.total_phonemes || 0,
-        feedback: scores.feedback || '',
-        reference_phonemes: scores.reference_phonemes || [],
-        predicted_phonemes: scores.predicted_phonemes || [],
-        aligned_reference: scores.aligned_reference || [],
-        aligned_predicted: scores.aligned_predicted || [],
-      },
+      scores: scoresData,
       lastAttempted: new Date().toISOString(),
       attempts: (existingProgress.val()?.attempts || 0) + 1,
       bestScore: Math.max(existingProgress.val()?.bestScore || 0, scores.accuracy),
@@ -411,7 +459,10 @@ export const updateWordProgressWithPhonemes = async (
       mastered: scores.accuracy >= 0.9,
     };
 
-    await update(ref(database, progressPath), updatedProgress);
+    // Clean undefined values before saving
+    const cleanedProgress = cleanFirebaseData(updatedProgress);
+    
+    await update(ref(database, progressPath), cleanedProgress);
     console.log(`✅ Updated word progress with phonemes: ${wordId}`);
     return true;
   } catch (error) {
