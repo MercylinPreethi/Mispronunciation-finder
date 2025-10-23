@@ -3365,6 +3365,7 @@ export default function HomeScreen() {
                         </>
                       )}
                     </View>
+                    </View>
                   </>
                 ) : (
                   <>
@@ -3463,10 +3464,10 @@ export default function HomeScreen() {
                           </TouchableOpacity>
                         </View>
                       </View>
-                    </ScrollView>
                   </>
                 )}
               </View>
+            </ScrollView>
             </Animated.View>
           </View>
         </Modal>
