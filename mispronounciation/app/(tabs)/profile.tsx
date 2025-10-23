@@ -17,11 +17,13 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LearningPathBackground from '../../components/LearningPathBackground';
 import EnhancedStreakCalendar from '../../components/EnhancedStreakCalendar';
+import NotificationSettingsModal from '../../components/NotificationSettingsModal';
 import * as Haptics from 'expo-haptics';
 import { auth, database } from '../../lib/firebase';
 import { ref, get, set } from 'firebase/database';
 import { signOut } from 'firebase/auth';
 import { router } from 'expo-router';
+import { getNotificationPreferences } from '../../services/notificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -78,6 +80,8 @@ export default function ProfileScreen() {
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [showStreakCalendar, setShowStreakCalendar] = useState(false);
   const [streakDays, setStreakDays] = useState<string[]>([]);
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -684,6 +688,28 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('Error loading notification preferences:', error);
     }
+  };
+
+  const openNotificationSettings = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowNotificationSettings(true);
+  };
+
+  const handleNotificationSettingsClose = async () => {
+    setShowNotificationSettings(false);
+    // Reload notification status after closing
+    await loadNotificationStatus();
+  };
+
+  const openNotificationSettings = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowNotificationSettings(true);
+  };
+
+  const handleNotificationSettingsClose = async () => {
+    setShowNotificationSettings(false);
+    // Reload notification status after closing
+    await loadNotificationStatus();
   };
 
   const openNotificationSettings = () => {
@@ -1784,4 +1810,5 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
+}); },
 });
