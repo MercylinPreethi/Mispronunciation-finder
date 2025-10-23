@@ -3145,37 +3145,38 @@ export default function HomeScreen() {
           <View style={styles.modalOverlay}>
             <Animated.View 
               style={[
-                styles.modalContainer,
+                styles.phonemeAnalysisModalContainer,
                 {
                   opacity: modalAnim,
                   transform: [{ scale: modalScale }]
                 }
               ]}
             >
-              <View style={styles.modalCard}>
-                {/* Themed Gradient Header */}
-                <LinearGradient
-                  colors={[COLORS.secondary, COLORS.primary] as const}
-                  style={styles.themedModalHeader}
+              {/* Themed Gradient Header */}
+              <LinearGradient
+                colors={[COLORS.secondary, COLORS.primary] as const}
+                style={styles.phonemeAnalysisModalHeader}
+              >
+                <Icon name="graphic-eq" size={32} color={COLORS.white} />
+                <View style={styles.themedModalTitleContainer}>
+                  <Text style={styles.themedModalTitle}>Phoneme Analysis</Text>
+                  <Text style={styles.themedModalSubtitle}>{selectedWord.word}</Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.themedCloseButton}
+                  onPress={closePhonemeAnalysis}
                 >
-                  <Icon name="graphic-eq" size={32} color={COLORS.white} />
-                  <View style={styles.themedModalTitleContainer}>
-                    <Text style={styles.themedModalTitle}>Phoneme Analysis</Text>
-                    <Text style={styles.themedModalSubtitle}>{selectedWord.word}</Text>
-                  </View>
-                  <TouchableOpacity 
-                    style={styles.themedCloseButton}
-                    onPress={closePhonemeAnalysis}
-                  >
-                    <Icon name="close" size={24} color={COLORS.white} />
-                  </TouchableOpacity>
-                </LinearGradient>
+                  <Icon name="close" size={24} color={COLORS.white} />
+                </TouchableOpacity>
+              </LinearGradient>
 
-                <ScrollView 
-                  style={styles.phonemeAnalysisScroll}
-                  showsVerticalScrollIndicator={false}
-                >
-                  <View style={styles.phonemeAnalysisContent}>
+              <ScrollView 
+                style={styles.phonemeAnalysisScroll}
+                contentContainerStyle={styles.phonemeAnalysisScrollContent}
+                showsVerticalScrollIndicator={true}
+                bounces={true}
+              >
+                <View style={styles.phonemeAnalysisContent}>
 
                   {/* Phoneme Visualization */}
                   {currentPhonemeAnalysis.length > 0 && (
@@ -3308,16 +3309,15 @@ export default function HomeScreen() {
                   </View>
                 </ScrollView>
 
-                {/* Recording Indicator */}
-                {isRecordingPhoneme && (
-                  <View style={styles.recordingIndicator}>
-                    <View style={styles.recordingPulse} />
-                    <Text style={styles.recordingText}>
-                      Recording {practicingPhoneme}... {phonemeRecordingTime}
-                    </Text>
-                  </View>
-                )}
-              </View>
+              {/* Recording Indicator */}
+              {isRecordingPhoneme && (
+                <View style={styles.phonemeAnalysisRecordingIndicator}>
+                  <View style={styles.recordingPulse} />
+                  <Text style={styles.recordingText}>
+                    Recording {practicingPhoneme}... {phonemeRecordingTime}
+                  </Text>
+                </View>
+              )}
             </Animated.View>
           </View>
         </Modal>
@@ -4062,11 +4062,46 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.gray[800],
   },
+  // Phoneme Analysis Modal - Fixed sizing
+  phonemeAnalysisModalContainer: {
+    width: '92%',
+    maxWidth: 600,
+    height: height * 0.85,
+    backgroundColor: COLORS.white,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  phonemeAnalysisModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: Platform.OS === 'ios' ? 24 : 20,
+  },
   phonemeAnalysisScroll: {
-    maxHeight: height * 0.7,
+    flex: 1,
+  },
+  phonemeAnalysisScrollContent: {
+    paddingBottom: 30,
   },
   phonemeAnalysisContent: {
     padding: 20,
+  },
+  phonemeAnalysisRecordingIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.error,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 12,
   },
   modalTitleContainer: {
     flex: 1,
