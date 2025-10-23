@@ -3013,28 +3013,29 @@ export default function HomeScreen() {
               ]}
             >
               <View style={styles.modalCard}>
-                <View style={styles.modalHeader}>
-                  <View style={styles.modalTitleContainer}>
-                    <Text style={styles.modalTitle}>Phoneme Analysis</Text>
-                    <Text style={styles.modalSubtitle}>{selectedWord.word}</Text>
+                {/* Themed Gradient Header */}
+                <LinearGradient
+                  colors={[COLORS.secondary, COLORS.primary] as const}
+                  style={styles.themedModalHeader}
+                >
+                  <Icon name="graphic-eq" size={32} color={COLORS.white} />
+                  <View style={styles.themedModalTitleContainer}>
+                    <Text style={styles.themedModalTitle}>Phoneme Analysis</Text>
+                    <Text style={styles.themedModalSubtitle}>{selectedWord.word}</Text>
                   </View>
                   <TouchableOpacity 
-                    style={styles.closeButton}
+                    style={styles.themedCloseButton}
                     onPress={closePhonemeAnalysis}
                   >
-                    <Icon name="close" size={24} color={COLORS.gray[600]} />
+                    <Icon name="close" size={24} color={COLORS.white} />
                   </TouchableOpacity>
-                </View>
+                </LinearGradient>
 
                 <ScrollView 
                   style={styles.phonemeAnalysisScroll}
                   showsVerticalScrollIndicator={false}
                 >
-                  {/* Word Summary */}
-                  <View style={styles.phonemeWordSummary}>
-                    <Text style={styles.phonemeWordText}>{selectedWord.word}</Text>
-                    <Text style={styles.phonemePhonetic}>{selectedWord.phonetic}</Text>
-                  </View>
+                  <View style={styles.phonemeAnalysisContent}>
 
                   {/* Phoneme Visualization */}
                   {currentPhonemeAnalysis.length > 0 && (
@@ -3164,6 +3165,7 @@ export default function HomeScreen() {
                       </View>
                     </View>
                   )}
+                  </View>
                 </ScrollView>
 
                 {/* Recording Indicator */}
@@ -3208,45 +3210,54 @@ export default function HomeScreen() {
                 <View style={styles.modalCard}>
                 {!showResult ? (
                   <>
-                    <View style={styles.modalHeader}>
+                    {/* Themed Gradient Header */}
+                    <LinearGradient
+                      colors={isPracticingDaily ? [COLORS.gold, '#D97706'] : DIFFICULTY_COLORS[selectedDifficulty].gradient}
+                      style={styles.themedModalHeader}
+                    >
+                      <Icon name={isPracticingDaily ? "wb-sunny" : "school"} size={32} color={COLORS.white} />
+                      <View style={styles.themedModalTitleContainer}>
+                        <Text style={styles.themedModalTitle}>
+                          {isPracticingDaily ? "Today's Challenge" : "Practice"}
+                        </Text>
+                        <Text style={styles.themedModalSubtitle}>{selectedWord.word}</Text>
+                      </View>
                       <TouchableOpacity 
-                        style={styles.closeButton}
+                        style={styles.themedCloseButton}
                         onPress={closePracticeModal}
                       >
-                        <Icon name="close" size={24} color={COLORS.gray[600]} />
+                        <Icon name="close" size={24} color={COLORS.white} />
                       </TouchableOpacity>
-                    </View>
+                    </LinearGradient>
 
-                    <View style={styles.modalWordDisplay}>
-                      <Text style={styles.modalWord}>{selectedWord.word}</Text>
+                    <View style={styles.modalContent}>
                       <Text style={styles.modalPhonetic}>{selectedWord.phonetic}</Text>
-                    </View>
 
-                    <View style={styles.modalMeaning}>
-                      <Icon name="book" size={20} color={COLORS.primary} />
-                      <Text style={styles.modalMeaningText}>{selectedWord.meaning}</Text>
-                    </View>
+                      <View style={styles.modalMeaning}>
+                        <Icon name="book" size={20} color={COLORS.primary} />
+                        <Text style={styles.modalMeaningText}>{selectedWord.meaning}</Text>
+                      </View>
 
-                    <View style={styles.modalExample}>
-                      <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
-                      <Text style={styles.modalExampleText}>{selectedWord.example}</Text>
-                    </View>
+                      <View style={styles.modalExample}>
+                        <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
+                        <Text style={styles.modalExampleText}>{selectedWord.example}</Text>
+                      </View>
 
-                    <View style={styles.modalTip}>
-                      <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
-                      <Text style={styles.modalTipText}>{selectedWord.tip}</Text>
-                    </View>
+                      <View style={styles.modalTip}>
+                        <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
+                        <Text style={styles.modalTipText}>{selectedWord.tip}</Text>
+                      </View>
 
-                    <TouchableOpacity
-                      style={styles.modalListenButton}
-                      onPress={() => playWordPronunciation(selectedWord.word)}
-                      disabled={playingAudio}
-                    >
-                      <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color={COLORS.white} />
-                      <Text style={styles.modalListenText}>
-                        {playingAudio ? 'Playing...' : 'Listen'}
-                      </Text>
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.modalListenButton}
+                        onPress={() => playWordPronunciation(selectedWord.word)}
+                        disabled={playingAudio}
+                      >
+                        <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color={COLORS.white} />
+                        <Text style={styles.modalListenText}>
+                          {playingAudio ? 'Playing...' : 'Listen'}
+                        </Text>
+                      </TouchableOpacity>
 
                     <View style={styles.modalRecordSection}>
                       {isProcessing ? (
@@ -3288,47 +3299,42 @@ export default function HomeScreen() {
                   </>
                 ) : (
                   <>
-                    {/* Result Screen */}
-                    <View style={styles.modalHeader}>
-                      <TouchableOpacity 
-                        style={styles.closeButton}
-                        onPress={closePracticeModal}
-                      >
-                        <Icon name="close" size={24} color={COLORS.gray[600]} />
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.resultContent}>
-                        <LinearGradient
-                          colors={result && result.accuracy >= 0.8 
-                            ? [COLORS.success, '#059669'] as const
-                            : [COLORS.warning, '#D97706'] as const
-                          }
-                          style={styles.resultIconCircle}
-                        >
-                          <Icon 
-                            name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} 
-                            size={64} 
-                            color={COLORS.white} 
-                          />
-                        </LinearGradient>
-                        
-                        <Text style={styles.resultTitle}>
+                    {/* Themed Gradient Header for Result */}
+                    <LinearGradient
+                      colors={result && result.accuracy >= 0.8 
+                        ? [COLORS.success, '#059669'] as const
+                        : [COLORS.warning, '#D97706'] as const
+                      }
+                      style={styles.themedModalHeader}
+                    >
+                      <Icon name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} size={32} color={COLORS.white} />
+                      <View style={styles.themedModalTitleContainer}>
+                        <Text style={styles.themedModalTitle}>
                           {result && result.accuracy >= 0.9 ? 'Perfect!' :
                            result && result.accuracy >= 0.8 ? 'Excellent!' :
                            result && result.accuracy >= 0.7 ? 'Good Job!' : 'Keep Trying!'}
                         </Text>
+                        <Text style={styles.themedModalSubtitle}>{selectedWord.word}</Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.themedCloseButton}
+                        onPress={closePracticeModal}
+                      >
+                        <Icon name="close" size={24} color={COLORS.white} />
+                      </TouchableOpacity>
+                    </LinearGradient>
+
+                      <View style={styles.resultContent}>
+                        <View style={styles.scoreDisplay}>
+                          <Text style={styles.scoreText}>{result && Math.round(result.accuracy * 100)}%</Text>
+                          <Text style={styles.scoreLabel}>Accuracy</Text>
+                        </View>
 
                         <View style={styles.xpEarned}>
                           <Icon name="stars" size={24} color={COLORS.gold} />
                           <Text style={styles.xpEarnedText}>
                             +{result && Math.round(result.accuracy * 10)} XP
                           </Text>
-                        </View>
-
-                        <View style={styles.scoreDisplay}>
-                          <Text style={styles.scoreText}>{result && Math.round(result.accuracy * 100)}%</Text>
-                          <Text style={styles.scoreLabel}>Accuracy</Text>
                         </View>
 
                         <View style={styles.resultStats}>
@@ -3388,10 +3394,10 @@ export default function HomeScreen() {
                           </TouchableOpacity>
                         </View>
                       </View>
+                    </ScrollView>
                   </>
                 )}
               </View>
-              </ScrollView>
             </Animated.View>
           </View>
         </Modal>
@@ -3681,6 +3687,9 @@ const styles = StyleSheet.create({
   },
   phonemeAnalysisScroll: {
     maxHeight: height * 0.7,
+  },
+  phonemeAnalysisContent: {
+    padding: 20,
   },
   modalTitleContainer: {
     flex: 1,
@@ -4538,6 +4547,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
     position: 'relative',
+    gap: 12,
+  },
+  themedModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    position: 'relative',
+    gap: 12,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+  },
+  themedModalTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  themedModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.white,
+    textAlign: 'center',
+  },
+  themedModalSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.white,
+    opacity: 0.9,
+    marginTop: 2,
+  },
+  themedCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    right: 16,
+    top: 16,
   },
   dailyTaskTitle: {
     fontSize: 20,
@@ -4840,6 +4889,20 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     marginBottom: 16,
   },
+  modalTitleContainer: {
+    flex: 1,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.gray[800],
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+    marginTop: 2,
+  },
   closeButton: {
     width: 40,
     height: 40,
@@ -4847,6 +4910,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray[100],
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalContent: {
+    padding: 20,
   },
   modalWordDisplay: {
     alignItems: 'center',
@@ -4860,9 +4926,11 @@ const styles = StyleSheet.create({
     letterSpacing: -1.5,
   },
   modalPhonetic: {
-    fontSize: 18,
+    fontSize: 16,
     color: COLORS.gray[600],
     fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
     fontStyle: 'italic',
   },
   modalMeaning: {
@@ -4981,22 +5049,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.gray[500],
   },
+  resultScrollView: {
+    maxHeight: height * 0.7,
+  },
   resultContent: {
     alignItems: 'center',
-  },
-  resultIconCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  resultTitle: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: COLORS.gray[800],
-    marginBottom: 16,
+    padding: 20,
   },
   xpEarned: {
     flexDirection: 'row',
