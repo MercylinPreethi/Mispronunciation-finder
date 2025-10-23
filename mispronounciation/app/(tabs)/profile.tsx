@@ -101,6 +101,7 @@ export default function ProfileScreen() {
         loadAllPracticeHistory(userId),
         loadAchievements(userId),
         loadUserProfile(userId),
+        loadNotificationStatus(),
       ]);
 
       setLoading(false);
@@ -676,6 +677,26 @@ export default function ProfileScreen() {
     setShowAvatarPicker(true);
   };
 
+  const loadNotificationStatus = async () => {
+    try {
+      const preferences = await getNotificationPreferences();
+      setNotificationsEnabled(preferences.enabled);
+    } catch (error) {
+      console.error('Error loading notification preferences:', error);
+    }
+  };
+
+  const openNotificationSettings = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowNotificationSettings(true);
+  };
+
+  const handleNotificationSettingsClose = async () => {
+    setShowNotificationSettings(false);
+    // Reload notification status after closing
+    await loadNotificationStatus();
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -979,25 +1000,79 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
           <View style={styles.card}>
-            <TouchableOpacity style={styles.settingItem}>
-              <Icon name="notifications" size={24} color="#6B7280" />
-              <Text style={styles.settingText}>Notifications</Text>
-              <Icon name="chevron-right" size={24} color="#9CA3AF" />
+            {/* Notification Settings */}
+            <TouchableOpacity 
+              style={styles.settingItem}
+              onPress={openNotificationSettings}
+              activeOpacity={0.7}
+            >
+              <View style={[
+                styles.settingIconContainer,
+                { backgroundColor: notificationsEnabled ? '#EEF2FF' : '#F3F4F6' }
+              ]}>
+                <Icon 
+                  name={notificationsEnabled ? "notifications-active" : "notifications-off"} 
+                  size={22} 
+                  color={notificationsEnabled ? "#6366F1" : "#9CA3AF"} 
+                />
+              </View>
+              <View style={styles.settingContent}>
+                <Text style={styles.settingText}>Notifications</Text>
+                <Text style={styles.settingDescription}>
+                  {notificationsEnabled ? 'Reminders enabled' : 'Tap to enable'}
+                </Text>
+              </View>
+              {notificationsEnabled && (
+                <View style={styles.enabledIndicator}>
+                  <View style={styles.enabledDot} />
+                </View>
+              )}
+              <Icon name="chevron-right" size={24} color="#D1D5DB" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.settingItem}>
-              <Icon name="language" size={24} color="#6B7280" />
-              <Text style={styles.settingText}>Language</Text>
-              <Icon name="chevron-right" size={24} color="#9CA3AF" />
+
+            {/* Language Settings */}
+            <TouchableOpacity 
+              style={styles.settingItem}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.settingIconContainer, { backgroundColor: '#F0FDF4' }]}>
+                <Icon name="language" size={22} color="#10B981" />
+              </View>
+              <View style={styles.settingContent}>
+                <Text style={styles.settingText}>Language</Text>
+                <Text style={styles.settingDescription}>English</Text>
+              </View>
+              <Icon name="chevron-right" size={24} color="#D1D5DB" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.settingItem}>
-              <Icon name="privacy-tip" size={24} color="#6B7280" />
-              <Text style={styles.settingText}>Privacy</Text>
-              <Icon name="chevron-right" size={24} color="#9CA3AF" />
+
+            {/* Privacy Settings */}
+            <TouchableOpacity 
+              style={styles.settingItem}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.settingIconContainer, { backgroundColor: '#FEF3C7' }]}>
+                <Icon name="lock" size={22} color="#F59E0B" />
+              </View>
+              <View style={styles.settingContent}>
+                <Text style={styles.settingText}>Privacy</Text>
+                <Text style={styles.settingDescription}>Manage your data</Text>
+              </View>
+              <Icon name="chevron-right" size={24} color="#D1D5DB" />
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.settingItem, styles.settingItemLast]}>
-              <Icon name="help" size={24} color="#6B7280" />
-              <Text style={styles.settingText}>Help & Support</Text>
-              <Icon name="chevron-right" size={24} color="#9CA3AF" />
+
+            {/* Help & Support */}
+            <TouchableOpacity 
+              style={[styles.settingItem, styles.settingItemLast]}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.settingIconContainer, { backgroundColor: '#DBEAFE' }]}>
+                <Icon name="help-outline" size={22} color="#3B82F6" />
+              </View>
+              <View style={styles.settingContent}>
+                <Text style={styles.settingText}>Help & Support</Text>
+                <Text style={styles.settingDescription}>FAQs and contact</Text>
+              </View>
+              <Icon name="chevron-right" size={24} color="#D1D5DB" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1091,6 +1166,12 @@ export default function ProfileScreen() {
         onClose={() => setShowStreakCalendar(false)}
         streakDays={streakDays}
         currentStreak={stats.streak}
+      />
+
+      {/* NOTIFICATION SETTINGS MODAL */}
+      <NotificationSettingsModal
+        visible={showNotificationSettings}
+        onClose={handleNotificationSettingsClose}
       />
     </View>
   );
@@ -1531,19 +1612,43 @@ const styles = StyleSheet.create({
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
+    gap: 12,
   },
   settingItemLast: {
     borderBottomWidth: 0,
   },
-  settingText: {
+  settingIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingContent: {
     flex: 1,
+  },
+  settingText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
-    marginLeft: 14,
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  settingDescription: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#9CA3AF',
+  },
+  enabledIndicator: {
+    marginRight: 4,
+  },
+  enabledDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
   },
   signOutButton: {
     flexDirection: 'row',
