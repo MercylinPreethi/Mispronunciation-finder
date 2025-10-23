@@ -762,10 +762,10 @@ export const getUnreadNotifications = async (): Promise<InAppNotification[]> => 
       return [];
     }
 
-    const notifications = snapshot.val();
-    return Object.values(notifications)
-      .filter((n: any) => !n.read)
-      .sort((a: any, b: any) => 
+    const notifications = snapshot.val() as Record<string, InAppNotification>;
+    return (Object.values(notifications) as InAppNotification[])
+      .filter((n) => !n.read)
+      .sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
   } catch (error) {
