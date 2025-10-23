@@ -469,9 +469,7 @@ export const scheduleStreakRiskNotification = async (
         sound: true,
         priority: Notifications.AndroidNotificationPriority.MAX,
       },
-      trigger: {
-        date: notificationTime,
-      },
+      trigger: notificationTime,
     });
 
     console.log('✅ Streak risk notification scheduled for:', notificationTime);
