@@ -671,12 +671,26 @@ export default function CoachScreen() {
                     {message.isVoiceMessage && message.feedback && (
                       <View style={styles.actionButtonsContainer}>
                         <TouchableOpacity
-                          style={styles.combinedButton}
+                          style={[
+                            styles.combinedButton,
+                            {
+                              shadowColor: 
+                                message.feedback.accuracy >= 85 ? '#10B981' :
+                                message.feedback.accuracy >= 70 ? '#F59E0B' :
+                                '#EF4444'
+                            }
+                          ]}
                           onPress={() => handlePracticeClick(message.id)}
                           activeOpacity={0.9}
                         >
                           <LinearGradient
-                            colors={['#6366F1', '#8B5CF6']}
+                            colors={
+                              message.feedback.accuracy >= 85
+                                ? ['#10B981', '#059669'] as const
+                                : message.feedback.accuracy >= 70
+                                ? ['#F59E0B', '#D97706'] as const
+                                : ['#EF4444', '#DC2626'] as const
+                            }
                             style={styles.combinedButtonGradient}
                           >
                             <Icon name="analytics" size={18} color="#FFFFFF" />
@@ -1770,14 +1784,13 @@ const styles = StyleSheet.create({
   },
   actionButtonsContainer: {
     position: 'absolute',
-    bottom: 8,
-    right: 8,
-    left: 8,
+    bottom: 12,
+    right: 10,
+    left: 80,
   },
   combinedButton: {
     borderRadius: 14,
     overflow: 'hidden',
-    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
