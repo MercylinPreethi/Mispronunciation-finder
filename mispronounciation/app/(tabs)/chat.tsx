@@ -828,16 +828,11 @@ export default function CoachScreen() {
         animationType="none"
         onRequestClose={closePracticeModal}
       >
-        <TouchableOpacity
-          style={styles.practiceModalBackdrop}
-          activeOpacity={1}
-          onPress={closePracticeModal}
-        >
+        <View style={styles.practiceModalBackdrop}>
           <Animated.View
             style={[
               styles.practiceModalContainer,
               {
-                opacity: practiceModalAnim,
                 transform: [
                   {
                     translateY: practiceModalAnim.interpolate({
@@ -849,9 +844,8 @@ export default function CoachScreen() {
               },
             ]}
           >
-            <TouchableOpacity activeOpacity={1}>
-              <View style={styles.practiceModalBlur}>
-                <View style={styles.wordPracticeSection}>
+            <View style={styles.practiceModalBlur}>
+              <View style={styles.wordPracticeSection}>
                   <View style={styles.practiceSectionHeader}>
                     <View style={styles.dragHandleContainer}>
                       <View style={styles.dragHandle} />
@@ -1063,9 +1057,8 @@ export default function CoachScreen() {
                   </ScrollView>
                 </View>
               </View>
-            </TouchableOpacity>
           </Animated.View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* Input Area with Glassmorphism */}
