@@ -811,16 +811,17 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContainer: {
-    maxHeight: height * 0.95,
+    maxHeight: height * 0.90,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     overflow: 'hidden',
-  },
-  scrollView: {
     flex: 1,
   },
-  scrollContent: {
+  scrollView: {
     flexGrow: 1,
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   modalCard: {
     backgroundColor: COLORS.white,
