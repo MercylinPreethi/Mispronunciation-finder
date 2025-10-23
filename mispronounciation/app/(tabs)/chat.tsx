@@ -828,16 +828,11 @@ export default function CoachScreen() {
         animationType="none"
         onRequestClose={closePracticeModal}
       >
-        <TouchableOpacity
-          style={styles.practiceModalBackdrop}
-          activeOpacity={1}
-          onPress={closePracticeModal}
-        >
+        <View style={styles.practiceModalBackdrop}>
           <Animated.View
             style={[
               styles.practiceModalContainer,
               {
-                opacity: practiceModalAnim,
                 transform: [
                   {
                     translateY: practiceModalAnim.interpolate({
@@ -849,9 +844,8 @@ export default function CoachScreen() {
               },
             ]}
           >
-            <TouchableOpacity activeOpacity={1}>
-              <BlurView intensity={100} tint="light" style={styles.practiceModalBlur}>
-                <View style={styles.wordPracticeSection}>
+            <View style={styles.practiceModalBlur}>
+              <View style={styles.wordPracticeSection}>
                   <View style={styles.practiceSectionHeader}>
                     <View style={styles.dragHandleContainer}>
                       <View style={styles.dragHandle} />
@@ -888,7 +882,9 @@ export default function CoachScreen() {
 
                   <ScrollView 
                     style={styles.practiceModalScroll}
-                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.practiceModalScrollContent}
+                    showsVerticalScrollIndicator={true}
+                    bounces={true}
                   >
                     {/* Color-Coded Words Display */}
                     {latestFeedback && (
@@ -909,7 +905,6 @@ export default function CoachScreen() {
                           }
                           style={styles.accuracyScoreCard}
                         >
-                          <Icon name="stars" size={28} color="#FFFFFF" />
                           <Text style={styles.accuracyScoreValue}>
                             {latestFeedback.accuracy.toFixed(0)}%
                           </Text>
@@ -1060,10 +1055,9 @@ export default function CoachScreen() {
                     </View>
                   </ScrollView>
                 </View>
-              </BlurView>
-            </TouchableOpacity>
+              </View>
           </Animated.View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* Input Area with Glassmorphism */}
@@ -1444,13 +1438,25 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   wordChipError: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#FEE2E2',
-    borderColor: '#FCA5A5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: '#DC2626',
+    shadowColor: '#FCA5A5',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   wordChipTextError: {
     fontSize: 14,
-    fontWeight: '800',
-    color: '#DC2626',
+    fontWeight: '700',
+    color: '#D97706',
   },
   wordChipWarning: {
     backgroundColor: '#FEF3C7',
@@ -1816,7 +1822,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   practiceModalContainer: {
-    maxHeight: height * 0.85,
+    height: height * 0.85,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     overflow: 'hidden',
@@ -1830,14 +1836,20 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     overflow: 'hidden',
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   practiceModalScroll: {
-    maxHeight: height * 0.65,
+    flex: 1,
+  },
+  practiceModalScrollContent: {
+    paddingBottom: 40,
   },
   wordPracticeSection: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
+    flex: 1,
   },
   practiceSectionHeader: {
     overflow: 'hidden',
