@@ -888,7 +888,9 @@ export default function CoachScreen() {
 
                   <ScrollView 
                     style={styles.practiceModalScroll}
-                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.practiceModalScrollContent}
+                    showsVerticalScrollIndicator={true}
+                    bounces={true}
                   >
                     {/* Color-Coded Words Display */}
                     {latestFeedback && (
@@ -1816,7 +1818,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   practiceModalContainer: {
-    maxHeight: height * 0.85,
+    height: height * 0.85,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     overflow: 'hidden',
@@ -1830,14 +1832,19 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     overflow: 'hidden',
+    flex: 1,
   },
   practiceModalScroll: {
-    maxHeight: height * 0.65,
+    flex: 1,
+  },
+  practiceModalScrollContent: {
+    paddingBottom: 40,
   },
   wordPracticeSection: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
+    flex: 1,
   },
   practiceSectionHeader: {
     overflow: 'hidden',
