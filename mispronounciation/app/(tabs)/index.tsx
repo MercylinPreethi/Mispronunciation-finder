@@ -58,6 +58,54 @@ const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
 const API_BASE_URL = 'http://192.168.14.34:5050';
 
+// Common English Phonemes for Practice
+const PHONEME_LIST = {
+  vowels: [
+    { symbol: 'iː', example: 'see', label: 'Long E' },
+    { symbol: 'ɪ', example: 'sit', label: 'Short I' },
+    { symbol: 'e', example: 'bed', label: 'Short E' },
+    { symbol: 'æ', example: 'cat', label: 'Short A' },
+    { symbol: 'ɑː', example: 'car', label: 'Ah' },
+    { symbol: 'ɒ', example: 'hot', label: 'Short O' },
+    { symbol: 'ɔː', example: 'door', label: 'Aw' },
+    { symbol: 'ʊ', example: 'put', label: 'Short U' },
+    { symbol: 'uː', example: 'food', label: 'Long U' },
+    { symbol: 'ʌ', example: 'cup', label: 'Uh' },
+    { symbol: 'ɜː', example: 'her', label: 'Ur' },
+    { symbol: 'ə', example: 'about', label: 'Schwa' },
+  ],
+  consonants: [
+    { symbol: 'p', example: 'pen', label: 'P' },
+    { symbol: 'b', example: 'bed', label: 'B' },
+    { symbol: 't', example: 'top', label: 'T' },
+    { symbol: 'd', example: 'dog', label: 'D' },
+    { symbol: 'k', example: 'cat', label: 'K' },
+    { symbol: 'g', example: 'go', label: 'G' },
+    { symbol: 'f', example: 'fish', label: 'F' },
+    { symbol: 'v', example: 'very', label: 'V' },
+    { symbol: 'θ', example: 'think', label: 'Th (voiceless)' },
+    { symbol: 'ð', example: 'this', label: 'Th (voiced)' },
+    { symbol: 's', example: 'see', label: 'S' },
+    { symbol: 'z', example: 'zoo', label: 'Z' },
+    { symbol: 'ʃ', example: 'ship', label: 'Sh' },
+    { symbol: 'ʒ', example: 'measure', label: 'Zh' },
+    { symbol: 'h', example: 'hat', label: 'H' },
+    { symbol: 'm', example: 'man', label: 'M' },
+    { symbol: 'n', example: 'no', label: 'N' },
+    { symbol: 'ŋ', example: 'sing', label: 'Ng' },
+    { symbol: 'l', example: 'let', label: 'L' },
+    { symbol: 'r', example: 'red', label: 'R' },
+    { symbol: 'w', example: 'wet', label: 'W' },
+    { symbol: 'j', example: 'yes', label: 'Y' },
+  ]
+};
+
+const getAllPhonemes = () => [...PHONEME_LIST.vowels, ...PHONEME_LIST.consonants];
+const getFilteredPhonemes = (category: 'all' | 'vowels' | 'consonants') => {
+  if (category === 'all') return getAllPhonemes();
+  return PHONEME_LIST[category];
+};
+
 // Enhanced Material Design 3 Colors with Gradients
 const COLORS = {
   primary: '#6366F1',
@@ -276,6 +324,10 @@ export default function HomeScreen() {
 
   // Notification State
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+
+  // Standalone Phoneme Practice State
+  const [showStandalonePhonemes, setShowStandalonePhonemes] = useState(false);
+  const [selectedPhonemeCategory, setSelectedPhonemeCategory] = useState<'all' | 'vowels' | 'consonants'>('all');
 
   const recordSecsRef = useRef(0);
   const recordTimeRef = useRef('00:00');
@@ -2454,28 +2506,47 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Daily Task Button */}
-        <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
+        {/* Action Buttons Row */}
+        <View style={styles.actionButtonsRow}>
+          {/* Daily Task Button */}
+          <Animated.View style={{ transform: [{ scale: dailyTaskPulse }] }}>
+            <TouchableOpacity
+              style={styles.dailyTaskButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowDailyTask(true);
+              }}
+            >
+              <LinearGradient
+                colors={[COLORS.gold, '#D97706'] as const}
+                style={styles.dailyTaskGradient}
+              >
+                <Icon name="assignment" size={24} color={COLORS.white} />
+                {!todayProgress?.completed && (
+                  <View style={styles.dailyTaskBadge}>
+                    <Text style={styles.dailyTaskBadgeText}>!</Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Phoneme Practice Button */}
           <TouchableOpacity
-            style={styles.dailyTaskButton}
+            style={styles.phonemePracticeButton}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setShowDailyTask(true);
+              setShowStandalonePhonemes(true);
             }}
           >
             <LinearGradient
-              colors={[COLORS.gold, '#D97706'] as const}
-              style={styles.dailyTaskGradient}
+              colors={[COLORS.tertiary, '#DB2777'] as const}
+              style={styles.phonemePracticeGradient}
             >
-              <Icon name="assignment" size={24} color={COLORS.white} />
-              {!todayProgress?.completed && (
-                <View style={styles.dailyTaskBadge}>
-                  <Text style={styles.dailyTaskBadgeText}>!</Text>
-                </View>
-              )}
+              <Icon name="record-voice-over" size={24} color={COLORS.white} />
             </LinearGradient>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       </Animated.View>
 
       {/* Progress Indicator - Fades out when scrolling */}
@@ -3482,6 +3553,219 @@ export default function HomeScreen() {
       />
 
       {/* NOTIFICATION SETTINGS MODAL */}
+      {/* STANDALONE PHONEME PRACTICE MODAL */}
+      <Modal
+        visible={showStandalonePhonemes}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowStandalonePhonemes(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.phonemeModalContainer}>
+            <LinearGradient
+              colors={[COLORS.tertiary, '#DB2777'] as const}
+              style={styles.phonemeModalHeader}
+            >
+              <View style={styles.phonemeModalHeaderRow}>
+                <Icon name="record-voice-over" size={32} color={COLORS.white} />
+                <View style={styles.phonemeModalTitleContainer}>
+                  <Text style={styles.phonemeModalTitle}>Phoneme Practice</Text>
+                  <Text style={styles.phonemeModalSubtitle}>
+                    {getFilteredPhonemes(selectedPhonemeCategory).length} sounds
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.phonemeModalClose}
+                  onPress={() => setShowStandalonePhonemes(false)}
+                >
+                  <Icon name="close" size={24} color={COLORS.white} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Filter Tabs */}
+              <View style={styles.phonemeFilterTabs}>
+                {(['all', 'vowels', 'consonants'] as const).map((category) => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.phonemeFilterTab,
+                      selectedPhonemeCategory === category && styles.phonemeFilterTabActive
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSelectedPhonemeCategory(category);
+                    }}
+                  >
+                    <Text style={[
+                      styles.phonemeFilterTabText,
+                      selectedPhonemeCategory === category && styles.phonemeFilterTabTextActive
+                    ]}>
+                      {category.charAt(0).toUpperCase() + category.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </LinearGradient>
+
+            <ScrollView 
+              style={styles.phonemeModalScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.phonemeGrid}>
+                {getFilteredPhonemes(selectedPhonemeCategory).map((phoneme, index) => {
+                  const practiceData = phonemePractices[phoneme.symbol];
+                  const accuracy = practiceData?.bestScore ?? 0;
+                  const attempts = practiceData?.totalAttempts ?? 0;
+                  const isMastered = practiceData?.mastered ?? false;
+                  
+                  return (
+                    <View key={index} style={styles.phonemeCard}>
+                      <LinearGradient
+                        colors={
+                          isMastered
+                            ? COLORS.gradients.success
+                            : accuracy >= 0.7
+                            ? COLORS.gradients.warning
+                            : [COLORS.gray[100], COLORS.gray[50]]
+                        }
+                        style={styles.phonemeCardGradient}
+                      >
+                        {/* Phoneme Symbol */}
+                        <View style={styles.phonemeCardHeader}>
+                          <Text style={[
+                            styles.phonemeCardSymbol,
+                            { color: isMastered || accuracy >= 0.7 ? COLORS.white : COLORS.gray[900] }
+                          ]}>
+                            /{phoneme.symbol}/
+                          </Text>
+                          {isMastered && (
+                            <Icon name="verified" size={16} color={COLORS.white} />
+                          )}
+                        </View>
+
+                        {/* Label and Example */}
+                        <Text style={[
+                          styles.phonemeCardLabel,
+                          { color: isMastered || accuracy >= 0.7 ? 'rgba(255,255,255,0.9)' : COLORS.gray[600] }
+                        ]}>
+                          {phoneme.label}
+                        </Text>
+                        <Text style={[
+                          styles.phonemeCardExample,
+                          { color: isMastered || accuracy >= 0.7 ? 'rgba(255,255,255,0.8)' : COLORS.gray[500] }
+                        ]}>
+                          as in "{phoneme.example}"
+                        </Text>
+
+                        {/* Stats */}
+                        {attempts > 0 && (
+                          <View style={styles.phonemeCardStats}>
+                            <Text style={[
+                              styles.phonemeCardStatText,
+                              { color: isMastered || accuracy >= 0.7 ? COLORS.white : COLORS.gray[700] }
+                            ]}>
+                              {Math.round(accuracy * 100)}% · {attempts} tries
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Action Buttons */}
+                        <View style={styles.phonemeCardActions}>
+                          <TouchableOpacity
+                            style={[
+                              styles.phonemeCardButton,
+                              playingPhoneme === phoneme.symbol && styles.phonemeCardButtonActive
+                            ]}
+                            onPress={() => playPhonemeAudio(phoneme.symbol)}
+                          >
+                            <Icon 
+                              name={playingPhoneme === phoneme.symbol ? "volume-up" : "volume-down"} 
+                              size={18} 
+                              color={isMastered || accuracy >= 0.7 ? COLORS.white : COLORS.primary} 
+                            />
+                          </TouchableOpacity>
+                          
+                          <TouchableOpacity
+                            style={[
+                              styles.phonemeCardButton,
+                              isRecordingPhoneme && practicingPhoneme === phoneme.symbol && styles.phonemeCardButtonRecording
+                            ]}
+                            onPress={() => {
+                              if (isRecordingPhoneme && practicingPhoneme === phoneme.symbol) {
+                                stopPhonemeRecording();
+                              } else {
+                                startPhonemeRecording(phoneme.symbol);
+                              }
+                            }}
+                          >
+                            <Icon 
+                              name={isRecordingPhoneme && practicingPhoneme === phoneme.symbol ? "stop" : "mic"} 
+                              size={18} 
+                              color={
+                                isRecordingPhoneme && practicingPhoneme === phoneme.symbol 
+                                  ? COLORS.error 
+                                  : isMastered || accuracy >= 0.7 ? COLORS.white : COLORS.primary
+                              } 
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      </LinearGradient>
+                    </View>
+                  );
+                })}
+              </View>
+
+              {/* Overall Progress Summary */}
+              {Object.keys(phonemePractices).length > 0 && (
+                <View style={styles.phonemeOverallProgress}>
+                  <Text style={styles.phonemeOverallTitle}>Your Progress</Text>
+                  <View style={styles.phonemeOverallStats}>
+                    <View style={styles.phonemeOverallStat}>
+                      <Icon name="emoji-events" size={24} color={COLORS.gold} />
+                      <Text style={styles.phonemeOverallValue}>
+                        {Object.values(phonemePractices).filter(p => p.mastered).length}
+                      </Text>
+                      <Text style={styles.phonemeOverallLabel}>Mastered</Text>
+                    </View>
+                    <View style={styles.phonemeOverallStat}>
+                      <Icon name="trending-up" size={24} color={COLORS.primary} />
+                      <Text style={styles.phonemeOverallValue}>
+                        {Object.values(phonemePractices).length}
+                      </Text>
+                      <Text style={styles.phonemeOverallLabel}>Practiced</Text>
+                    </View>
+                    <View style={styles.phonemeOverallStat}>
+                      <Icon name="check-circle" size={24} color={COLORS.success} />
+                      <Text style={styles.phonemeOverallValue}>
+                        {Object.values(phonemePractices).length > 0
+                          ? Math.round(
+                              (Object.values(phonemePractices).filter(p => p.mastered).length / 
+                               getAllPhonemes().length) * 100
+                            )
+                          : 0}%
+                      </Text>
+                      <Text style={styles.phonemeOverallLabel}>Complete</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              <View style={{ height: 20 }} />
+            </ScrollView>
+
+            {/* Recording Indicator */}
+            {isRecordingPhoneme && (
+              <View style={styles.phonemeRecordingIndicator}>
+                <View style={styles.phonemeRecordingPulse} />
+                <Text style={styles.phonemeRecordingText}>
+                  Recording /{practicingPhoneme}/ ... {phonemeRecordingTime}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       <NotificationSettingsModal
         visible={showNotificationSettings}
         onClose={() => setShowNotificationSettings(false)}
@@ -5272,6 +5556,222 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: COLORS.white,
-  }
-  ,
+  },
+  
+  // Action Buttons Row
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  
+  // Phoneme Practice Button
+  phonemePracticeButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: COLORS.tertiary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  phonemePracticeGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Phoneme Modal
+  phonemeModalContainer: {
+    width: '90%',
+    maxWidth: 600,
+    maxHeight: height * 0.85,
+    backgroundColor: COLORS.white,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  phonemeModalHeader: {
+    padding: 20,
+    paddingTop: Platform.OS === 'ios' ? 24 : 20,
+  },
+  phonemeModalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  phonemeModalTitleContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  phonemeModalTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: -0.5,
+  },
+  phonemeModalSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  phonemeModalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  phonemeFilterTabs: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  phonemeFilterTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+  },
+  phonemeFilterTabActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  phonemeFilterTabText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  phonemeFilterTabTextActive: {
+    color: COLORS.white,
+  },
+  phonemeModalScroll: {
+    flex: 1,
+  },
+  phonemeGrid: {
+    padding: 16,
+    gap: 12,
+  },
+  phonemeCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  phonemeCardGradient: {
+    padding: 16,
+  },
+  phonemeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  phonemeCardSymbol: {
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  phonemeCardLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  phonemeCardExample: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginBottom: 12,
+  },
+  phonemeCardStats: {
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  phonemeCardStatText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  phonemeCardActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  phonemeCardButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phonemeCardButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  phonemeCardButtonRecording: {
+    backgroundColor: COLORS.error,
+  },
+  phonemeOverallProgress: {
+    padding: 20,
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 20,
+    margin: 16,
+  },
+  phonemeOverallTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.gray[900],
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  phonemeOverallStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  phonemeOverallStat: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  phonemeOverallValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.gray[900],
+  },
+  phonemeOverallLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+    textTransform: 'uppercase',
+  },
+  phonemeRecordingIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.error,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phonemeRecordingPulse: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.white,
+    left: 20,
+  },
+  phonemeRecordingText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
 });
