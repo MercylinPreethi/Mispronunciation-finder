@@ -269,9 +269,9 @@ export default function HomeScreen() {
   const modalAnim = useRef(new Animated.Value(0)).current;
   
   const badgeAnims = useRef([
-    new Animated.Value(0),
-    new Animated.Value(0),
-    new Animated.Value(0),
+    new Animated.Value(1),
+    new Animated.Value(1),
+    new Animated.Value(1),
   ] as Animated.Value[]).current;
 
   const dailyTaskPulse = useRef(new Animated.Value(1)).current;
@@ -2857,32 +2857,34 @@ export default function HomeScreen() {
                       <Text style={styles.dailyTipText}>{selectedWord.tip}</Text>
                     </View>
 
-                    {/* ADDED: Phoneme Analysis Button */}
-                    <TouchableOpacity
-                      style={styles.phonemeAnalysisButton}
-                      onPress={() => openPhonemeAnalysis(selectedWord, selectedWordProgress)}
-                    >
-                      <LinearGradient
-                        colors={[COLORS.secondary, COLORS.primary] as const}
-                        style={styles.phonemeAnalysisGradient}
+                    {/* Action Buttons Side by Side */}
+                    <View style={styles.actionButtonsRow}>
+                      <TouchableOpacity
+                        style={styles.phonemeAnalysisButton}
+                        onPress={() => openPhonemeAnalysis(selectedWord, selectedWordProgress)}
                       >
-                        <Icon name="graphic-eq" size={20} color={COLORS.white} />
-                        <Text style={styles.phonemeAnalysisText}>Phoneme-Level Analysis</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
+                        <LinearGradient
+                          colors={[COLORS.secondary, COLORS.primary] as const}
+                          style={styles.phonemeAnalysisGradient}
+                        >
+                          <Icon name="graphic-eq" size={18} color={COLORS.white} />
+                          <Text style={styles.phonemeAnalysisText}>Phoneme Analysis</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={styles.startDailyButton}
-                      onPress={openPracticeFromFeedback}
-                    >
-                      <LinearGradient
-                        colors={[COLORS.primary, COLORS.secondary] as const}
-                        style={styles.startDailyGradient}
+                      <TouchableOpacity
+                        style={styles.startDailyButton}
+                        onPress={openPracticeFromFeedback}
                       >
-                        <Text style={styles.startDailyText}>Try Again</Text>
-                        <Icon name="refresh" size={20} color={COLORS.white} />
-                      </LinearGradient>
-                    </TouchableOpacity>
+                        <LinearGradient
+                          colors={[COLORS.primary, COLORS.secondary] as const}
+                          style={styles.startDailyGradient}
+                        >
+                          <Text style={styles.startDailyText}>Try Again</Text>
+                          <Icon name="refresh" size={18} color={COLORS.white} />
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               </ScrollView>
@@ -3417,11 +3419,16 @@ const styles = StyleSheet.create({
   badgeInfo: {
     flex: 1,
   },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
   phonemeAnalysisButton: {
+    flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
-    marginTop: 16,
-    shadowColor: COLORS.primary,
+    shadowColor: COLORS.secondary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
@@ -3431,12 +3438,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    gap: 6,
   },
   phonemeAnalysisText: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '700',
     color: COLORS.white,
   },
   badgeValue: {
@@ -4376,6 +4384,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   startDailyButton: {
+    flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: COLORS.primary,
@@ -4388,8 +4397,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    gap: 6,
   },
   startDailyText: {
     fontSize: 16,
