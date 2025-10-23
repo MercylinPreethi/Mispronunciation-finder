@@ -461,6 +461,9 @@ export const scheduleStreakRiskNotification = async (
 
     const randomMessage = streakMessages[Math.floor(Math.random() * streakMessages.length)];
 
+    // Calculate seconds from now
+    const secondsFromNow = Math.floor((notificationTime.getTime() - Date.now()) / 1000);
+    
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: "Streak Alert! 🔥",
@@ -469,7 +472,9 @@ export const scheduleStreakRiskNotification = async (
         sound: true,
         priority: Notifications.AndroidNotificationPriority.MAX,
       },
-      trigger: notificationTime,
+      trigger: {
+        seconds: secondsFromNow,
+      },
     });
 
     console.log('✅ Streak risk notification scheduled for:', notificationTime);
