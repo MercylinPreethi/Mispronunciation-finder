@@ -667,38 +667,36 @@ export default function CoachScreen() {
                       )}
                     </LinearGradient>
                     
-                    {/* Action Buttons - Always visible for voice messages */}
+                    {/* Combined Analyze & Practice Button */}
                     {message.isVoiceMessage && message.feedback && (
                       <View style={styles.actionButtonsContainer}>
                         <TouchableOpacity
-                          style={styles.analyzeButton}
-                          onPress={() => handleAnalyzeClick(message.id)}
+                          style={[
+                            styles.combinedButton,
+                            {
+                              shadowColor: 
+                                message.feedback.accuracy >= 85 ? '#10B981' :
+                                message.feedback.accuracy >= 70 ? '#F59E0B' :
+                                '#EF4444'
+                            }
+                          ]}
+                          onPress={() => handlePracticeClick(message.id)}
                           activeOpacity={0.9}
                         >
                           <LinearGradient
-                            colors={['#F59E0B', '#D97706']}
-                            style={styles.analyzeButtonGradient}
+                            colors={
+                              message.feedback.accuracy >= 85
+                                ? ['#10B981', '#059669'] as const
+                                : message.feedback.accuracy >= 70
+                                ? ['#F59E0B', '#D97706'] as const
+                                : ['#EF4444', '#DC2626'] as const
+                            }
+                            style={styles.combinedButtonGradient}
                           >
-                            <Icon name="analytics" size={16} color="#FFFFFF" />
-                            <Text style={styles.analyzeButtonText}>Analyze</Text>
+                            <Icon name="analytics" size={18} color="#FFFFFF" />
+                            <Text style={styles.combinedButtonText}>Analyze</Text>
                           </LinearGradient>
                         </TouchableOpacity>
-                        
-                        {(message.feedback.mispronounced_words.length > 0 || message.feedback.partial_words.length > 0) && (
-                          <TouchableOpacity
-                            style={styles.practiceButton}
-                            onPress={() => handlePracticeClick(message.id)}
-                            activeOpacity={0.9}
-                          >
-                            <LinearGradient
-                              colors={['#8B5CF6', '#7C3AED']}
-                              style={styles.practiceButtonGradient}
-                            >
-                              <Icon name="fitness-center" size={16} color="#FFFFFF" />
-                              <Text style={styles.practiceButtonText}>Practice</Text>
-                            </LinearGradient>
-                          </TouchableOpacity>
-                        )}
                       </View>
                     )}
                     
@@ -892,6 +890,97 @@ export default function CoachScreen() {
                     style={styles.practiceModalScroll}
                     showsVerticalScrollIndicator={false}
                   >
+                    {/* Color-Coded Words Display */}
+                    {latestFeedback && (
+                      <View style={styles.wordAnalysisSection}>
+                        <View style={styles.analysisHeader}>
+                          <Icon name="psychology" size={24} color="#6366F1" />
+                          <Text style={styles.analysisHeaderTitle}>Word Analysis</Text>
+                        </View>
+                        
+                        {/* Accuracy Score */}
+                        <LinearGradient
+                          colors={
+                            latestFeedback.accuracy >= 85
+                              ? ['#10B981', '#059669'] as const
+                              : latestFeedback.accuracy >= 70
+                              ? ['#F59E0B', '#D97706'] as const
+                              : ['#EF4444', '#DC2626'] as const
+                          }
+                          style={styles.accuracyScoreCard}
+                        >
+                          <Icon name="stars" size={28} color="#FFFFFF" />
+                          <Text style={styles.accuracyScoreValue}>
+                            {latestFeedback.accuracy.toFixed(0)}%
+                          </Text>
+                          <Text style={styles.accuracyScoreLabel}>Accuracy</Text>
+                        </LinearGradient>
+
+                        {/* All Words with Color Coding */}
+                        <View style={styles.allWordsContainer}>
+                          <Text style={styles.wordsContainerTitle}>All Words</Text>
+                          <View style={styles.colorCodedWordsGrid}>
+                            {/* Correct Words - Green */}
+                            {latestFeedback.correct_words.map((word, index) => (
+                              <View key={`correct-${index}`} style={styles.wordChipCorrect}>
+                                <Icon name="check-circle" size={16} color="#10B981" />
+                                <Text style={styles.wordChipTextCorrect}>{word}</Text>
+                              </View>
+                            ))}
+                            
+                            {/* Partial Words - Yellow */}
+                            {latestFeedback.partial_words.map((word, index) => (
+                              <View key={`partial-${index}`} style={styles.wordChipPartial}>
+                                <Icon name="warning" size={16} color="#F59E0B" />
+                                <Text style={styles.wordChipTextPartial}>{word}</Text>
+                              </View>
+                            ))}
+                            
+                            {/* Mispronounced Words - Red */}
+                            {latestFeedback.mispronounced_words.map((word, index) => (
+                              <View key={`error-${index}`} style={styles.wordChipError}>
+                                <Icon name="cancel" size={16} color="#EF4444" />
+                                <Text style={styles.wordChipTextError}>{word}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+
+                        {/* Stats Summary */}
+                        <View style={styles.statsRow}>
+                          <View style={styles.statItem}>
+                            <Icon name="check-circle" size={20} color="#10B981" />
+                            <Text style={styles.statItemValue}>{latestFeedback.correct_words.length}</Text>
+                            <Text style={styles.statItemLabel}>Correct</Text>
+                          </View>
+                          <View style={styles.statItemDivider} />
+                          <View style={styles.statItem}>
+                            <Icon name="warning" size={20} color="#F59E0B" />
+                            <Text style={styles.statItemValue}>{latestFeedback.partial_words.length}</Text>
+                            <Text style={styles.statItemLabel}>Partial</Text>
+                          </View>
+                          <View style={styles.statItemDivider} />
+                          <View style={styles.statItem}>
+                            <Icon name="cancel" size={20} color="#EF4444" />
+                            <Text style={styles.statItemValue}>{latestFeedback.mispronounced_words.length}</Text>
+                            <Text style={styles.statItemLabel}>Errors</Text>
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Practice Section for Mispronounced Words */}
+                    {latestFeedback && (latestFeedback.mispronounced_words.length > 0 || latestFeedback.partial_words.length > 0) && (
+                      <View style={styles.practiceSectionDivider}>
+                        <View style={styles.dividerLine} />
+                        <View style={styles.dividerBadge}>
+                          <Icon name="fitness-center" size={16} color="#8B5CF6" />
+                          <Text style={styles.dividerText}>Practice Words</Text>
+                        </View>
+                        <View style={styles.dividerLine} />
+                      </View>
+                    )}
+
                     <View style={styles.practiceWordsContainer}>
                       {latestFeedback && [...latestFeedback.mispronounced_words, ...latestFeedback.partial_words].map((word, index) => {
                         const isRecordingThis = isWordRecording && recordingWord === word;
@@ -1694,52 +1783,28 @@ const styles = StyleSheet.create({
   },
   actionButtonsContainer: {
     position: 'absolute',
-    bottom: 8,
-    right: 8,
+    bottom: 12,
+    right: 10,
+    left: 80,
+  },
+  combinedButton: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  combinedButtonGradient: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     gap: 8,
   },
-  analyzeButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  analyzeButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 4,
-  },
-  analyzeButtonText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  practiceButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  practiceButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 4,
-  },
-  practiceButtonText: {
-    fontSize: 11,
+  combinedButtonText: {
+    fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.3,
@@ -1941,5 +2006,173 @@ const styles = StyleSheet.create({
     color: '#5B21B6',
     fontWeight: '600',
     lineHeight: 18,
+  },
+  // New styles for color-coded analysis
+  wordAnalysisSection: {
+    backgroundColor: '#FFFFFF',
+    marginBottom: 0,
+  },
+  analysisHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  analysisHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1F2937',
+    letterSpacing: -0.3,
+  },
+  accuracyScoreCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 20,
+    padding: 16,
+    borderRadius: 16,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  accuracyScoreValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -1,
+  },
+  accuracyScoreLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  allWordsContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  wordsContainerTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#374151',
+    marginBottom: 12,
+    letterSpacing: -0.2,
+  },
+  colorCodedWordsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  wordChipCorrect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: '#6EE7B7',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  wordChipTextCorrect: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  wordChipPartial: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  wordChipTextPartial: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 4,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  statItemValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#1F2937',
+    letterSpacing: -0.5,
+  },
+  statItemLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statItemDivider: {
+    width: 1,
+    backgroundColor: '#D1D5DB',
+    marginHorizontal: 8,
+  },
+  practiceSectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: '#E5E7EB',
+  },
+  dividerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3E8FF',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#C4B5FD',
+  },
+  dividerText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#7C3AED',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });
