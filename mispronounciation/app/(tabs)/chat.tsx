@@ -850,7 +850,7 @@ export default function CoachScreen() {
             ]}
           >
             <TouchableOpacity activeOpacity={1}>
-              <BlurView intensity={100} tint="light" style={styles.practiceModalBlur}>
+              <View style={styles.practiceModalBlur}>
                 <View style={styles.wordPracticeSection}>
                   <View style={styles.practiceSectionHeader}>
                     <View style={styles.dragHandleContainer}>
@@ -1062,7 +1062,7 @@ export default function CoachScreen() {
                     </View>
                   </ScrollView>
                 </View>
-              </BlurView>
+              </View>
             </TouchableOpacity>
           </Animated.View>
         </TouchableOpacity>
@@ -1833,6 +1833,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 32,
     overflow: 'hidden',
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   practiceModalScroll: {
     flex: 1,
@@ -1841,7 +1842,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   wordPracticeSection: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     flex: 1,
