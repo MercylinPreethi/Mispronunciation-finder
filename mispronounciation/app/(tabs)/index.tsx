@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { ref, onValue, set, get } from 'firebase/database';
+import { ref, onValue, set, get, off } from 'firebase/database';
 import { auth, database } from '../../lib/firebase';
 import * as Haptics from 'expo-haptics';
 import RNFS from 'react-native-fs';
@@ -24,12 +24,35 @@ import axios from 'axios';
 import ProgressCircle from '../../components/ProgressCircle';
 import LearningPathBackground from '../../components/LearningPathBackground';
 import EnhancedStreakCalendar from '../../components/EnhancedStreakCalendar';
+import EnhancedPhonemeAnalysisCard from '../../components/EnhancedPhonemeAnalysisCard';
+import PhonemeVisualization from '../../components/PhonemeVisualization';
+import InAppNotificationBadge from '../../components/InAppNotificationBadge';
+import NotificationSettingsModal from '../../components/NotificationSettingsModal';
 import AudioRecorderPlayer, {
   AVEncoderAudioQualityIOSType,
   AVEncodingOption,
   AudioEncoderAndroidType,
   AudioSourceAndroidType,
 } from 'react-native-audio-recorder-player';
+import phonemeFirebaseService, {
+  PhonemeAnalysis as FirebasePhonemeAnalysis,
+  PhonemePracticeData,
+  PhonemePracticeAttempt,
+  saveWordPhonemeData,
+  saveDailyWordData,
+  savePhonemeAttempt,
+  getAllPhonemeData,
+  updateWordProgressWithPhonemes,
+} from '../../services/phonemeFirebaseService';
+import notificationService, {
+  initializeNotifications,
+  checkAndScheduleStreakReminder,
+  sendStreakMilestoneNotification,
+  sendDailyCompleteNotification,
+  sendMotivationalNotification,
+  addNotificationReceivedListener,
+  addNotificationResponseListener,
+} from '../../services/notificationService';
 
 const { width, height } = Dimensions.get('window');
 const audioRecorderPlayer = new AudioRecorderPlayer();
@@ -194,22 +217,7 @@ interface PhonemeAnalysis {
   predicted_phoneme: string;
 }
 
-interface PhonemePracticeData {
-  phoneme: string;
-  word: string;
-  attempts: {
-    id: string;
-    timestamp: Date;
-    audioPath: string;
-    audioUrl?: string;
-    accuracy: number;
-    status: 'correct' | 'partial' | 'mispronounced';
-    feedback: string;
-    analysis?: any;
-  }[];
-  bestScore: number;
-  mastered: boolean;
-}
+// Note: PhonemePracticeData is imported from phonemeFirebaseService
 
 type DifficultyLevel = 'easy' | 'intermediate' | 'hard';
 
@@ -266,6 +274,9 @@ export default function HomeScreen() {
   const [showStreakCalendar, setShowStreakCalendar] = useState(false);
   const [streakDays, setStreakDays] = useState<string[]>([]);
 
+  // Notification State
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+
   const recordSecsRef = useRef(0);
   const recordTimeRef = useRef('00:00');
   const recordingPathRef = useRef<string | null>(null);
@@ -273,9 +284,9 @@ export default function HomeScreen() {
   const modalAnim = useRef(new Animated.Value(0)).current;
   
   const badgeAnims = useRef([
-    new Animated.Value(0),
-    new Animated.Value(0),
-    new Animated.Value(0),
+    new Animated.Value(1),
+    new Animated.Value(1),
+    new Animated.Value(1),
   ] as Animated.Value[]).current;
 
   const dailyTaskPulse = useRef(new Animated.Value(1)).current;
@@ -307,6 +318,26 @@ export default function HomeScreen() {
   const getTodayDateString = () => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  };
+
+  // Helper function to remove undefined values from objects (Firebase doesn't allow undefined)
+  const cleanFirebaseData = <T extends Record<string, any>>(obj: T): T => {
+    const cleaned: any = {};
+    Object.keys(obj).forEach(key => {
+      const value = obj[key];
+      if (value !== undefined) {
+        if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+          cleaned[key] = cleanFirebaseData(value);
+        } else if (Array.isArray(value)) {
+          cleaned[key] = value.map(item => 
+            item && typeof item === 'object' ? cleanFirebaseData(item) : item
+          ).filter(item => item !== undefined);
+        } else {
+          cleaned[key] = value;
+        }
+      }
+    });
+    return cleaned as T;
   };
 
   // ============================================================================
@@ -684,7 +715,7 @@ export default function HomeScreen() {
         feedback,
         correct_phonemes,
         total_phonemes,
-        scores: result || undefined, // ADDED: Store scores in attempt
+        ...(result && { scores: result }), // Only add scores if result exists
       };
 
       // Get existing progress or create new
@@ -699,7 +730,7 @@ export default function HomeScreen() {
           word: todayWord.word,
           date: today,
           completed: false,
-          mastered: false, // NEW
+          mastered: false,
           accuracy: 0,
           attempts: 0,
           bestScore: 0,
@@ -718,19 +749,37 @@ export default function HomeScreen() {
         accuracy: accuracy,
         bestScore: Math.max(existingProgress.bestScore, accuracy),
         completed: accuracy >= 0.5 || existingProgress.completed,
-        mastered: accuracy >= 0.8 || existingProgress.mastered, // NEW: Mastery tracking
+        mastered: accuracy >= 0.8 || existingProgress.mastered,
         attemptHistory,
-        scores: result || existingProgress.scores, // ADDED: Store scores in progress
+        ...(result && { scores: result }), // Only add scores if result exists
       };
 
+      // Clean data before saving to Firebase (remove undefined values)
+      const cleanedProgress = cleanFirebaseData(updatedProgress);
+      
       // Save to Firebase
-      await set(dailyRef, updatedProgress);
-      setTodayProgress(updatedProgress);
+      await set(dailyRef, cleanedProgress);
+      
+      // Update local state with the cleaned data
+      setTodayProgress(cleanedProgress as DailyWordProgress);
 
       // Update streak if this is the first practice today
       await updateStreakForToday(user.uid, today);
+      
+      // Send daily complete notification if completed
+      if (cleanedProgress.completed && cleanedProgress.attempts === 1) {
+        await sendDailyCompleteNotification();
+      }
+      
+      // Send mastery notification if mastered
+      if (cleanedProgress.mastered && !existingProgress.mastered) {
+        await sendMotivationalNotification('mastery_achieved', { word: todayWord.word });
+      }
+      
+      // Reload the progress to ensure we have the latest data
+      await loadDailyWordProgress(user.uid);
 
-      return updatedProgress;
+      return cleanedProgress as DailyWordProgress;
     } catch (error) {
       console.error('Error saving daily word attempt:', error);
       throw error;
@@ -739,6 +788,8 @@ export default function HomeScreen() {
 
   const updateStreakForToday = async (userId: string, today: string) => {
     try {
+      const previousStreak = stats.streak;
+      
       // Check if user has any practice today (daily word or practice words)
       const dailyRef = ref(database, `users/${userId}/dailyWords/${today}`);
       const dailySnapshot = await get(dailyRef);
@@ -754,6 +805,16 @@ export default function HomeScreen() {
         
         if (allDailySnapshot.exists()) {
           await calculateStatsFromHistory(allDailySnapshot.val(), userId);
+          
+          // Check if streak increased (new day practiced)
+          const newStreak = stats.streak;
+          if (newStreak > previousStreak) {
+            // Send streak milestone notification if applicable
+            await sendStreakMilestoneNotification(newStreak);
+            
+            // Schedule streak risk notification for tomorrow
+            await checkAndScheduleStreakReminder(newStreak, today);
+          }
         }
       }
     } catch (error) {
@@ -895,11 +956,25 @@ export default function HomeScreen() {
     initializeOnceRef.current = true;
 
     try {
-      // Load everything in parallel
-      const [statsPromise, dailyWordPromise, progressPromise, dailyProgressPromise] = await Promise.allSettled([
-        // Stats
+      // Load everything in parallel including phoneme data
+      const [statsPromise, dailyWordPromise, progressPromise, dailyProgressPromise, phonemePromise] = await Promise.allSettled([
+        // Stats - Load immediately and set up listener
         (async () => {
           const statsRef = ref(database, `users/${userId}/stats`);
+          
+          // First, load stats immediately
+          const snapshot = await get(statsRef);
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            setStats({
+              streak: data.streak || 0,
+              totalWords: data.totalWords || 0,
+              accuracy: data.accuracy || 0,
+              xp: data.xp || 0,
+            });
+          }
+          
+          // Then set up listener for updates
           onValue(statsRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
@@ -920,8 +995,18 @@ export default function HomeScreen() {
         loadAllDataFast(selectedDifficulty),
 
         // Daily word progress
-        loadDailyWordProgress(userId)
+        loadDailyWordProgress(userId),
+        
+        // Phoneme practice data
+        getAllPhonemeData()
       ]);
+
+      // Handle phoneme practice data
+      if (phonemePromise.status === 'fulfilled') {
+        const phonemeData = phonemePromise.value;
+        setPhonemePractices(phonemeData);
+        console.log('✅ Loaded phoneme practice data:', Object.keys(phonemeData).length, 'phonemes');
+      }
 
       // Set up daily words listener (non-blocking)
       const dailyWordsRef = ref(database, `users/${userId}/dailyWords`);
@@ -995,6 +1080,42 @@ export default function HomeScreen() {
     if (user) {
       setUserName(user.displayName || 'User');
       loadUserDataFast(user.uid);
+      
+      // Initialize notifications
+      initializeNotifications().then(initialized => {
+        if (initialized) {
+          console.log('✅ Notifications initialized');
+        }
+      });
+      
+      // Set up notification listeners
+      const notificationListener = addNotificationReceivedListener(notification => {
+        console.log('📬 Notification received:', notification);
+      });
+
+      const responseListener = addNotificationResponseListener(response => {
+        console.log('👆 Notification tapped:', response);
+        // Handle notification tap (e.g., navigate to practice screen)
+      });
+      
+      // Set up real-time phoneme data listener
+      const phonemeDataPath = `users/${user.uid}/phonemeData/phonemePractices`;
+      const phonemeRef = ref(database, phonemeDataPath);
+      
+      onValue(phonemeRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const phonemeData = snapshot.val();
+          setPhonemePractices(phonemeData);
+          console.log('📊 Real-time phoneme data updated:', Object.keys(phonemeData).length, 'phonemes');
+        }
+      });
+      
+      // Cleanup listeners on unmount
+      return () => {
+        off(phonemeRef);
+        notificationListener.remove();
+        responseListener.remove();
+      };
     }
 
     // Fast badge animations
@@ -1227,35 +1348,54 @@ export default function HomeScreen() {
 
       if (response.data.success) {
         const { accuracy, status, feedback, analysis } = response.data;
+        const timestamp = new Date().toISOString();
         
-        // Update phoneme practice data
-        const attemptId = Date.now().toString();
-        const newAttempt = {
-          id: attemptId,
-          timestamp: new Date(),
-          audioPath,
+        // Create attempt object for Firebase
+        const newAttempt: PhonemePracticeAttempt = {
+          timestamp,
           accuracy,
-          status,
           feedback,
-          analysis
+          predicted_phoneme: analysis?.predicted_phoneme || phoneme,
+          reference_phoneme: phoneme,
         };
 
-        setPhonemePractices(prev => ({
-          ...prev,
-          [phoneme]: {
+        // Save to Firebase
+        await savePhonemeAttempt(phoneme, selectedWord.word, newAttempt);
+
+        // Update local state with proper typing
+        setPhonemePractices(prev => {
+          const existingData: PhonemePracticeData = prev[phoneme] || {
             phoneme,
             word: selectedWord.word,
-            attempts: [...(prev[phoneme]?.attempts || []), newAttempt],
-            bestScore: Math.max(prev[phoneme]?.bestScore || 0, accuracy),
-            mastered: accuracy >= 0.8
-          }
-        }));
+            attempts: [],
+            bestScore: 0,
+            totalAttempts: 0,
+            mastered: false,
+            lastAttempted: timestamp,
+          };
+
+          const updatedData: PhonemePracticeData = {
+            ...existingData,
+            attempts: [newAttempt, ...existingData.attempts].slice(0, 10),
+            bestScore: Math.max(existingData.bestScore, accuracy),
+            totalAttempts: existingData.totalAttempts + 1,
+            mastered: Math.max(existingData.bestScore, accuracy) >= 0.9,
+            lastAttempted: timestamp,
+          };
+
+          return {
+            ...prev,
+            [phoneme]: updatedData,
+          };
+        });
 
         Alert.alert(
           status === 'correct' ? '🎉 Perfect!' : status === 'partial' ? '👍 Good!' : '💪 Keep Trying',
           `Phoneme: /${phoneme}/\nScore: ${Math.round(accuracy * 100)}%\n\n${feedback}`,
           [{ text: 'Continue' }]
         );
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
       console.error('Phoneme processing error:', error);
@@ -1520,32 +1660,94 @@ export default function HomeScreen() {
           correct_phonemes: analysisResult.correct_phonemes,
           total_phonemes: analysisResult.total_phonemes,
           feedback: response.data.feedback || 'Great job!',
-          predicted_phonemes: analysisResult.predicted_phonemes, // ADDED
-          reference_phonemes: analysisResult.reference_phonemes, // ADDED
+          predicted_phonemes: analysisResult.predicted_phonemes,
+          reference_phonemes: analysisResult.reference_phonemes,
+          aligned_predicted: analysisResult.aligned_predicted,
+          aligned_reference: analysisResult.aligned_reference,
         };
         
         setResult(resultData);
         setShowResult(true);
         
-        // Check if this is a daily word or practice word
-        if (isPracticingDaily) {
-          // DAILY WORD: Save to daily word attempts only
-          await saveDailyWordAttempt(
-            resultData.accuracy,
-            resultData.feedback,
-            resultData.correct_phonemes,
-            resultData.total_phonemes
-          );
-          // Note: saveDailyWordAttempt already handles streak update
-        } else {
-          // PRACTICE WORD: Save to practice word attempts only
-          await updateWordProgressFast(resultData.accuracy);
-          
-          // Also update streak since user practiced today
-          const user = auth.currentUser;
-          if (user) {
+        // ============================================================================
+        // FIREBASE PERSISTENCE: Save phoneme-level data
+        // ============================================================================
+        if (selectedWord) {
+          // Save to Firebase with phoneme data
+          if (isPracticingDaily) {
+            // DAILY WORD: Save to daily word data with phonemes
             const today = getTodayDateString();
-            await updateStreakForToday(user.uid, today);
+            
+            // Create daily word data object with only defined values
+            const dailyWordData: any = {
+              word: selectedWord.word,
+              phonetic: selectedWord.phonetic,
+              accuracy: resultData.accuracy,
+            };
+            
+            // Only add optional fields if they exist
+            if (resultData.reference_phonemes) {
+              dailyWordData.reference_phonemes = resultData.reference_phonemes;
+            }
+            if (resultData.predicted_phonemes) {
+              dailyWordData.predicted_phonemes = resultData.predicted_phonemes;
+            }
+            if (resultData.aligned_reference) {
+              dailyWordData.aligned_reference = resultData.aligned_reference;
+            }
+            if (resultData.aligned_predicted) {
+              dailyWordData.aligned_predicted = resultData.aligned_predicted;
+            }
+            
+            // Add phoneme breakdown if available
+            const phonemeBreakdown = getPhonemeBreakdown(resultData);
+            if (phonemeBreakdown && phonemeBreakdown.length > 0) {
+              dailyWordData.phoneme_breakdown = phonemeBreakdown;
+            }
+            
+            // Clean and save
+            await saveDailyWordData(today, cleanFirebaseData(dailyWordData));
+            
+            // Also save to local state
+            await saveDailyWordAttempt(
+              resultData.accuracy,
+              resultData.feedback,
+              resultData.correct_phonemes,
+              resultData.total_phonemes
+            );
+          } else {
+            // PRACTICE WORD: Save to word progress with phonemes
+            await updateWordProgressWithPhonemes(
+              selectedDifficulty,
+              selectedWord.id,
+              resultData
+            );
+            
+            // Save word phoneme data
+            await saveWordPhonemeData(selectedWord.id, {
+              word: selectedWord.word,
+              wordId: selectedWord.id,
+              difficulty: selectedDifficulty,
+              phonetic: selectedWord.phonetic,
+              reference_phonemes: resultData.reference_phonemes || [],
+              predicted_phonemes: resultData.predicted_phonemes || [],
+              aligned_reference: resultData.aligned_reference || [],
+              aligned_predicted: resultData.aligned_predicted || [],
+              status: resultData.accuracy >= 0.9 ? 'correct' : 
+                      resultData.accuracy >= 0.7 ? 'partial' : 'mispronounced',
+              accuracy: resultData.accuracy,
+              phoneme_breakdown: getPhonemeBreakdown(resultData),
+            } as any);
+            
+            // Also update local state
+            await updateWordProgressFast(resultData.accuracy);
+            
+            // Update streak
+            const user = auth.currentUser;
+            if (user) {
+              const today = getTodayDateString();
+              await updateStreakForToday(user.uid, today);
+            }
           }
         }
         
@@ -2131,6 +2333,20 @@ export default function HomeScreen() {
       >
         <View style={styles.headerTop}>
           <Text style={styles.userName}>Hi, {userName}! </Text>
+          
+          {/* Notification Badge and Settings */}
+          <View style={styles.headerActions}>
+            <InAppNotificationBadge />
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowNotificationSettings(true);
+              }}
+            >
+              <Icon name="settings" size={24} color={COLORS.gray[600]} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.badgesContainer}>
@@ -2603,23 +2819,61 @@ export default function HomeScreen() {
                     </View>
                   )}
                   
-                  <TouchableOpacity
-                    style={styles.startDailyButton}
-                    onPress={() => {
-                      setShowDailyTask(false);
-                      openPracticeModalFast(todayWord, true);
-                    }}
-                  >
-                    <LinearGradient
-                      colors={[COLORS.primary, COLORS.secondary] as const}
-                      style={styles.startDailyGradient}
+                  {/* Action Buttons Row - Show when user has attempted */}
+                  {todayProgress && todayProgress.attempts > 0 && todayProgress.scores && (
+                    <View style={styles.actionButtonsRow}>
+                      <TouchableOpacity
+                        style={[styles.phonemeAnalysisButton, { flex: 1 }]}
+                        onPress={() => {
+                          setShowDailyTask(false);
+                          openPhonemeAnalysis(todayWord, todayProgress);
+                        }}
+                      >
+                        <LinearGradient
+                          colors={[COLORS.secondary, COLORS.primary] as const}
+                          style={styles.phonemeAnalysisGradient}
+                        >
+                          <Icon name="graphic-eq" size={18} color={COLORS.white} />
+                          <Text style={styles.phonemeAnalysisText}>Phoneme Analysis</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.startDailyButton, { flex: 1 }]}
+                        onPress={() => {
+                          setShowDailyTask(false);
+                          openPracticeModalFast(todayWord, true);
+                        }}
+                      >
+                        <LinearGradient
+                          colors={[COLORS.primary, COLORS.secondary] as const}
+                          style={styles.startDailyGradient}
+                        >
+                          <Text style={styles.startDailyText}>Try Again</Text>
+                          <Icon name="refresh" size={18} color={COLORS.white} />
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  
+                  {/* Single button if no attempts yet */}
+                  {(!todayProgress || todayProgress.attempts === 0 || !todayProgress.scores) && (
+                    <TouchableOpacity
+                      style={[styles.startDailyButton, { marginTop: 16 }]}
+                      onPress={() => {
+                        setShowDailyTask(false);
+                        openPracticeModalFast(todayWord, true);
+                      }}
                     >
-                      <Text style={styles.startDailyText}>
-                        {todayProgress && todayProgress.attempts > 0 ? 'Try Again' : 'Start Challenge'}
-                      </Text>
-                      <Icon name={todayProgress && todayProgress.attempts > 0 ? "refresh" : "arrow-forward"} size={20} color={COLORS.white} />
-                    </LinearGradient>
-                  </TouchableOpacity>
+                      <LinearGradient
+                        colors={[COLORS.primary, COLORS.secondary] as const}
+                        style={styles.startDailyGradient}
+                      >
+                        <Text style={styles.startDailyText}>Start Challenge</Text>
+                        <Icon name="arrow-forward" size={18} color={COLORS.white} />
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
               </ScrollView>
@@ -2773,32 +3027,34 @@ export default function HomeScreen() {
                       <Text style={styles.dailyTipText}>{selectedWord.tip}</Text>
                     </View>
 
-                    {/* ADDED: Phoneme Analysis Button */}
-                    <TouchableOpacity
-                      style={styles.phonemeAnalysisButton}
-                      onPress={() => openPhonemeAnalysis(selectedWord, selectedWordProgress)}
-                    >
-                      <LinearGradient
-                        colors={[COLORS.secondary, COLORS.primary] as const}
-                        style={styles.phonemeAnalysisGradient}
+                    {/* Action Buttons Side by Side */}
+                    <View style={styles.actionButtonsRow}>
+                      <TouchableOpacity
+                        style={[styles.phonemeAnalysisButton, { flex: 1 }]}
+                        onPress={() => openPhonemeAnalysis(selectedWord, selectedWordProgress)}
                       >
-                        <Icon name="graphic-eq" size={20} color={COLORS.white} />
-                        <Text style={styles.phonemeAnalysisText}>Phoneme-Level Analysis</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
+                        <LinearGradient
+                          colors={[COLORS.secondary, COLORS.primary] as const}
+                          style={styles.phonemeAnalysisGradient}
+                        >
+                          <Icon name="graphic-eq" size={18} color={COLORS.white} />
+                          <Text style={styles.phonemeAnalysisText}>Phoneme Analysis</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={styles.startDailyButton}
-                      onPress={openPracticeFromFeedback}
-                    >
-                      <LinearGradient
-                        colors={[COLORS.primary, COLORS.secondary] as const}
-                        style={styles.startDailyGradient}
+                      <TouchableOpacity
+                        style={[styles.startDailyButton, { flex: 1 }]}
+                        onPress={openPracticeFromFeedback}
                       >
-                        <Text style={styles.startDailyText}>Try Again</Text>
-                        <Icon name="refresh" size={20} color={COLORS.white} />
-                      </LinearGradient>
-                    </TouchableOpacity>
+                        <LinearGradient
+                          colors={[COLORS.primary, COLORS.secondary] as const}
+                          style={styles.startDailyGradient}
+                        >
+                          <Text style={styles.startDailyText}>Try Again</Text>
+                          <Icon name="refresh" size={18} color={COLORS.white} />
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               </ScrollView>
@@ -2826,156 +3082,127 @@ export default function HomeScreen() {
               ]}
             >
               <View style={styles.modalCard}>
-                <View style={styles.modalHeader}>
-                  <View style={styles.modalTitleContainer}>
-                    <Text style={styles.modalTitle}>Phoneme Analysis</Text>
-                    <Text style={styles.modalSubtitle}>{selectedWord.word}</Text>
+                {/* Themed Gradient Header */}
+                <LinearGradient
+                  colors={[COLORS.secondary, COLORS.primary] as const}
+                  style={styles.themedModalHeader}
+                >
+                  <Icon name="graphic-eq" size={32} color={COLORS.white} />
+                  <View style={styles.themedModalTitleContainer}>
+                    <Text style={styles.themedModalTitle}>Phoneme Analysis</Text>
+                    <Text style={styles.themedModalSubtitle}>{selectedWord.word}</Text>
                   </View>
                   <TouchableOpacity 
-                    style={styles.closeButton}
+                    style={styles.themedCloseButton}
                     onPress={closePhonemeAnalysis}
                   >
-                    <Icon name="close" size={24} color={COLORS.gray[600]} />
+                    <Icon name="close" size={24} color={COLORS.white} />
                   </TouchableOpacity>
-                </View>
+                </LinearGradient>
 
                 <ScrollView 
                   style={styles.phonemeAnalysisScroll}
                   showsVerticalScrollIndicator={false}
                 >
-                  {/* Word Summary */}
-                  <View style={styles.phonemeWordSummary}>
-                    <Text style={styles.phonemeWordText}>{selectedWord.word}</Text>
-                    <Text style={styles.phonemePhonetic}>{selectedWord.phonetic}</Text>
-                  </View>
+                  <View style={styles.phonemeAnalysisContent}>
 
-                  {/* Phoneme Breakdown */}
-                  <View style={styles.phonemeBreakdownSection}>
-                    <Text style={styles.sectionTitle}>Phoneme Breakdown</Text>
-                    <View style={styles.phonemeGrid}>
-                      {currentPhonemeAnalysis.map((phoneme, index) => {
-                        const practiceData = phonemePractices[phoneme.phoneme];
-                        const latestAttempt = practiceData?.attempts?.[0];
-                        
-                        return (
-                          <View key={index} style={styles.phonemeCard}>
-                            {/* Phoneme Symbol */}
-                            <View style={styles.phonemeSymbolContainer}>
-                              <Text style={styles.phonemeSymbol}>/{phoneme.phoneme}/</Text>
-                              <View style={[
-                                styles.statusIndicator,
-                                { backgroundColor: 
-                                  phoneme.status === 'correct' ? COLORS.success :
-                                  phoneme.status === 'partial' ? COLORS.warning : COLORS.error
-                                }
-                              ]} />
-                            </View>
+                  {/* Phoneme Visualization */}
+                  {currentPhonemeAnalysis.length > 0 && (
+                    <PhonemeVisualization
+                      referencePhonemes={currentPhonemeAnalysis.map(p => p.reference_phoneme)}
+                      predictedPhonemes={currentPhonemeAnalysis.map(p => p.predicted_phoneme)}
+                      showLabel={true}
+                      animated={true}
+                    />
+                  )}
 
-                            {/* Accuracy */}
-                            <View style={styles.accuracyContainer}>
-                              <Text style={styles.accuracyLabel}>Accuracy</Text>
-                              <Text style={[
-                                styles.accuracyValue,
-                                { color: 
-                                  phoneme.accuracy >= 0.8 ? COLORS.success :
-                                  phoneme.accuracy >= 0.5 ? COLORS.warning : COLORS.error
-                                }
-                              ]}>
-                                {Math.round(phoneme.accuracy * 100)}%
-                              </Text>
-                            </View>
+                  {/* Phoneme Practice Table */}
+                  <View style={styles.phonemePracticeSection}>
+                    <Text style={styles.sectionTitle}>Individual Phoneme Practice</Text>
+                    
+                    {/* Table Header */}
+                    <View style={styles.tableHeader}>
+                      <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>Phoneme</Text>
+                      <Text style={[styles.tableHeaderText, { flex: 1 }]}>Status</Text>
+                      <Text style={[styles.tableHeaderText, { flex: 1 }]}>Score</Text>
+                      <Text style={[styles.tableHeaderText, { flex: 1 }]}>Attempts</Text>
+                      <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>Actions</Text>
+                    </View>
 
-                            {/* Practice Progress */}
-                            {latestAttempt && (
-                              <View style={styles.practiceProgress}>
-                                <Text style={styles.practiceLabel}>Best Practice</Text>
-                                <Text style={[
-                                  styles.practiceValue,
-                                  { color: 
-                                    latestAttempt.accuracy >= 0.8 ? COLORS.success :
-                                    latestAttempt.accuracy >= 0.5 ? COLORS.warning : COLORS.error
-                                  }
-                                ]}>
-                                  {Math.round(latestAttempt.accuracy * 100)}%
-                                </Text>
-                              </View>
-                            )}
-
-                            {/* Actions */}
-                            <View style={styles.phonemeActions}>
-                              <TouchableOpacity
-                                style={[
-                                  styles.phonemeActionButton,
-                                  styles.listenButton,
-                                  playingPhoneme === phoneme.phoneme && styles.actionButtonActive
-                                ]}
-                                onPress={() => playPhonemeAudio(phoneme.phoneme)}
-                              >
-                                <Icon 
-                                  name={playingPhoneme === phoneme.phoneme ? "volume-up" : "volume-down"} 
-                                  size={16} 
-                                  color={COLORS.white} 
-                                />
-                                <Text style={styles.actionButtonText}>
-                                  {playingPhoneme === phoneme.phoneme ? 'Playing' : 'Listen'}
-                                </Text>
-                              </TouchableOpacity>
-
-                              <TouchableOpacity
-                                style={[
-                                  styles.phonemeActionButton,
-                                  styles.practiceButton,
-                                  isRecordingPhoneme && practicingPhoneme === phoneme.phoneme && styles.recordingButton
-                                ]}
-                                onPress={() => {
-                                  if (isRecordingPhoneme && practicingPhoneme === phoneme.phoneme) {
-                                    stopPhonemeRecording();
-                                  } else {
-                                    startPhonemeRecording(phoneme.phoneme);
-                                  }
-                                }}
-                                disabled={isRecordingPhoneme && practicingPhoneme !== phoneme.phoneme}
-                              >
-                                <Icon 
-                                  name={isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? "stop" : "mic"} 
-                                  size={16} 
-                                  color={COLORS.white} 
-                                />
-                                <Text style={styles.actionButtonText}>
-                                  {isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? 
-                                    `Recording ${phonemeRecordingTime}` : 'Practice'}
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            {/* Feedback */}
-                            <Text style={styles.phonemeFeedback}>{phoneme.feedback}</Text>
-
-                            {/* Practice History */}
-                            {practiceData && practiceData.attempts.length > 0 && (
-                              <View style={styles.practiceHistory}>
-                                <Text style={styles.historyTitle}>
-                                  Practice History ({practiceData.attempts.length})
-                                </Text>
-                                {practiceData.attempts.slice(0, 3).map((attempt, idx) => (
-                                  <View key={idx} style={styles.historyItem}>
-                                    <Text style={styles.historyScore}>
-                                      {Math.round(attempt.accuracy * 100)}%
-                                    </Text>
-                                    <Text style={styles.historyTime}>
-                                      {attempt.timestamp.toLocaleTimeString([], { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit' 
-                                      })}
-                                    </Text>
-                                  </View>
-                                ))}
-                              </View>
+                    {/* Table Rows */}
+                    {currentPhonemeAnalysis.map((phoneme, index) => {
+                      const practiceData = phonemePractices[phoneme.phoneme];
+                      const statusColor = 
+                        phoneme.status === 'correct' ? COLORS.success :
+                        phoneme.status === 'partial' ? COLORS.warning : COLORS.error;
+                      const accuracy = practiceData?.bestScore ?? phoneme.accuracy;
+                      
+                      return (
+                        <View key={index} style={styles.tableRow}>
+                          <View style={[styles.tableCell, { flex: 1.5 }]}>
+                            <Text style={styles.phonemeSymbol}>/{phoneme.phoneme}/</Text>
+                            {practiceData?.mastered && (
+                              <Icon name="verified" size={14} color={COLORS.gold} />
                             )}
                           </View>
-                        );
-                      })}
-                    </View>
+                          
+                          <View style={[styles.tableCell, { flex: 1 }]}>
+                            <View style={[
+                              styles.statusDot,
+                              { backgroundColor: statusColor }
+                            ]} />
+                          </View>
+                          
+                          <View style={[styles.tableCell, { flex: 1 }]}>
+                            <Text style={[
+                              styles.tableCellText,
+                              { color: accuracy >= 0.8 ? COLORS.success : accuracy >= 0.5 ? COLORS.warning : COLORS.error }
+                            ]}>
+                              {Math.round(accuracy * 100)}%
+                            </Text>
+                          </View>
+                          
+                          <View style={[styles.tableCell, { flex: 1 }]}>
+                            <Text style={styles.tableCellText}>
+                              {practiceData?.totalAttempts || 0}
+                            </Text>
+                          </View>
+                          
+                          <View style={[styles.tableCell, { flex: 1.5, flexDirection: 'row', gap: 4 }]}>
+                            <TouchableOpacity
+                              style={styles.tableActionButton}
+                              onPress={() => playPhonemeAudio(phoneme.phoneme)}
+                            >
+                              <Icon 
+                                name={playingPhoneme === phoneme.phoneme ? "volume-up" : "volume-down"} 
+                                size={16} 
+                                color={COLORS.primary} 
+                              />
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                              style={[
+                                styles.tableActionButton,
+                                isRecordingPhoneme && practicingPhoneme === phoneme.phoneme && styles.recordingButton
+                              ]}
+                              onPress={() => {
+                                if (isRecordingPhoneme && practicingPhoneme === phoneme.phoneme) {
+                                  stopPhonemeRecording();
+                                } else {
+                                  startPhonemeRecording(phoneme.phoneme);
+                                }
+                              }}
+                            >
+                              <Icon 
+                                name={isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? "stop" : "mic"} 
+                                size={16} 
+                                color={isRecordingPhoneme && practicingPhoneme === phoneme.phoneme ? COLORS.error : COLORS.primary} 
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })}
                   </View>
 
                   {/* Overall Progress */}
@@ -3007,6 +3234,7 @@ export default function HomeScreen() {
                       </View>
                     </View>
                   )}
+                  </View>
                 </ScrollView>
 
                 {/* Recording Indicator */}
@@ -3051,45 +3279,54 @@ export default function HomeScreen() {
                 <View style={styles.modalCard}>
                 {!showResult ? (
                   <>
-                    <View style={styles.modalHeader}>
+                    {/* Themed Gradient Header */}
+                    <LinearGradient
+                      colors={isPracticingDaily ? [COLORS.gold, '#D97706'] : DIFFICULTY_COLORS[selectedDifficulty].gradient}
+                      style={styles.themedModalHeader}
+                    >
+                      <Icon name={isPracticingDaily ? "wb-sunny" : "school"} size={32} color={COLORS.white} />
+                      <View style={styles.themedModalTitleContainer}>
+                        <Text style={styles.themedModalTitle}>
+                          {isPracticingDaily ? "Today's Challenge" : "Practice"}
+                        </Text>
+                        <Text style={styles.themedModalSubtitle}>{selectedWord.word}</Text>
+                      </View>
                       <TouchableOpacity 
-                        style={styles.closeButton}
+                        style={styles.themedCloseButton}
                         onPress={closePracticeModal}
                       >
-                        <Icon name="close" size={24} color={COLORS.gray[600]} />
+                        <Icon name="close" size={24} color={COLORS.white} />
                       </TouchableOpacity>
-                    </View>
+                    </LinearGradient>
 
-                    <View style={styles.modalWordDisplay}>
-                      <Text style={styles.modalWord}>{selectedWord.word}</Text>
+                    <View style={styles.modalContent}>
                       <Text style={styles.modalPhonetic}>{selectedWord.phonetic}</Text>
-                    </View>
 
-                    <View style={styles.modalMeaning}>
-                      <Icon name="book" size={20} color={COLORS.primary} />
-                      <Text style={styles.modalMeaningText}>{selectedWord.meaning}</Text>
-                    </View>
+                      <View style={styles.modalMeaning}>
+                        <Icon name="book" size={20} color={COLORS.primary} />
+                        <Text style={styles.modalMeaningText}>{selectedWord.meaning}</Text>
+                      </View>
 
-                    <View style={styles.modalExample}>
-                      <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
-                      <Text style={styles.modalExampleText}>{selectedWord.example}</Text>
-                    </View>
+                      <View style={styles.modalExample}>
+                        <Icon name="format-quote" size={20} color={COLORS.gray[500]} />
+                        <Text style={styles.modalExampleText}>{selectedWord.example}</Text>
+                      </View>
 
-                    <View style={styles.modalTip}>
-                      <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
-                      <Text style={styles.modalTipText}>{selectedWord.tip}</Text>
-                    </View>
+                      <View style={styles.modalTip}>
+                        <Icon name="lightbulb-outline" size={20} color={COLORS.gold} />
+                        <Text style={styles.modalTipText}>{selectedWord.tip}</Text>
+                      </View>
 
-                    <TouchableOpacity
-                      style={styles.modalListenButton}
-                      onPress={() => playWordPronunciation(selectedWord.word)}
-                      disabled={playingAudio}
-                    >
-                      <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color={COLORS.white} />
-                      <Text style={styles.modalListenText}>
-                        {playingAudio ? 'Playing...' : 'Listen'}
-                      </Text>
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.modalListenButton}
+                        onPress={() => playWordPronunciation(selectedWord.word)}
+                        disabled={playingAudio}
+                      >
+                        <Icon name={playingAudio ? 'volume-up' : 'headphones'} size={24} color={COLORS.white} />
+                        <Text style={styles.modalListenText}>
+                          {playingAudio ? 'Playing...' : 'Listen'}
+                        </Text>
+                      </TouchableOpacity>
 
                     <View style={styles.modalRecordSection}>
                       {isProcessing ? (
@@ -3128,50 +3365,46 @@ export default function HomeScreen() {
                         </>
                       )}
                     </View>
+                    </View>
                   </>
                 ) : (
                   <>
-                    {/* Result Screen */}
-                    <View style={styles.modalHeader}>
-                      <TouchableOpacity 
-                        style={styles.closeButton}
-                        onPress={closePracticeModal}
-                      >
-                        <Icon name="close" size={24} color={COLORS.gray[600]} />
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.resultContent}>
-                        <LinearGradient
-                          colors={result && result.accuracy >= 0.8 
-                            ? [COLORS.success, '#059669'] as const
-                            : [COLORS.warning, '#D97706'] as const
-                          }
-                          style={styles.resultIconCircle}
-                        >
-                          <Icon 
-                            name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} 
-                            size={64} 
-                            color={COLORS.white} 
-                          />
-                        </LinearGradient>
-                        
-                        <Text style={styles.resultTitle}>
+                    {/* Themed Gradient Header for Result */}
+                    <LinearGradient
+                      colors={result && result.accuracy >= 0.8 
+                        ? [COLORS.success, '#059669'] as const
+                        : [COLORS.warning, '#D97706'] as const
+                      }
+                      style={styles.themedModalHeader}
+                    >
+                      <Icon name={result && result.accuracy >= 0.8 ? 'celebration' : 'emoji-events'} size={32} color={COLORS.white} />
+                      <View style={styles.themedModalTitleContainer}>
+                        <Text style={styles.themedModalTitle}>
                           {result && result.accuracy >= 0.9 ? 'Perfect!' :
                            result && result.accuracy >= 0.8 ? 'Excellent!' :
                            result && result.accuracy >= 0.7 ? 'Good Job!' : 'Keep Trying!'}
                         </Text>
+                        <Text style={styles.themedModalSubtitle}>{selectedWord.word}</Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.themedCloseButton}
+                        onPress={closePracticeModal}
+                      >
+                        <Icon name="close" size={24} color={COLORS.white} />
+                      </TouchableOpacity>
+                    </LinearGradient>
+
+                      <View style={styles.resultContent}>
+                        <View style={styles.scoreDisplay}>
+                          <Text style={styles.scoreText}>{result && Math.round(result.accuracy * 100)}%</Text>
+                          <Text style={styles.scoreLabel}>Accuracy</Text>
+                        </View>
 
                         <View style={styles.xpEarned}>
                           <Icon name="stars" size={24} color={COLORS.gold} />
                           <Text style={styles.xpEarnedText}>
                             +{result && Math.round(result.accuracy * 10)} XP
                           </Text>
-                        </View>
-
-                        <View style={styles.scoreDisplay}>
-                          <Text style={styles.scoreText}>{result && Math.round(result.accuracy * 100)}%</Text>
-                          <Text style={styles.scoreLabel}>Accuracy</Text>
                         </View>
 
                         <View style={styles.resultStats}>
@@ -3189,6 +3422,20 @@ export default function HomeScreen() {
                             <Text style={styles.resultStatLabel}>Errors</Text>
                           </View>
                         </View>
+
+                        {/* Phoneme Visualization */}
+                        {result && result.reference_phonemes && result.predicted_phonemes && (
+                          <View style={styles.phonemeVisualizationContainer}>
+                            <PhonemeVisualization
+                              referencePhonemes={result.reference_phonemes}
+                              predictedPhonemes={result.predicted_phonemes}
+                              alignedReference={result.aligned_reference}
+                              alignedPredicted={result.aligned_predicted}
+                              showLabel={true}
+                              animated={true}
+                            />
+                          </View>
+                        )}
 
                         <View style={styles.resultFeedback}>
                           <Text style={styles.resultFeedbackTitle}>Feedback</Text>
@@ -3220,7 +3467,7 @@ export default function HomeScreen() {
                   </>
                 )}
               </View>
-              </ScrollView>
+            </ScrollView>
             </Animated.View>
           </View>
         </Modal>
@@ -3232,6 +3479,12 @@ export default function HomeScreen() {
         onClose={() => setShowStreakCalendar(false)}
         streakDays={streakDays}
         currentStreak={stats.streak}
+      />
+
+      {/* NOTIFICATION SETTINGS MODAL */}
+      <NotificationSettingsModal
+        visible={showNotificationSettings}
+        onClose={() => setShowNotificationSettings(false)}
       />
     </View>
   );
@@ -3398,6 +3651,9 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
   userName: {
@@ -3408,6 +3664,20 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.05)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
+    flex: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  settingsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   badgesContainer: {
     flexDirection: 'row',
@@ -3432,11 +3702,15 @@ const styles = StyleSheet.create({
   badgeInfo: {
     flex: 1,
   },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
   phonemeAnalysisButton: {
     borderRadius: 16,
     overflow: 'hidden',
-    marginTop: 16,
-    shadowColor: COLORS.primary,
+    shadowColor: COLORS.secondary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
@@ -3446,12 +3720,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    gap: 6,
   },
   phonemeAnalysisText: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '700',
     color: COLORS.white,
   },
   badgeValue: {
@@ -3506,6 +3781,9 @@ const styles = StyleSheet.create({
   phonemeAnalysisScroll: {
     maxHeight: height * 0.7,
   },
+  phonemeAnalysisContent: {
+    padding: 20,
+  },
   modalTitleContainer: {
     flex: 1,
   },
@@ -3541,6 +3819,68 @@ const styles = StyleSheet.create({
   phonemeBreakdownSection: {
     marginBottom: 24,
   },
+  phonemeList: {
+    gap: 12,
+  },
+  phonemePracticeSection: {
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.gray[100],
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  tableHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.gray[700],
+    textAlign: 'center',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: COLORS.gray[200],
+    alignItems: 'center',
+  },
+  tableCell: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tableCellText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.gray[800],
+  },
+  phonemeSymbol: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.gray[800],
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  tableActionButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingButton: {
+    backgroundColor: COLORS.error + '20',
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '800',
@@ -3568,7 +3908,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  phonemeSymbol: {
+  phonemeSymbolOld: {
     fontSize: 24,
     fontWeight: '800',
     color: COLORS.gray[800],
@@ -4300,6 +4640,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
     position: 'relative',
+    gap: 12,
+  },
+  themedModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    position: 'relative',
+    gap: 12,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+  },
+  themedModalTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  themedModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.white,
+    textAlign: 'center',
+  },
+  themedModalSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.white,
+    opacity: 0.9,
+    marginTop: 2,
+  },
+  themedCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    right: 16,
+    top: 16,
   },
   dailyTaskTitle: {
     fontSize: 20,
@@ -4400,8 +4780,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    gap: 6,
   },
   startDailyText: {
     fontSize: 16,
@@ -4601,6 +4982,20 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     marginBottom: 16,
   },
+  modalTitleContainer: {
+    flex: 1,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.gray[800],
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+    marginTop: 2,
+  },
   closeButton: {
     width: 40,
     height: 40,
@@ -4608,6 +5003,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray[100],
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalContent: {
+    padding: 20,
   },
   modalWordDisplay: {
     alignItems: 'center',
@@ -4621,9 +5019,11 @@ const styles = StyleSheet.create({
     letterSpacing: -1.5,
   },
   modalPhonetic: {
-    fontSize: 18,
+    fontSize: 16,
     color: COLORS.gray[600],
     fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
     fontStyle: 'italic',
   },
   modalMeaning: {
@@ -4742,22 +5142,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.gray[500],
   },
+  resultScrollView: {
+    maxHeight: height * 0.7,
+  },
   resultContent: {
     alignItems: 'center',
-  },
-  resultIconCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  resultTitle: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: COLORS.gray[800],
-    marginBottom: 16,
+    padding: 20,
   },
   xpEarned: {
     flexDirection: 'row',
@@ -4823,6 +5213,12 @@ const styles = StyleSheet.create({
     width: 2,
     height: 60,
     backgroundColor: COLORS.gray[300],
+  },
+  phonemeVisualizationContainer: {
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 16,
+    padding: 16,
+    marginVertical: 16,
   },
   resultFeedback: {
     width: '100%',
