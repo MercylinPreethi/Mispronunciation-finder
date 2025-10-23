@@ -1069,7 +1069,7 @@ export default function CoachScreen() {
               </BlurView>
             </TouchableOpacity>
           </Animated.View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* Input Area with Glassmorphism */}
@@ -1820,6 +1820,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
+    position: 'relative',
   },
   practiceModalContainer: {
     maxHeight: height * 0.9,
