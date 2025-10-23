@@ -25,6 +25,160 @@ export interface NotificationPreferences {
   };
 }
 
+// ============================================================================
+// NOTIFICATION QUEUE & THROTTLING
+// ============================================================================
+
+interface QueuedNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  data: any;
+  priority: number; // 1-5 (5 = highest)
+  timestamp: number;
+}
+
+class NotificationQueue {
+  private queue: QueuedNotification[] = [];
+  private isProcessing: boolean = false;
+  private lastNotificationTime: number = 0;
+  private readonly MIN_INTERVAL = 30000; // 30 seconds minimum between notifications
+  private readonly BATCH_DELAY = 120000; // 2 minutes delay for batched notifications
+  
+  /**
+   * Add notification to queue with priority
+   */
+  enqueue(notification: Omit<QueuedNotification, 'id' | 'timestamp'>) {
+    const queuedNotif: QueuedNotification = {
+      ...notification,
+      id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now(),
+    };
+    
+    this.queue.push(queuedNotif);
+    this.queue.sort((a, b) => b.priority - a.priority); // Sort by priority
+    
+    console.log(`📬 Notification queued: ${notification.title} (Priority: ${notification.priority})`);
+    
+    // Start processing if not already running
+    if (!this.isProcessing) {
+      this.processQueue();
+    }
+  }
+  
+  /**
+   * Process notification queue with intelligent spacing
+   */
+  private async processQueue() {
+    if (this.isProcessing || this.queue.length === 0) {
+      return;
+    }
+    
+    this.isProcessing = true;
+    
+    while (this.queue.length > 0) {
+      const now = Date.now();
+      const timeSinceLastNotif = now - this.lastNotificationTime;
+      
+      // Wait if notifications are too close together
+      if (timeSinceLastNotif < this.MIN_INTERVAL) {
+        const waitTime = this.MIN_INTERVAL - timeSinceLastNotif;
+        console.log(`⏳ Waiting ${waitTime}ms before next notification...`);
+        await this.sleep(waitTime);
+      }
+      
+      const notification = this.queue.shift()!;
+      
+      // Check if notification is too old (older than 5 minutes)
+      const age = Date.now() - notification.timestamp;
+      if (age > 300000) {
+        console.log(`🗑️ Skipping stale notification: ${notification.title}`);
+        continue;
+      }
+      
+      try {
+        await this.sendNotification(notification);
+        this.lastNotificationTime = Date.now();
+        
+        // For low-priority notifications in a batch, add extra delay
+        if (notification.priority <= 2 && this.queue.length > 0) {
+          const nextNotif = this.queue[0];
+          if (nextNotif.priority <= 2) {
+            console.log(`⏳ Batch delay: waiting 2 minutes before next low-priority notification...`);
+            await this.sleep(this.BATCH_DELAY);
+          }
+        }
+      } catch (error) {
+        console.error('Error sending queued notification:', error);
+      }
+    }
+    
+    this.isProcessing = false;
+  }
+  
+  /**
+   * Send notification immediately
+   */
+  private async sendNotification(notification: QueuedNotification) {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: notification.title,
+          body: notification.body,
+          data: notification.data,
+          sound: true,
+          priority: notification.priority >= 4 
+            ? Notifications.AndroidNotificationPriority.HIGH 
+            : Notifications.AndroidNotificationPriority.DEFAULT,
+        },
+        trigger: null, // Send immediately
+      });
+      
+      console.log(`✅ Notification sent: ${notification.title}`);
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Check if similar notification was sent recently
+   */
+  isDuplicate(type: string, withinMinutes: number = 5): boolean {
+    const cutoff = Date.now() - (withinMinutes * 60 * 1000);
+    return this.queue.some(n => 
+      n.type === type && n.timestamp > cutoff
+    );
+  }
+  
+  /**
+   * Clear all queued notifications
+   */
+  clear() {
+    this.queue = [];
+    console.log('🗑️ Notification queue cleared');
+  }
+  
+  /**
+   * Get queue status
+   */
+  getStatus() {
+    return {
+      queueLength: this.queue.length,
+      isProcessing: this.isProcessing,
+      lastNotificationTime: this.lastNotificationTime,
+    };
+  }
+  
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+// Global notification queue instance
+const notificationQueue = new NotificationQueue();
+
 export interface NotificationData {
   type: 'daily_reminder' | 'streak_alert' | 'motivational' | 'achievement' | 'milestone';
   title: string;
@@ -329,7 +483,7 @@ export const scheduleStreakRiskNotification = async (
 };
 
 /**
- * Send motivational notification
+ * Send motivational notification (queued with intelligent spacing)
  */
 export const sendMotivationalNotification = async (
   type: 'streak_milestone' | 'accuracy_improvement' | 'mastery_achieved' | 'daily_complete',
@@ -341,52 +495,62 @@ export const sendMotivationalNotification = async (
       return;
     }
 
+    // Check if duplicate notification was sent recently
+    if (notificationQueue.isDuplicate(`motivational_${type}`, 10)) {
+      console.log(`⏭️ Skipping duplicate notification: ${type}`);
+      return;
+    }
+
     let title = '';
     let body = '';
+    let priority = 3; // Default medium priority
 
     switch (type) {
       case 'streak_milestone':
         const streak = data.streak;
         title = '🎉 Streak Milestone!';
         body = `Amazing! You've reached a ${streak}-day streak! Keep going!`;
+        priority = 4; // High priority for milestones
         break;
       
       case 'accuracy_improvement':
         const improvement = data.improvement;
         title = '📈 Great Progress!';
         body = `Your accuracy improved by ${improvement}%! Keep up the excellent work!`;
+        priority = 2; // Lower priority
         break;
       
       case 'mastery_achieved':
         const word = data.word;
         title = '⭐ Mastery Achieved!';
         body = `You've mastered "${word}"! Outstanding pronunciation!`;
+        priority = 3; // Medium priority
         break;
       
       case 'daily_complete':
         title = '✅ Daily Goal Complete!';
         body = "Great job! You've completed today's practice. See you tomorrow!";
+        priority = 3; // Medium priority
         break;
     }
 
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        data: { type: 'motivational', ...data },
-        sound: true,
-      },
-      trigger: null, // Send immediately
+    // Add to queue instead of sending immediately
+    notificationQueue.enqueue({
+      type: `motivational_${type}`,
+      title,
+      body,
+      data: { type: 'motivational', ...data },
+      priority,
     });
 
-    console.log('✅ Motivational notification sent:', type);
+    console.log(`📬 Motivational notification queued: ${type} (Priority: ${priority})`);
   } catch (error) {
-    console.error('Error sending motivational notification:', error);
+    console.error('Error queueing motivational notification:', error);
   }
 };
 
 /**
- * Schedule achievement notification
+ * Schedule achievement notification (queued)
  */
 export const scheduleAchievementNotification = async (
   achievement: string,
@@ -398,20 +562,24 @@ export const scheduleAchievementNotification = async (
       return;
     }
 
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `🏆 Achievement Unlocked!`,
-        body: `${achievement}: ${description}`,
-        data: { type: 'achievement', achievement },
-        sound: true,
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-      },
-      trigger: null,
+    // Check for duplicates
+    if (notificationQueue.isDuplicate(`achievement_${achievement}`, 30)) {
+      console.log(`⏭️ Skipping duplicate achievement: ${achievement}`);
+      return;
+    }
+
+    // Add to queue with high priority
+    notificationQueue.enqueue({
+      type: `achievement_${achievement}`,
+      title: `🏆 Achievement Unlocked!`,
+      body: `${achievement}: ${description}`,
+      data: { type: 'achievement', achievement },
+      priority: 4, // High priority
     });
 
-    console.log('✅ Achievement notification sent:', achievement);
+    console.log(`📬 Achievement notification queued: ${achievement}`);
   } catch (error) {
-    console.error('Error scheduling achievement notification:', error);
+    console.error('Error queueing achievement notification:', error);
   }
 };
 
@@ -524,10 +692,15 @@ export const sendStreakMilestoneNotification = async (streak: number): Promise<v
 };
 
 /**
- * Send daily completion notification
+ * Send daily completion notification (throttled to once per day)
  */
 export const sendDailyCompleteNotification = async (): Promise<void> => {
-  await sendMotivationalNotification('daily_complete', {});
+  // Only send once per day
+  if (!notificationQueue.isDuplicate('daily_complete', 1440)) {
+    await sendMotivationalNotification('daily_complete', {});
+  } else {
+    console.log('⏭️ Skipping duplicate daily complete notification');
+  }
 };
 
 // ============================================================================
@@ -740,6 +913,31 @@ export const getScheduledNotifications = async (): Promise<Notifications.Notific
   }
 };
 
+// ============================================================================
+// NOTIFICATION QUEUE MANAGEMENT
+// ============================================================================
+
+/**
+ * Clear notification queue
+ */
+export const clearNotificationQueue = (): void => {
+  notificationQueue.clear();
+};
+
+/**
+ * Get notification queue status
+ */
+export const getNotificationQueueStatus = () => {
+  return notificationQueue.getStatus();
+};
+
+/**
+ * Check if notification would be duplicate
+ */
+export const wouldBeDuplicate = (type: string, withinMinutes: number = 5): boolean => {
+  return notificationQueue.isDuplicate(type, withinMinutes);
+};
+
 export default {
   requestNotificationPermissions,
   getExpoPushToken,
@@ -765,4 +963,12 @@ export default {
   clearBadge,
   isQuietHours,
   getScheduledNotifications,
+  clearNotificationQueue,
+  getNotificationQueueStatus,
+  wouldBeDuplicate,
+};
+cations,
+  clearNotificationQueue,
+  getNotificationQueueStatus,
+  wouldBeDuplicate,
 };
