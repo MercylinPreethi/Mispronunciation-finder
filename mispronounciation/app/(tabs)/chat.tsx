@@ -320,14 +320,14 @@ export default function CoachScreen() {
   };
 
   const getFeedbackColor = (score: number): string => {
-    if (score >= 85) return '#10B981';
-    if (score >= 70) return '#F59E0B';
+    if (score >= 0.85) return '#10B981';
+    if (score >= 0.70) return '#F59E0B';
     return '#EF4444';
   };
 
   const getFeedbackGradient = (score: number): readonly [string, string] => {
-    if (score >= 85) return ['#10B981', '#059669'] as const;
-    if (score >= 70) return ['#F59E0B', '#D97706'] as const;
+    if (score >= 0.85) return ['#10B981', '#059669'] as const;
+    if (score >= 0.70) return ['#F59E0B', '#D97706'] as const;
     return ['#EF4444', '#DC2626'] as const;
   };
 
@@ -675,8 +675,8 @@ export default function CoachScreen() {
                             styles.combinedButton,
                             {
                               shadowColor: 
-                                message.feedback.accuracy >= 85 ? '#10B981' :
-                                message.feedback.accuracy >= 70 ? '#F59E0B' :
+                                message.feedback.accuracy >= 0.85 ? '#10B981' :
+                                message.feedback.accuracy >= 0.70 ? '#F59E0B' :
                                 '#EF4444'
                             }
                           ]}
@@ -685,9 +685,9 @@ export default function CoachScreen() {
                         >
                           <LinearGradient
                             colors={
-                              message.feedback.accuracy >= 85
+                              message.feedback.accuracy >= 0.85
                                 ? ['#10B981', '#059669'] as const
-                                : message.feedback.accuracy >= 70
+                                : message.feedback.accuracy >= 0.70
                                 ? ['#F59E0B', '#D97706'] as const
                                 : ['#EF4444', '#DC2626'] as const
                             }
@@ -757,9 +757,9 @@ export default function CoachScreen() {
               <View style={styles.feedbackOverlayHeader}>
                 <LinearGradient
                   colors={
-                    latestFeedback.accuracy >= 85
+                    latestFeedback.accuracy >= 0.85
                       ? ['#10B981', '#059669'] as const
-                      : latestFeedback.accuracy >= 70
+                      : latestFeedback.accuracy >= 0.70
                       ? ['#F59E0B', '#D97706'] as const
                       : ['#EF4444', '#DC2626'] as const
                   }
@@ -767,7 +767,7 @@ export default function CoachScreen() {
                 >
                   <Icon name="stars" size={16} color="#FFFFFF" />
                   <Text style={styles.feedbackOverlayScoreText}>
-                    {latestFeedback.accuracy.toFixed(0)}%
+                    {(latestFeedback.accuracy * 100).toFixed(0)}%
                   </Text>
                 </LinearGradient>
                 <Text style={styles.feedbackOverlayTitle}>Quick Analysis</Text>
@@ -897,9 +897,9 @@ export default function CoachScreen() {
                         {/* Accuracy Score */}
                         <LinearGradient
                           colors={
-                            latestFeedback.accuracy >= 85
+                            latestFeedback.accuracy >= 0.85
                               ? ['#10B981', '#059669'] as const
-                              : latestFeedback.accuracy >= 70
+                              : latestFeedback.accuracy >= 0.70
                               ? ['#F59E0B', '#D97706'] as const
                               : ['#EF4444', '#DC2626'] as const
                           }
@@ -907,7 +907,7 @@ export default function CoachScreen() {
                         >
                           <Icon name="stars" size={28} color="#FFFFFF" />
                           <Text style={styles.accuracyScoreValue}>
-                            {latestFeedback.accuracy.toFixed(0)}%
+                            {(latestFeedback.accuracy * 100).toFixed(0)}%
                           </Text>
                           <Text style={styles.accuracyScoreLabel}>Accuracy</Text>
                         </LinearGradient>
