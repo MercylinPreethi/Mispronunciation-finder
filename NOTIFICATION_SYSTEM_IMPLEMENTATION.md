@@ -730,11 +730,13 @@ Potential additions:
 ```json
 {
   "dependencies": {
-    "expo-notifications": "~0.30.13",
+    "expo-notifications": "~0.29.8",
     "expo-device": "~7.1.4"
   }
 }
 ```
+
+**Note:** Version 0.29.8 is compatible with Expo SDK 53.
 
 ### app.json
 ```json

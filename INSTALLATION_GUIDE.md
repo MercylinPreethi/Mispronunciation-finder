@@ -6,10 +6,12 @@ The notification system requires two additional Expo packages:
 
 ```json
 {
-  "expo-notifications": "~0.30.13",
+  "expo-notifications": "~0.29.8",
   "expo-device": "~7.1.4"
 }
 ```
+
+**Note:** These versions are compatible with Expo SDK 53.
 
 ---
 
