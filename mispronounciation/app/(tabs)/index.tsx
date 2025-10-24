@@ -2386,7 +2386,7 @@ export default function HomeScreen() {
               <Icon name="check-circle" size={24} color={COLORS.white} />
               <View style={styles.badgeInfo}>
                 <Text style={styles.badgeValue}>{Math.round(stats.accuracy * 100)}%</Text>
-                <Text style={styles.badgeLabel}>Accuracy</Text>
+                <Text style={styles.badgeLabel}>Performance</Text>
               </View>
             </LinearGradient>
           </Animated.View>
@@ -3886,6 +3886,184 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.gray[800],
     marginBottom: 16,
+  },
+  // Phoneme Modal
+  phonemeModalContainer: {
+    width: '90%',
+    maxWidth: 600,
+    maxHeight: height * 0.85,
+    backgroundColor: COLORS.white,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  phonemeModalHeader: {
+    padding: 20,
+    paddingTop: Platform.OS === 'ios' ? 24 : 20,
+  },
+  phonemeModalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  phonemeModalTitleContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  phonemeModalTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: -0.5,
+  },
+  phonemeModalSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  phonemeModalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  phonemeFilterTabs: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  phonemeFilterTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+  },
+  phonemeFilterTabActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  phonemeFilterTabText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  phonemeFilterTabTextActive: {
+    color: COLORS.white,
+  },
+  phonemeModalScroll: {
+    flex: 1,
+  },
+
+  phonemeCardGradient: {
+    padding: 16,
+  },
+  phonemeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  phonemeCardSymbol: {
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  phonemeCardLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  phonemeCardExample: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginBottom: 12,
+  },
+  phonemeCardStats: {
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  phonemeCardStatText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  phonemeCardActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  phonemeCardButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phonemeCardButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  phonemeCardButtonRecording: {
+    backgroundColor: COLORS.error,
+  },
+  phonemeOverallProgress: {
+    padding: 20,
+    backgroundColor: COLORS.gray[50],
+    borderRadius: 20,
+    margin: 16,
+  },
+  phonemeOverallTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.gray[900],
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  phonemeOverallStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  phonemeOverallStat: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  phonemeOverallValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.gray[900],
+  },
+  phonemeOverallLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.gray[600],
+    textTransform: 'uppercase',
+  },
+  phonemeRecordingIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.error,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phonemeRecordingPulse: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.white,
+    left: 20,
+  },
+  phonemeRecordingText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.white,
   },
   phonemeGrid: {
     gap: 12,
