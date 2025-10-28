@@ -642,7 +642,7 @@ const styles = StyleSheet.create({
   modalContainer: {
     width: '90%',
     maxWidth: 400,
-    maxHeight: '80%',
+    maxHeight: '85%',
     backgroundColor: COLORS.white,
     borderRadius: 20,
     overflow: 'hidden',
@@ -651,6 +651,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 8,
+    flexShrink: 1,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -672,7 +673,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    flex: 1,
+    flexGrow: 1,
   },
   wordSection: {
     padding: 20,
